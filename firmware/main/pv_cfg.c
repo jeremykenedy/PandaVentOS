@@ -34,24 +34,42 @@ void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode)
         r->simple_current = PV_FX_STATIC;
         for (int i = 0; i < PV_FX_COUNT; ++i) fx_set(&r->simple[i], "FF3700");
     } else if (mode == PV_MODE_H2D) {
-        // Factory per-state defaults, taken from the default colour table in
-        // the stock image at file offset 0x1707c (six RGB triples: FFFFFF,
-        // FF8000, FFFFFF, FFFFFF, 00FF00, FF0000) and confirmed against a
-        // live stock unit. Note the printed manual lists Preparation as
-        // F8A323 and Completed as 00FF2A; the shipping firmware does not use
-        // those values, and neither does a real device. Active effect per
-        // state is Static except Printing, which ships on Rainbow.
-        static const char *state_color[PV_ST_COUNT] = {
+        // Factory defaults, read back from a stock device after sending it
+        // the factory app's own reset command, {"rgb_mode":{"reset":1}}.
+        // This is not inferred from the manual or the UI: it is what the
+        // shipping firmware writes.
+        //
+        // Every effect of every state starts WHITE. Only the state's default
+        // ("active") effect carries a signature colour, and only three states
+        // have one that is not white:
+        //
+        //   Idle              active 1 Breathing   all FFFFFF
+        //   Download/Prepare  active 4 Marquee     effect 4 -> FF8000
+        //   Printing          active 6 Rainbow     all FFFFFF
+        //   Paused            active 1 Breathing   all FFFFFF
+        //   Finished          active 0 Static      effect 0 -> 00FF00
+        //   Error             active 2 Strobing    effect 2 -> FF0000
+        //
+        // The stock image builds it the same way: a loop writes white to all
+        // seven slots, then a switch overwrites the active slot for states 1,
+        // 4 and 5 only (0x400dc84d onward, colour literals at file offsets
+        // 0x17060 and the table at 0x1707c).
+        //
+        // Note the printed manual is wrong here twice over: it lists
+        // Preparation as F8A323 and Completed as 00FF2A, and neither value
+        // exists anywhere in the shipping firmware.
+        static const uint8_t state_fx[PV_ST_COUNT] = {
+            PV_FX_BREATHING, PV_FX_MARQUEE, PV_FX_RAINBOW,
+            PV_FX_BREATHING, PV_FX_STATIC,  PV_FX_STROBING,
+        };
+        static const char *active_color[PV_ST_COUNT] = {
             "FFFFFF", "FF8000", "FFFFFF", "FFFFFF", "00FF00", "FF0000",
         };
-        static const uint8_t state_fx[PV_ST_COUNT] = {
-            PV_FX_STATIC, PV_FX_STATIC, PV_FX_RAINBOW,
-            PV_FX_STATIC, PV_FX_STATIC, PV_FX_STATIC,
-        };
-        for (int s = 0; s < PV_ST_COUNT; ++s) {
-            r->h2d_active[s] = state_fx[s];
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            r->h2d_active[st] = state_fx[st];
             for (int f = 0; f < PV_FX_COUNT; ++f)
-                fx_set(&r->h2d[s][f], state_color[s]);
+                fx_set(&r->h2d[st][f], "FFFFFF");
+            fx_set(&r->h2d[st][state_fx[st]], active_color[st]);
         }
     } else if (mode == PV_MODE_WARNING) {
         for (int lvl = 0; lvl < 2; ++lvl) {

@@ -221,8 +221,10 @@ and a stock vent capture confirms it does not.
 
 ## Firmware defaults, as shipped
 
-Taken from the default tables inside the stock image and confirmed against a
-live unit.
+Read back from a stock device by sending it the factory app's own reset
+commands, `{"rgb_mode":{"reset":0}}` and `{"rgb_mode":{"reset":1}}`, and
+capturing what it reported. This is what the shipping firmware writes, not
+what the manual or the web app claims.
 
 | Setting | Default |
 |---|---|
@@ -231,38 +233,60 @@ live unit.
 | Hotspot IP | `192.168.254.1` |
 | Hotspot enabled | yes |
 | Hostname | `PandaVent` |
-| Light mode | Simple |
-| Simple colour, all effects | `FF3700` |
-| Brightness / speed, everywhere | 50 |
+| Light switch | on |
+| Warning override | on |
+| Follow Printer Light | off |
+| Follow Vent | on |
+| Reverse direction | off |
+| Simple mode, all 7 effects | colour `FF3700`, brightness 50, speed 50 |
+| Warning Hot, both levels | effect 0 (Static), brightness 50, speed 50 |
 
-H2D per-state colours, from the six RGB triples at file offset `0x1707c` of
-`panda_vent_v1.0.0.bin`:
+Advance (H2D) mode. Every effect of every state starts WHITE; only the
+state's default effect carries a signature colour, and only three of those
+are not white:
 
-| State | Colour |
+| State | Default effect | Colour on that effect |
+|---|---|---|
+| Idle | 1 Breathing | `FFFFFF` |
+| File Download / Print Prepare | 4 Marquee | `FF8000` |
+| Printing | 6 Rainbow | `FFFFFF` |
+| Paused | 1 Breathing | `FFFFFF` |
+| Print Finished | 0 Static | `00FF00` |
+| Print Error | 2 Strobing | `FF0000` |
+
+The stock image builds it exactly that way: a loop fills all seven slots with
+white, then a switch overwrites the active slot for states 1, 4 and 5 only
+(code at `0x400dc84d`, colour literals at file offsets `0x17060` and the
+table at `0x1707c`; DROM maps as `file = vaddr - 0x3f400000`).
+
+The printed manual is wrong twice here. It lists Preparation as `F8A323` and
+Completed as `00FF2A`. Neither value appears anywhere in the shipping
+firmware in any encoding, and a real device uses `FF8000` and `00FF00`.
+
+## What the switches actually do
+
+Straight from the factory app's own help text, which is the only published
+description of the behaviour:
+
+| Control | Behaviour |
 |---|---|
-| Idle | `FFFFFF` |
-| Preparation | `FF8000` |
-| Printing | `FFFFFF`, ships on the Rainbow effect |
-| Paused | `FFFFFF` |
-| Completed | `00FF00` |
-| Error | `FF0000` |
+| Light Switch | "turn on and off the RGB Light effects. Note: Overrides all other light settings if 'off'." |
+| Follow Printer Light | "Automatically turns RGB effect ON and OFF following the printers stock light." An on/off gate driven by the printer's chamber light, not a mode. |
+| Follow Vent | "turn on RGB lights when vent is open and off when vent is closed. Lower priority than Follow Printer." |
+| Warning OverRide | "override Red flashing warning light when printer is in **error state**." This is the printer's error state, NOT temperature. |
+| Warning Hot Mode | Safe below 50 C, hazard above: "The maximum temperature of the printer is below 50 C, with no risk of burns" / "...above 50 C, which poses a risk of burns!" Each level offers Static or Strobing only. |
 
-The printed manual lists Preparation as `F8A323` and Completed as `00FF2A`.
-Neither value appears anywhere in the shipping image, and a live unit uses
-`FF8000` and `00FF00`. The manual is wrong.
-
-The hotspot ssid derivation is `ESP_MAC_WIFI_STA`, not `ESP_MAC_WIFI_SOFTAP`:
-a unit whose STA MAC is `AA:BB:CC:DD:EE:10` advertises
-`Panda_Vent_AABBCCDDEE10`, and its SoftAP MAC would end `11`.
+So the resolution order is: master switch, then Follow Printer, then Follow
+Vent, then the error override, then the selected mode.
 
 ## Quirks worth knowing
 
 * **Effects 5 (Color_Cycle) and 6 (Rainbow) generate their own colours.**
-  The firmware resets any colour written for them, so a settings restore
-  that replays colours for those effects will always read back `FFFFFF`.
-  The factory UI guards this with `if (currentEffect < 5)`. Any tool that
-  replays settings must skip `rgb` for effect ids >= 5 or it will report
-  false mismatches.
+  The factory app refuses to send a colour for them and raises a "Cannot
+  Customize Color" dialog; its guard is `if (currentEffect < 5)`. The
+  FIRMWARE, though, stores whatever it is given: probed on a stock unit by
+  writing `00FF00` to simple effect 5, which read back as `00FF00` and was
+  not coerced. The colour is simply never used while those effects run.
 * Sending `{"rgb_mode": {}}` is the app's way of asking for a refresh.
 * `auth_err_reason` is always present in `sta` and is 0 in normal operation.
 * mDNS goes stale across a device reboot. Anything that waits for the device

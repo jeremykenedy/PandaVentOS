@@ -163,6 +163,12 @@ static void apply_rgb_switch(cJSON *o)
     if (changed) { pv_cfg_save(); pv_rgb_notify(); }
 }
 
+// Effects 5 (Color_Cycle) and 6 (Rainbow) generate their own colours, and
+// the factory app refuses to send one for them ("Cannot Customize Color").
+// The FIRMWARE, however, stores whatever it is given: probed on a stock unit
+// by writing 00FF00 to simple effect 5, which read back as 00FF00 rather than
+// being coerced. So no guard here. The colour is simply never used while
+// those effects are running.
 static void apply_fx_fields(pv_fx_param_t *p, cJSON *o)
 {
     cJSON *e;

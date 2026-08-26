@@ -17,6 +17,9 @@ static const char *TAG = "pv_bambu";
 static esp_mqtt_client_handle_t s_client;
 static char s_report_topic[80], s_request_topic[80];
 static bool s_started;
+static volatile TickType_t s_last_report;   // 0 until the bound SN answers
+static volatile TickType_t s_connected_at;
+static void relocate_start(void);           // defined with the scan code
 
 static const char PUSHALL[] =
     "{\"pushing\":{\"sequence_id\":\"0\",\"command\":\"pushall\","
@@ -51,6 +54,28 @@ static void handle_report(const char *data, int len)
         if (cJSON_IsNumber(bed)) g_live.bed_temp = (float)bed->valuedouble;
         cJSON *noz = cJSON_GetObjectItemCaseSensitive(print, "nozzle_temper");
         if (cJSON_IsNumber(noz)) g_live.nozzle_temp = (float)noz->valuedouble;
+
+        // The printer's own chamber light, for "Follow Printer Light".
+        // Bambu reports it as print.lights_report:
+        //   [ { "node": "chamber_light", "mode": "on" | "off" }, ... ]
+        cJSON *lights = cJSON_GetObjectItemCaseSensitive(print, "lights_report");
+        if (cJSON_IsArray(lights)) {
+            cJSON *e;
+            cJSON_ArrayForEach(e, lights) {
+                cJSON *node = cJSON_GetObjectItemCaseSensitive(e, "node");
+                cJSON *mode = cJSON_GetObjectItemCaseSensitive(e, "mode");
+                if (cJSON_IsString(node) && cJSON_IsString(mode) &&
+                    !strcmp(node->valuestring, "chamber_light")) {
+                    bool on = !strcmp(mode->valuestring, "on");
+                    if (on != g_live.printer_light) {
+                        g_live.printer_light = on;
+                        ESP_LOGI(TAG, "printer chamber light -> %s",
+                                 on ? "on" : "off");
+                        pv_rgb_notify();
+                    }
+                }
+            }
+        }
     }
     cJSON_Delete(root);
 }
@@ -60,7 +85,13 @@ static void on_mqtt(void *arg, esp_event_base_t base, int32_t id, void *data)
     esp_mqtt_event_handle_t ev = data;
     switch ((esp_mqtt_event_id_t)id) {
     case MQTT_EVENT_CONNECTED:
+        // The broker accepted "bblp" + the access code, so the address and
+        // the code are both right. Whether the SERIAL is right is not known
+        // until something arrives on device/<sn>/report; sn_watch_task
+        // decides that.
         g_live.printer_state = 3;
+        s_last_report = 0;
+        s_connected_at = xTaskGetTickCount();
         esp_mqtt_client_subscribe(s_client, s_report_topic, 0);
         esp_mqtt_client_publish(s_client, s_request_topic, PUSHALL, 0, 0, 0);
         pv_ws_push_state();
@@ -76,6 +107,9 @@ static void on_mqtt(void *arg, esp_event_base_t base, int32_t id, void *data)
         } else if (ev->error_handle &&
                    ev->error_handle->error_type == MQTT_ERROR_TYPE_TCP_TRANSPORT) {
             g_live.printer_state = 4;   // no route / ip error
+            // Factory behaviour: do not just show the error. Re-run discovery
+            // for the same serial and follow the printer to its new address.
+            relocate_start();
         }
         pv_ws_push_state();
         break;
@@ -86,6 +120,7 @@ static void on_mqtt(void *arg, esp_event_base_t base, int32_t id, void *data)
         if (ev->current_data_offset == 0 && ev->topic_len &&
             strncmp(ev->topic, s_report_topic, ev->topic_len) == 0) {
             if (ev->total_data_len == ev->data_len) {
+                s_last_report = xTaskGetTickCount();
                 handle_report(ev->data, ev->data_len);
             } else {
                 // Fragment: parse best-effort by truncating to last full JSON
@@ -108,6 +143,7 @@ void pv_bambu_disconnect(void)
     g_live.printer_state = 0;
     g_live.device_state = PV_ST_IDLE;
     g_live.bed_temp = g_live.nozzle_temp = -1.0f;
+    g_live.printer_light = false;
     pv_rgb_notify();
 }
 
@@ -146,9 +182,32 @@ void pv_bambu_rebind(void)
     pv_ws_push_state();
 }
 
+// A wrong serial still connects: the broker authenticates the access code,
+// not the topic. The only symptom is silence on device/<sn>/report. The
+// factory app distinguishes SN errors (state 5) from access code errors
+// (state 6) and shows different text, so the firmware has to tell them apart.
+#define PV_SN_ANSWER_TIMEOUT_MS 20000
+
+static void sn_watch_task(void *arg)
+{
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(2000));
+        if (g_live.printer_state != 3) continue;
+        if (s_last_report) continue;                 // the serial answered
+        TickType_t since = xTaskGetTickCount() - s_connected_at;
+        if (since > pdMS_TO_TICKS(PV_SN_ANSWER_TIMEOUT_MS)) {
+            ESP_LOGW(TAG, "no report on device/%s/report in %d s: wrong serial",
+                     g_cfg.printer.sn, PV_SN_ANSWER_TIMEOUT_MS / 1000);
+            g_live.printer_state = 5;                // sn error
+            pv_ws_push_state();
+        }
+    }
+}
+
 void pv_bambu_start(void)
 {
     s_started = true;
+    xTaskCreate(sn_watch_task, "pv_snwatch", 3072, NULL, 3, NULL);
     // The actual connect happens when STA gets an IP (pv_wifi calls rebind).
 }
 
@@ -159,9 +218,8 @@ void pv_bambu_start(void)
 
 typedef struct { char name[32]; char sn[24]; char ip[16]; } found_t;
 
-static void scan_task(void *arg)
+static int ssdp_collect(found_t *found, int max)
 {
-    found_t found[6];
     int nfound = 0;
 
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -188,7 +246,7 @@ static void scan_task(void *arg)
         setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
         TickType_t end = xTaskGetTickCount() + pdMS_TO_TICKS(4000);
         char buf[1024];
-        while (xTaskGetTickCount() < end && nfound < 6) {
+        while (xTaskGetTickCount() < end && nfound < max) {
             struct sockaddr_in src; socklen_t sl = sizeof(src);
             int r = recvfrom(sock, buf, sizeof(buf) - 1, 0, (struct sockaddr *)&src, &sl);
             if (r <= 0) continue;
@@ -218,6 +276,14 @@ static void scan_task(void *arg)
         }
         close(sock);
     }
+    return nfound;
+}
+
+// The plain user-initiated scan: collect and publish the list.
+static void scan_task(void *arg)
+{
+    found_t found[6];
+    int nfound = ssdp_collect(found, 6);
 
     cJSON *root = cJSON_CreateObject();
     cJSON *pr = cJSON_AddObjectToObject(root, "printer");
@@ -237,6 +303,86 @@ static void scan_task(void *arg)
     pv_ws_broadcast(out);
     ESP_LOGI(TAG, "ssdp scan done, %d printer(s)", nfound);
     vTaskDelete(NULL);
+}
+
+
+// ---------------------------------------------------------------------------
+// IP-change recovery. When a bound printer stops answering at its stored
+// address the factory does not just sit on an error: it re-runs discovery
+// looking for the SAME serial, and reports the outcome through printer.scan.
+// The factory app has a dialog for each result, which is how the state
+// numbering is known:
+//
+//   3  ip_change_scanning   "..." (spinner)
+//   4  sn not matched       "No printer with the same SN code was scanned,
+//                            rescanning."
+//   5  ip not changed       "The IP has not changed, reconnecting. (Or please
+//                            go to the AP menu to confirm if the Hotspot IP
+//                            conflicts with the IP range of your own router)"
+//   6  new ip applied       "The IP has changed, reconnecting with the new IP."
+// ---------------------------------------------------------------------------
+
+static bool s_relocating;
+
+static void scan_publish(int scan_state)
+{
+    g_live.printer_scan = scan_state;
+    pv_ws_push_state();
+}
+
+static void relocate_task(void *arg)
+{
+    found_t found[6];
+    char want[24];
+    snprintf(want, sizeof(want), "%s", g_cfg.printer.sn);
+
+    for (int attempt = 0; attempt < 3 && want[0]; ++attempt) {
+        scan_publish(3);                       // ip_change_scanning
+        int n = ssdp_collect(found, 6);
+
+        const found_t *hit = NULL;
+        for (int i = 0; i < n; ++i)
+            if (!strcmp(found[i].sn, want)) { hit = &found[i]; break; }
+
+        if (!hit) {
+            ESP_LOGW(TAG, "relocate: sn %s not seen (attempt %d)", want, attempt + 1);
+            scan_publish(4);                   // sn not matched, will rescan
+            vTaskDelay(pdMS_TO_TICKS(3000));
+            continue;
+        }
+
+        if (!strcmp(hit->ip, g_cfg.printer.ip)) {
+            ESP_LOGW(TAG, "relocate: sn %s still at %s", want, hit->ip);
+            scan_publish(5);                   // ip not changed
+            vTaskDelay(pdMS_TO_TICKS(500));
+            g_live.printer_scan = 0;
+            pv_bambu_rebind();                 // "reconnecting"
+            break;
+        }
+
+        ESP_LOGW(TAG, "relocate: sn %s moved %s -> %s", want,
+                 g_cfg.printer.ip, hit->ip);
+        snprintf(g_cfg.printer.ip, sizeof(g_cfg.printer.ip), "%s", hit->ip);
+        pv_cfg_save();
+        scan_publish(6);                       // new ip applied
+        vTaskDelay(pdMS_TO_TICKS(500));
+        g_live.printer_scan = 0;
+        pv_bambu_rebind();                     // "reconnecting with the new IP"
+        break;
+    }
+
+    g_live.printer_scan = 0;
+    s_relocating = false;
+    pv_ws_push_state();
+    vTaskDelete(NULL);
+}
+
+// Called when a bound printer looks unreachable at its stored address.
+static void relocate_start(void)
+{
+    if (s_relocating || !g_cfg.printer.sn[0]) return;
+    s_relocating = true;
+    xTaskCreate(relocate_task, "pv_reloc", 4096, NULL, 4, NULL);
 }
 
 void pv_bambu_scan_start(void)

@@ -108,6 +108,55 @@ every one that applies to a vent. `ota_img`, `ota_gif` and `ota_get_img`
 belong to the Panda Status products that share this web app; a stock vent
 never sends them, and the live capture confirms it.
 
+## 4a. The compiled-in defaults equal the device's own factory reset
+
+The strongest available check short of flashing. The factory app resets a
+light mode by sending `{"rgb_mode":{"reset":<mode>}}`. That command was sent
+to a stock device for Simple mode and for Advance mode, and the state it
+reported back is, by definition, the shipping firmware's factory defaults.
+
+The clone's `pv_cfg_factory_defaults()` was then compiled natively and its
+state document diffed against that capture.
+
+    differences: 0
+    EXACT MATCH: every node of rgb_mode.
+
+Rendering both through the factory web app gives identical pages for
+Language, Settings, and all three RGB panels. The five other screens differ
+only in network and printer fields, which a light-mode reset does not touch.
+
+This probe corrected several values that neither the manual nor the web app
+had right:
+
+| item | what I had | truth from the device |
+|---|---|---|
+| Default effect per state | `[0,0,6,0,0,0]` | `[1,4,6,1,0,2]` |
+| Per-effect colours | state colour on all 7 | white on all 7, signature colour on the default effect only |
+| Warning Hot boundary | bed 55 C or nozzle 180 C | max printer temperature, 50 C |
+| Effects 5/6 colour writes | firmware coerces to white | firmware stores what it is given |
+
+The device was backed up before the probe and restored afterwards, verified
+field by field with zero differences. Nothing was flashed.
+
+## 4b. Behaviour recovered from the factory app's own help text
+
+Three switches were implemented against the wrong meaning and are now right:
+
+* **Warning OverRide** is the printer's ERROR STATE, not temperature. The app
+  says so: "override Red flashing warning light when printer is in error
+  state." Warning Hot Mode is the separate temperature feature.
+* **Follow Printer Light** is an on/off gate driven by the printer's own
+  chamber light ("Automatically turns RGB effect ON and OFF following the
+  printers stock light"), not a switch into Advance mode. The clone now
+  parses `print.lights_report` for `chamber_light`.
+* **Follow Vent** is a second gate, explicitly "Lower priority than Follow
+  Printer".
+
+Also implemented from the app's dialog table, and previously missing
+entirely: the printer IP-change recovery flow (`printer.scan` states 3 to 6)
+and SN-error detection (`printer.state` 5), which is distinguishable from an
+access-code error only by silence on `device/<sn>/report`.
+
 ## 5. The build is clean
 
 ESP-IDF v5.3.1, target esp32, stock partition layout. No warnings.

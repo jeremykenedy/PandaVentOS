@@ -37,6 +37,10 @@
 #define PV_FX_RAINBOW     6
 #define PV_FX_COUNT       7
 
+// Warning Hot boundary, stated verbatim in the factory app's own copy:
+// the printer's maximum temperature crossing 50 C is the burn-risk line.
+#define PV_WARN_HOT_C     50.0f
+
 #define PV_MODE_SIMPLE    0
 #define PV_MODE_H2D       1
 #define PV_MODE_WARNING   2
@@ -123,6 +127,11 @@ typedef struct {
     float bed_temp;
     float nozzle_temp;
     bool  vent_open;             // current vent target (all groups)
+    // The printer's own chamber light, from print.lights_report. Drives the
+    // "Follow Printer Light" switch, which the factory app describes as
+    // "Automatically turns RGB effect ON and OFF following the printers
+    // stock light."
+    bool  printer_light;
 } pv_live_t;
 
 // ---------------------------------------------------------------------------
