@@ -1,0 +1,40 @@
+# Classic ESP32 (Xtensa dual-core LX6), same silicon as the stock module.
+CONFIG_IDF_TARGET="esp32"
+
+# 4 MB flash matches stock (esptool image-info on the factory bin).
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
+
+# Stock-identical OTA partition table.
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=8192
+
+# The factory UI talks over one WebSocket at /ws.
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# Real browsers send >512 B of headers; avoid 431s.
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=2048
+CONFIG_HTTPD_MAX_URI_LEN=1024
+
+# httpd + WS clients + mDNS + MQTT + SSDP share the socket pool.
+CONFIG_LWIP_MAX_SOCKETS=16
+
+# Bambu LAN MQTT presents a per-device self-signed cert reached by IP; a LAN
+# client must connect without server-cert verification or esp-tls refuses the
+# handshake outright. Only affects TLS peers we give no CA (i.e. the printer).
+CONFIG_ESP_TLS_INSECURE=y
+CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
+
+# SAFETY: a new image boots on probation. If it does not call
+# esp_ota_mark_app_valid_cancel_rollback() the bootloader reverts to the
+# previous image by itself. This is what makes a bad flash self-healing
+# instead of a cable job.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+
+# A hung task must reboot the device rather than sit there dark.
+CONFIG_ESP_TASK_WDT_EN=y
+CONFIG_ESP_TASK_WDT_INIT=y
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30

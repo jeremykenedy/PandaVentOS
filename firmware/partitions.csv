@@ -1,0 +1,9 @@
+# Stock Panda Vent layout (verified against BTT panda_vent v1.0.0). Keeping it
+# identical is what makes OTA to and from the factory firmware a plain upload
+# in both directions: only the app slot is ever written.
+# Name,     Type, SubType,  Offset,    Size,     Flags
+nvs,        data, nvs,      0x9000,    0x3000,
+otadata,    data, ota,      0xc000,    0x2000,
+ota_0,      app,  ota_0,    0x10000,   0x1F0000,
+ota_1,      app,  ota_1,    0x200000,  0x1F0000,
+coredump,   data, coredump, 0x3f0000,  0x1000,
