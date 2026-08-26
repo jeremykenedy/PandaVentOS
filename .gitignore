@@ -1,6 +1,10 @@
 *.json
 .DS_Store
+analysis/
 build/
+frames/
+reference-BEFORE.json
+reference-timeline.json
 seed_live.h
 shots-*/
 ui-comparison.png
