@@ -1,7 +1,10 @@
 // Inbound WebSocket dispatch: exactly the message grammar the factory UI
-// emits (see PROTOCOL.md). Field spellings, nesting, and quirks (simple-mode
-// color arrives as an {r,g,b} object, H2D color as a bare hex string) are
-// factory contract and must not be "cleaned up".
+// emits, enumerated from all 44 ws_send_data() call sites in the factory
+// app. Field spellings are factory contract and must not be "cleaned up":
+// brightness is "bg", colour is "rgb", the H2D device state is "mode" and
+// the effect index is "effect", and warning_hot nests under "safe"/"warn".
+// The colour value is an uppercase "RRGGBB" string; the {r,g,b} object form
+// is also accepted because the app's hexToRgb() can produce it.
 #include "pv.h"
 
 #include <stdio.h>

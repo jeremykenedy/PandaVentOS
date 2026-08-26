@@ -20,7 +20,9 @@ static bool s_ever_connected;
 
 static const char *hostname_effective(void)
 {
-    return g_cfg.hostname[0] ? g_cfg.hostname : "panda_vent";
+    // Factory default hostname is "PandaVent" (PandaVent.local), per the
+    // stock image string table and the BIQU manual.
+    return g_cfg.hostname[0] ? g_cfg.hostname : "PandaVent";
 }
 
 void pv_hostname_apply(void)
@@ -189,13 +191,29 @@ static void migrate_stock_wifi(void)
     esp_wifi_set_config(WIFI_IF_STA, &sta);   // persists (storage = flash)
     ESP_LOGW(TAG, "migrated stock Wi-Fi (ssid '%s')", ssid);
 
-    if (len >= 130 && blob[97] && strcmp(g_cfg.ap.ssid, "Panda_Vent_one") == 0) {
+    if (len >= 130 && blob[97] && g_cfg.ap.ssid[0] == '\0') {
         char ap_ssid[33] = {0};
         memcpy(ap_ssid, blob + 97, 32);
         snprintf(g_cfg.ap.ssid, sizeof(g_cfg.ap.ssid), "%s", ap_ssid);
         pv_cfg_save();
         ESP_LOGW(TAG, "migrated stock AP ssid '%s'", g_cfg.ap.ssid);
     }
+}
+
+// Stock builds the softAP ssid at run time from the STA (base) MAC:
+// "Panda_Vent_" + six uppercase hex bytes. Proven on a live unit: STA MAC
+// AA:BB:CC:DD:EE:10 advertises "Panda_Vent_AABBCCDDEE10" (the SOFTAP MAC
+// would be ...11, so stock reads ESP_MAC_WIFI_STA, not ESP_MAC_WIFI_SOFTAP).
+static void ap_ssid_default(void)
+{
+    if (g_cfg.ap.ssid[0]) return;
+    uint8_t mac[6] = {0};
+    if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) return;
+    snprintf(g_cfg.ap.ssid, sizeof(g_cfg.ap.ssid),
+             "Panda_Vent_%02X%02X%02X%02X%02X%02X",
+             mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    pv_cfg_save();
+    ESP_LOGI(TAG, "default ap ssid %s", g_cfg.ap.ssid);
 }
 
 void pv_wifi_start(void)
@@ -215,16 +233,9 @@ void pv_wifi_start(void)
     esp_event_handler_register(WIFI_EVENT, ESP_EVENT_ANY_ID, on_wifi_event, NULL);
     esp_event_handler_register(IP_EVENT, IP_EVENT_STA_GOT_IP, on_wifi_event, NULL);
 
-    // Default AP ssid suffix from MAC on a fresh device.
-    if (strcmp(g_cfg.ap.ssid, "Panda_Vent_one") == 0 && !g_cfg.hostname[0]) {
-        uint8_t mac[6];
-        if (esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP) == ESP_OK)
-            snprintf(g_cfg.ap.ssid, sizeof(g_cfg.ap.ssid),
-                     "Panda_Vent_%02X%02X", mac[4], mac[5]);
-    }
-
     esp_wifi_set_storage(WIFI_STORAGE_FLASH);
-    migrate_stock_wifi();
+    migrate_stock_wifi();       // may supply the stock AP ssid
+    ap_ssid_default();          // otherwise derive it exactly like stock
     esp_wifi_set_mode(g_cfg.ap.on ? WIFI_MODE_APSTA : WIFI_MODE_STA);
     if (g_cfg.ap.on) pv_ap_apply();
     werr = esp_wifi_start();

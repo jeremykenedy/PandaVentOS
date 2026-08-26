@@ -34,11 +34,15 @@ void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode)
         r->simple_current = PV_FX_STATIC;
         for (int i = 0; i < PV_FX_COUNT; ++i) fx_set(&r->simple[i], "FF3700");
     } else if (mode == PV_MODE_H2D) {
-        // Factory defaults per the manual: Idle white, Preparation orange
-        // F8A323, Printing rainbow, Paused white, Completed green 00FF2A,
-        // Error red FF0000. Non-active effects keep the state color.
+        // Factory per-state defaults, taken from the default colour table in
+        // the stock image at file offset 0x1707c (six RGB triples: FFFFFF,
+        // FF8000, FFFFFF, FFFFFF, 00FF00, FF0000) and confirmed against a
+        // live stock unit. Note the printed manual lists Preparation as
+        // F8A323 and Completed as 00FF2A; the shipping firmware does not use
+        // those values, and neither does a real device. Active effect per
+        // state is Static except Printing, which ships on Rainbow.
         static const char *state_color[PV_ST_COUNT] = {
-            "FFFFFF", "F8A323", "FFFFFF", "FFFFFF", "00FF2A", "FF0000",
+            "FFFFFF", "FF8000", "FFFFFF", "FFFFFF", "00FF00", "FF0000",
         };
         static const uint8_t state_fx[PV_ST_COUNT] = {
             PV_FX_STATIC, PV_FX_STATIC, PV_FX_RAINBOW,
@@ -73,8 +77,12 @@ void pv_cfg_factory_defaults(pv_cfg_t *c)
     pv_cfg_rgb_mode_defaults(&c->rgb, PV_MODE_SIMPLE);
     pv_cfg_rgb_mode_defaults(&c->rgb, PV_MODE_H2D);
     pv_cfg_rgb_mode_defaults(&c->rgb, PV_MODE_WARNING);
-    // Stock AP: Panda_Vent_ + suffix, default password, 192.168.254.1, on.
-    snprintf(c->ap.ssid, sizeof(c->ap.ssid), "Panda_Vent_one");
+    // Stock AP. The ssid is left empty here on purpose: stock builds it at
+    // run time as "Panda_Vent_" + the six STA MAC bytes in uppercase hex
+    // (format string "%s%02X%02X%02X%02X%02X%02X" in the stock image, and a
+    // live unit with STA MAC AA:BB:CC:DD:EE:10 advertises
+    // "Panda_Vent_AABBCCDDEE10"). pv_wifi_start() fills it the same way.
+    c->ap.ssid[0] = '\0';
     snprintf(c->ap.password, sizeof(c->ap.password), "987654321");
     snprintf(c->ap.ip, sizeof(c->ap.ip), "192.168.254.1");
     c->ap.on = true;
