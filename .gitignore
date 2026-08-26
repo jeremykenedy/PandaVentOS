@@ -1,2 +1,6 @@
+*.json
 .DS_Store
 build/
+seed_live.h
+shots-*/
+ui-comparison.png

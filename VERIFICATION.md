@@ -60,6 +60,38 @@ changed during testing, four hand-picked colours (`1FF8FF`, `3C00FF`,
 `AAFF00`, `FFB10A`), and the `FFFFFF` that effects 5 and 6 always read back
 because the firmware generates their colours itself.
 
+## 3a. Rendered side by side, the UI is pixel identical
+
+The byte-identical file argument only proves the HTML is the same. It does
+not prove the clone's state document drives that HTML correctly. So the
+factory page was loaded twice in a real browser behind a stubbed WebSocket:
+once fed the live stock device's state, once fed the document produced by
+compiling the clone's own `main/pv_json.c` seeded with that same device's
+values.
+
+First, the documents themselves: seeded with the live values, the clone's
+`pv_json_state()` output is **exactly equal** to the live capture. Not
+structurally similar. Equal, key for key and value for value.
+
+Then ten screens were rendered and captured at 2x from both:
+
+| screen | pixel diff |
+|---|---|
+| Language | 0 |
+| Wi-Fi setup | 0 |
+| Control Panel | 0 |
+| Hostname / IP | 0 |
+| Hotspot (AP) | 0 |
+| Printer bind | 0 |
+| Settings / OTA | 0 |
+| RGB Simple Mode | 0 |
+| RGB Advance Mode | 0 |
+| RGB Warning Hot Mode | 0 |
+
+Every pair is not merely visually the same, it is the same PNG: the sha256 of
+each stock capture equals the sha256 of its clone counterpart. Harness in
+`tools/uicmp/`.
+
 ## 4. The inbound protocol matches all 44 call sites
 
 Every `ws_send_data()` call in the factory app was extracted and grouped:
