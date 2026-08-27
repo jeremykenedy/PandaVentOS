@@ -31,9 +31,14 @@ static const group_t GROUPS[PV_MOTOR_GROUPS] = {
     { ADC_CHANNEL_3, LEDC_CHANNEL_6, 23, LEDC_CHANNEL_7, 19 },
 };
 
-#define PWM_FREQ_HZ   5000
-#define PWM_RES       LEDC_TIMER_8_BIT
-#define PWM_MAX       255
+#define PWM_FREQ_HZ   30000
+// From BIQU's motor_ledc_timer_init at 0x400deaf0: speed_mode 1,
+// duty_resolution 10 bits, freq_hz 30000 (literal 0x7530 at 0x400d0e24).
+#define PWM_RES       LEDC_TIMER_10_BIT
+#define PWM_DUTY_MAX  1023
+// 10 bit resolution means full scale is 1023, not 255. Getting this wrong
+// would run the motors at a quarter power.
+#define PWM_MAX       PWM_DUTY_MAX
 #define RAMP_MS       400
 #define TRAVEL_MS_MAX 5000
 
@@ -49,12 +54,33 @@ static void duty(const group_t *g, bool open_dir, uint32_t d)
     ledc_update_duty(LEDC_LOW_SPEED_MODE, open_dir ? g->rev_ch : g->fwd_ch);
 }
 
-static int hall_mv(const group_t *g)
+// BIQU's hall_get_state, 0x400deb2c. Not a plateau detector: a four band
+// classifier over the raw ADC value, with the bands hardcoded in the image.
+//
+//   raw == 0                      -> 0   (nothing on the channel)
+//   1360 <= raw <= 1680           -> 2
+//    640 <= raw <=  960           -> 1
+//   raw  >  2450                  -> 4
+//   anything else                 -> 3
+//
+// The magnitudes come straight from the compare sequence: raw - 1360 <= 320,
+// raw - 640 <= 320, then raw - 2080 > 370.
+static int hall_state_from_raw(int raw)
+{
+    if (raw == 0) return 0;
+    if ((unsigned)(raw - 1360) <= 320u) return 2;
+    if ((unsigned)(raw -  640) <= 320u) return 1;
+    if (raw - 2080 > 370) return 4;
+    return 3;
+}
+
+static int hall_raw(const group_t *g)
 {
     int raw = 0;
     if (s_adc) adc_oneshot_read(s_adc, g->hall, &raw);
     return raw;
 }
+
 
 static void stop_all(void)
 {
@@ -69,7 +95,15 @@ static void drive_task(void *arg)
 
     int last[PV_MOTOR_GROUPS] = {0}, flat[PV_MOTOR_GROUPS] = {0};
     bool done[PV_MOTOR_GROUPS] = {0};
-    for (int i = 0; i < s_groups; ++i) last[i] = hall_mv(&GROUPS[i]);
+    // Track BIQU's four-band hall STATE, not a raw millivolt level. Their
+    // hall_get_state is a position classifier, so travel is finished when the
+    // reported state stops changing.
+    //
+    // NOT YET RECOVERED: how BIQU's motor.c consumes hall_get_state to decide
+    // that a group has finished. The classifier below is theirs exactly; the
+    // "state stopped changing" rule around it is still this firmware's own.
+    for (int i = 0; i < s_groups; ++i)
+        last[i] = hall_state_from_raw(hall_raw(&GROUPS[i]));
 
     TickType_t start = xTaskGetTickCount();
     for (;;) {
@@ -79,7 +113,7 @@ static void drive_task(void *arg)
         for (int i = 0; i < s_groups; ++i) {
             if (done[i]) continue;
             duty(&GROUPS[i], open_dir, d);
-            int mv = hall_mv(&GROUPS[i]);
+            int mv = hall_state_from_raw(hall_raw(&GROUPS[i]));
             if (el > RAMP_MS) {
                 if (abs(mv - last[i]) < 12) {
                     if (++flat[i] >= 8) {   // ~400 ms plateau = end of travel
