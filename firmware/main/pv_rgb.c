@@ -30,18 +30,6 @@ static rgb_t hex_to_rgb(const char *hex)
     return (rgb_t){ (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF };
 }
 
-static rgb_t hue_rgb(uint16_t h)   // h 0..359
-{
-    uint8_t seg = h / 60, rem = (h % 60) * 255 / 60;
-    switch (seg) {
-    case 0: return (rgb_t){255, rem, 0};
-    case 1: return (rgb_t){255 - rem, 255, 0};
-    case 2: return (rgb_t){0, 255, rem};
-    case 3: return (rgb_t){0, 255 - rem, 255};
-    case 4: return (rgb_t){rem, 0, 255};
-    default: return (rgb_t){255, 0, 255 - rem};
-    }
-}
 
 // Render one effect into px[n]. tick advances at FPS. speed 0..100.
 // ---------------------------------------------------------------------------
@@ -104,8 +92,29 @@ static bool s_strobe_on = true;
 // from the reverse switch. Frame period 70 - 0.6*speed ms, floor 10 ms.
 static int s_marquee_pos = 0;
 
-// Wave / Color_Cycle / Rainbow keep their own phase too.
-static uint32_t s_phase;
+// Color_Cycle 0x400ddb08 and Rainbow 0x400ddc3c each keep a hue phase in a
+// global, exactly as stock does (uint16 at 0x3ffb690c and int at 0x3ffb6908).
+static uint16_t s_cycle_hue;
+static int      s_rainbow_phase;
+static uint32_t s_phase;            // Wave only, still this firmware's own
+
+// Stock converts with saturation = 100 and value = 100 (the call at
+// 0x400dcd70 is always passed 100, 100), so this is the plain six sector
+// full-brightness conversion.
+static rgb_t hsv_full(uint16_t h)
+{
+    h %= 360;
+    uint8_t seg = (uint8_t)(h / 60);
+    uint8_t f = (uint8_t)(((h % 60) * 255) / 60);
+    switch (seg) {
+    case 0:  return (rgb_t){255, f, 0};
+    case 1:  return (rgb_t){(uint8_t)(255 - f), 255, 0};
+    case 2:  return (rgb_t){0, 255, f};
+    case 3:  return (rgb_t){0, (uint8_t)(255 - f), 255};
+    case 4:  return (rgb_t){f, 0, 255};
+    default: return (rgb_t){255, 0, (uint8_t)(255 - f)};
+    }
+}
 
 // Fills px and returns the number of MILLISECONDS to wait before the next
 // frame, matching the stock per-effect delay.
@@ -161,32 +170,53 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         ++s_phase;
         return 40;
     }
-    case PV_FX_COLOR_CYCLE: {
-        rgb_t c = hue_rgb((s_phase * 2) % 360);
-        for (int i = 0; i < n; ++i) {
-            px[i].r = chan(c.r, bright100);
-            px[i].g = chan(c.g, bright100);
-            px[i].b = chan(c.b, bright100);
-        }
-        ++s_phase;
-        return 40;
+    case PV_FX_COLOR_CYCLE: {                // 0x400ddb08
+        // hue lives in a uint16 global, HSV at full saturation and value,
+        // uniform across the whole strip. hue += 2 each frame, and wraps to
+        // 0 once it passes 359 (0x167). Frame period 150 - speed ms.
+        rgb_t c = hsv_full(s_cycle_hue);
+        rgb_t o = { chan(c.r, bright100), chan(c.g, bright100),
+                    chan(c.b, bright100) };
+        for (int i = 0; i < n; ++i) px[i] = o;
+        s_cycle_hue += 2;
+        if (s_cycle_hue > 359) s_cycle_hue = 0;
+        return 150u - (speed > 150 ? 150 : speed);
     }
-    case PV_FX_RAINBOW:
+
+    case PV_FX_RAINBOW:                      // 0x400ddc3c
     default: {
+        // hue = (i * 360 / n + phase) mod 360, so a FULL spectrum is spread
+        // across the strip, scrolling by phase. HSV at full saturation and
+        // value. phase advances by +/-5 per frame, sign taken from the
+        // reverse switch (sext of the flag, then multiplied by 5).
+        //
+        // The detail worth keeping: stock does not light every pixel at the
+        // configured brightness. It subtracts ((i + 2) mod 7) from it, with
+        // an unsigned-underflow guard that clamps to 0. That is a 7 pixel
+        // sawtooth shimmer laid over the spectrum, and it is why the stock
+        // rainbow has visible texture rather than a flat wash.
         for (int i = 0; i < n; ++i) {
-            int pos = reverse ? (n - 1 - i) : i;
-            rgb_t c = hue_rgb((uint16_t)((s_phase * 2 + pos * 360 / n) % 360));
-            px[i].r = chan(c.r, bright100);
-            px[i].g = chan(c.g, bright100);
-            px[i].b = chan(c.b, bright100);
+            int hue = ((i * 360) / n) + s_rainbow_phase;
+            hue %= 360;
+            if (hue < 0) hue += 360;
+            rgb_t c = hsv_full((uint16_t)hue);
+
+            uint8_t dip = (uint8_t)((i + 2) % 7);
+            uint8_t b = (uint8_t)(bright100 - dip);
+            if (bright100 < b) b = 0;            // stock's underflow guard
+
+            px[i].r = chan(c.r, b);
+            px[i].g = chan(c.g, b);
+            px[i].b = chan(c.b, b);
         }
-        ++s_phase;
-        return 40;
+        s_rainbow_phase += reverse ? -5 : 5;
+        if (s_rainbow_phase >= 360)  s_rainbow_phase -= 360;
+        if (s_rainbow_phase <= -360) s_rainbow_phase += 360;
+        return 150u - (speed > 150 ? 150 : speed);
     }
     }
 }
 
-// Decide what to render this frame from config + live state.
 // Decide what to render this frame. The priority order below is not
 // invented: every rule is a sentence from the factory app's own help text.
 //
