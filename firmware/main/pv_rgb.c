@@ -54,9 +54,18 @@ static rgb_t hex_to_rgb(const char *hex)
 // Timing, from the delay computation at the end of each effect function
 // (the ms value is multiplied by 100 then divided by 1000, which is
 // pdMS_TO_TICKS at a 100 Hz tick):
-//   Breathing  frame = 150 - speed            ms
-//   Strobing   half period = 200 - speed      ms   (50% duty)
-//   Marquee    frame = max(10, 70 - 0.6*speed) ms
+//   Static       none, nothing moves
+//   Breathing    frame = 150 - speed             ms
+//   Strobing     half period = 200 - speed       ms   (50% duty)
+//   Wave         frame = max(20, 100 - speed)    ms
+//   Marquee      frame = max(10, 70 - 0.6*speed) ms
+//   Color_Cycle  frame = 150 - speed             ms
+//   Rainbow      frame = 150 - speed             ms
+//
+// ALL SEVEN EFFECTS BELOW ARE THE FACTORY'S MATH, read out of the stock
+// image. None of it is invented. Where a constant looks arbitrary it is
+// because it IS arbitrary: it is what BIQU chose, and the address it came
+// from is cited beside it.
 // ---------------------------------------------------------------------------
 
 // out = colour * brightness / 100, exactly as stock computes it.
@@ -96,7 +105,7 @@ static int s_marquee_pos = 0;
 // global, exactly as stock does (uint16 at 0x3ffb690c and int at 0x3ffb6908).
 static uint16_t s_cycle_hue;
 static int      s_rainbow_phase;
-static uint32_t s_phase;            // Wave only, still this firmware's own
+static float    s_wave_pos;         // Wave peak position, 0..n
 
 // Stock converts with saturation = 100 and value = 100 (the call at
 // 0x400dcd70 is always passed 100, 100), so this is the plain six sector
@@ -155,21 +164,51 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         return ms < 10 ? 10 : (uint32_t)ms;
     }
 
-    // ---- not yet recovered from the image; still this firmware's own math ----
     // Wave 0x400dd374, Color_Cycle 0x400ddb08, Rainbow 0x400ddc3c.
-    case PV_FX_WAVE: {
-        uint32_t ph = s_phase * (1 + speed / 10);
+    case PV_FX_WAVE: {                       // 0x400dd374
+        // A bright peak sliding along a dim background.
+        //
+        //   background = colour * brightness * 0.3 / 100   (literal 0.3 at
+        //                                                   0x400d0ce0)
+        //   full       = colour * brightness / 100
+        //   d          = circular distance from the peak, min(|i - pos|,
+        //                n - |i - pos|), via the fminf call at 0x400d0cf0
+        //   if d >= 6   the pixel stays at background   (half width 6.0f
+        //                                                at 0x400d0ce8)
+        //   else        f = (1 - d/6)^2                 quadratic falloff
+        //               out = bg + (full - bg) * f
+        //
+        // The peak position is a float global that advances by +/-0.5 pixels
+        // per frame (0.5f at 0x400d0cec, sign from the reverse switch) and
+        // wraps around 0..n. Frame period max(20, 100 - speed) ms.
+        rgb_t full = base;
+        rgb_t bg = { (uint8_t)((base.r * 3) / 10),
+                     (uint8_t)((base.g * 3) / 10),
+                     (uint8_t)((base.b * 3) / 10) };
+
         for (int i = 0; i < n; ++i) {
-            int pos = reverse ? (n - 1 - i) : i;
-            uint32_t x = (ph * 4 + pos * 512 / n) % 512;
-            uint32_t lvl = x < 256 ? x : 511 - x;
-            px[i].r = (uint8_t)(base.r * lvl / 255);
-            px[i].g = (uint8_t)(base.g * lvl / 255);
-            px[i].b = (uint8_t)(base.b * lvl / 255);
+            float dist = s_wave_pos - (float)i;
+            if (dist < 0) dist = -dist;
+            float d = dist < (n - dist) ? dist : (n - dist);   // fminf
+            if (d >= 6.0f) {
+                px[i] = bg;
+                continue;
+            }
+            float t = 1.0f - d / 6.0f;
+            float f = t * t;
+            px[i].r = (uint8_t)(bg.r + (uint8_t)((full.r - bg.r) * f));
+            px[i].g = (uint8_t)(bg.g + (uint8_t)((full.g - bg.g) * f));
+            px[i].b = (uint8_t)(bg.b + (uint8_t)((full.b - bg.b) * f));
         }
-        ++s_phase;
-        return 40;
+
+        s_wave_pos += reverse ? -0.5f : 0.5f;
+        if (s_wave_pos >= (float)n) s_wave_pos -= (float)n;
+        else if (s_wave_pos < 0.0f) s_wave_pos += (float)n;
+
+        uint32_t ms = 100u - (speed > 100 ? 100 : speed);
+        return ms < 20 ? 20 : ms;
     }
+
     case PV_FX_COLOR_CYCLE: {                // 0x400ddb08
         // hue lives in a uint16 global, HSV at full saturation and value,
         // uniform across the whole strip. hue += 2 each frame, and wraps to
