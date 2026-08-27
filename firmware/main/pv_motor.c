@@ -111,6 +111,11 @@ static void stop_all(void)
 // Stock appears to accept that risk; this firmware does not.
 
 #define MOTOR_TICK_MS   200
+
+// Button timings, all from BIQU's button_task at 0x400defa4.
+#define PV_BTN_POLL_MS           10     // vTaskDelay(1) at 0x400df082
+#define PV_BTN_LONG_MS           2999   // literal 0x400d0950
+#define PV_BTN_CLICK_SETTLE_MS   300    // 0x12c at 0x400df062
 #define HALL_OPEN       1
 #define HALL_CLOSED     2
 
@@ -208,14 +213,26 @@ static void button_task(void *arg)
     // Acting on a level would then fire a phantom long-press on every boot and
     // write NVS for a press that never happened. So: require the line to be
     // observed RELEASED once before any press counts, and act on edges only.
+    // BIQU's button_task, 0x400defa4. Their timings, read from the image:
+    //
+    //   poll interval        10 ms   (vTaskDelay(1) at 0x400df082)
+    //   long press fires at  > 2999 ms  (literal 0x400d0950 = 0xbb7)
+    //   a single click is dispatched only after the line has been released
+    //   for more than 300 ms (0x12c at 0x400df062), so a double tap does not
+    //   register as two separate clicks
+    //
+    // They also debounce by re-reading the level after a yield before
+    // accepting an edge.
     int user_held = 0, boot_held = 0, blink = 0;
+    int user_released_ms = 0;
+    bool user_pending_click = false;
     bool user_armed = false, boot_armed = false;
 
-    for (;; vTaskDelay(pdMS_TO_TICKS(50))) {
+    for (;; vTaskDelay(pdMS_TO_TICKS(PV_BTN_POLL_MS))) {
         // Ring LED: off in AUTO, blink in MANUAL (stock behavior).
         if (g_cfg.motor_manual) {
-            if (++blink >= 10) blink = 0;
-            gpio_set_level(PV_PIN_BUTTON_LED, blink < 5);
+            if (++blink >= 50) blink = 0;          // 500 ms period at 10 ms poll
+            gpio_set_level(PV_PIN_BUTTON_LED, blink < 25);
         } else {
             gpio_set_level(PV_PIN_BUTTON_LED, 0);
         }
@@ -228,23 +245,41 @@ static void button_task(void *arg)
 
         if (user_armed) {
             if (user_down) {
-                ++user_held;
-                if (user_held == 60) {          // 3 s: back to AUTO
-                    ESP_LOGI(TAG, "long press: AUTO");
+                user_held += PV_BTN_POLL_MS;
+                user_released_ms = 0;
+                if (user_held > PV_BTN_LONG_MS && !user_pending_click) {
+                    ESP_LOGI(TAG, "long press (%d ms): AUTO", user_held);
                     pv_motor_set_auto(true);
+                    user_pending_click = false;
+                    user_held = -1000000;        // one shot per hold
                 }
             } else {
-                if (user_held > 0 && user_held < 60) {
-                    ESP_LOGI(TAG, "click: manual toggle");
-                    pv_motor_manual_toggle();
+                if (user_held > 0) {             // just released from a short press
+                    user_pending_click = true;
+                    user_released_ms = 0;
                 }
                 user_held = 0;
+                // Stock waits out a 300 ms quiet window before treating the
+                // release as a completed single click.
+                if (user_pending_click) {
+                    user_released_ms += PV_BTN_POLL_MS;
+                    if (user_released_ms > PV_BTN_CLICK_SETTLE_MS) {
+                        ESP_LOGI(TAG, "click: manual toggle");
+                        pv_motor_manual_toggle();
+                        user_pending_click = false;
+                        user_released_ms = 0;
+                    }
+                }
             }
         }
 
         if (boot_armed) {
             if (boot_down) {
-                if (++boot_held == 60) pv_factory_reset_and_reboot();
+                boot_held += PV_BTN_POLL_MS;
+                if (boot_held > PV_BTN_LONG_MS) {
+                    boot_held = -1000000;
+                    pv_factory_reset_and_reboot();
+                }
             } else {
                 boot_held = 0;
             }
