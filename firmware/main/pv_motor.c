@@ -2,8 +2,8 @@
 //   AUTO (default): exhaust opens while printing, closes when idle; ring
 //   LED off. MANUAL: single click toggles the vent, ring LED blinks; long
 //   press (3 s) returns to AUTO. BOOT long press (3 s) = factory reset.
-// Each of up to 4 groups: forward/reverse PWM with gradual startup and a
-// hall sensor; travel ends on hall plateau or timeout.
+// Each of up to 4 groups: forward/reverse PWM with a 20 ms startup ramp and
+// a hall sensor; travel ends when the hall reaches the target band.
 #include "pv.h"
 
 #include <stdlib.h>
@@ -12,6 +12,7 @@
 #include "driver/ledc.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
+#include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -39,19 +40,116 @@ static const group_t GROUPS[PV_MOTOR_GROUPS] = {
 // 10 bit resolution means full scale is 1023, not 255. Getting this wrong
 // would run the motors at a quarter power.
 #define PWM_MAX       PWM_DUTY_MAX
-#define RAMP_MS       400
+
+// Startup ramp, recovered from BIQU's two drive helpers at 0x400de3d4 (fwd)
+// and 0x400de47c (rev), which are mirror images of each other:
+//
+//     ledc_set_duty(1, opposite_ch, 0); ledc_update_duty(1, opposite_ch)
+//     vTaskDelay(1)                                     ; 10 ms at a 100 Hz tick
+//     if (ledc_get_duty(1, opposite_ch) != 0) return    ; interlock, 0x400de42a
+//     esp_rom_delay_us(500)                             ; 0x400de42d, ets_delay_us
+//     ledc_set_duty(1, drive_ch, 102); ledc_update_duty(1, drive_ch)
+//     ledc_set_fade_with_time(1, drive_ch, 1023, 20)    ; 0x400de447..0x400de450
+//     ledc_fade_start(1, drive_ch, LEDC_FADE_NO_WAIT)   ; 0x400de459
+//
+// So the motor does NOT go straight to full duty. It starts at 102 of 1023,
+// about 10 percent, and ramps to full over 20 ms. Before that it drops the
+// opposite channel, waits a tick, and refuses to drive at all unless the
+// opposite channel reads back zero.
+#define PWM_START_DUTY   102    // 0x400de436, movi a12, 102
+#define PWM_FADE_MS      20     // 0x400de447, movi.n a13, 20
+#define PWM_STOP_FADE_MS 10     // 0x400de358, movi.n a13, 10
+#define PWM_DEADTIME_US  500    // 0x400de42d, movi a10, 0x1f4
+
 #define TRAVEL_MS_MAX 5000
+
+// The motor task expresses the destination as a hall STATE, not a direction.
+// Confirmed against the image: target 1 drives fwd_chan and target 2 drives
+// rev_chan. See RE-NOTES.md, Motor section, for the chain through BIQU's own
+// ledc_channel_config(&fwd_chan) / (&rev_chan) error strings.
+#define HALL_OPEN       1
+#define HALL_CLOSED     2
 
 static adc_oneshot_unit_handle_t s_adc;
 static int s_groups = PV_MOTOR_GROUPS;
 static volatile bool s_want_open, s_moving;
 
-static void duty(const group_t *g, bool open_dir, uint32_t d)
+// Stock keeps three per-group arrays and the drive helpers consult all three
+// before doing anything: moving at 0x3ffb6964, direction at 0x3ffb6960
+// (1 = fwd_chan, 0 = rev_chan) and target hall state at 0x3ffb03f0.
+static bool s_grp_moving[PV_MOTOR_GROUPS];
+static bool s_grp_fwd[PV_MOTOR_GROUPS];
+static int  s_grp_target[PV_MOTOR_GROUPS];
+
+// The guard, lifted straight out of both helpers. Stock checks all three
+// pieces of state and RETURNS rather than re-issuing the drive sequence:
+//
+//   0x400de3ea  beqz.n a8, drive      ; not moving        -> drive
+//   0x400de3f4  beqz.n a9, drive      ; wrong direction   -> drive
+//   0x400de3ff  bnei   a9, 1, drive   ; wrong target      -> drive
+//   0x400de402  j      return         ; already doing it  -> RETURN
+//
+// Kept as its own function so it can be compiled and exercised on the host
+// without the rest of the driver. Do not inline it away.
+static bool drive_needed(bool moving, bool fwd, int target,
+                         bool open_dir, int want)
 {
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, open_dir ? g->fwd_ch : g->rev_ch, d);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, open_dir ? g->fwd_ch : g->rev_ch);
-    ledc_set_duty(LEDC_LOW_SPEED_MODE, open_dir ? g->rev_ch : g->fwd_ch, 0);
-    ledc_update_duty(LEDC_LOW_SPEED_MODE, open_dir ? g->rev_ch : g->fwd_ch);
+    return !(moving && fwd == open_dir && target == want);
+}
+
+// BIQU's stop helper, 0x400de31c. Fades the channel that is actually running
+// down to zero over 10 ms and waits for it, then verifies BOTH channels read
+// back zero and forces them if not.
+static void group_stop(int i)
+{
+    const group_t *g = &GROUPS[i];
+    ledc_channel_t act = s_grp_fwd[i] ? g->fwd_ch : g->rev_ch;
+
+    if (ledc_get_duty(LEDC_LOW_SPEED_MODE, act) != 0) {
+        ledc_set_fade_with_time(LEDC_LOW_SPEED_MODE, act, 0, PWM_STOP_FADE_MS);
+        ledc_fade_start(LEDC_LOW_SPEED_MODE, act, LEDC_FADE_WAIT_DONE);
+    }
+    if (ledc_get_duty(LEDC_LOW_SPEED_MODE, g->fwd_ch) != 0 ||
+        ledc_get_duty(LEDC_LOW_SPEED_MODE, g->rev_ch) != 0) {
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, g->fwd_ch, 0);
+        ledc_set_duty(LEDC_LOW_SPEED_MODE, g->rev_ch, 0);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, g->fwd_ch);
+        ledc_update_duty(LEDC_LOW_SPEED_MODE, g->rev_ch);
+    }
+    s_grp_moving[i] = false;
+}
+
+// BIQU's drive helpers, 0x400de3d4 (fwd) and 0x400de47c (rev). One function
+// here because the two are mirror images with the channels swapped.
+static void group_drive(int i, bool open_dir)
+{
+    const group_t *g = &GROUPS[i];
+    int want = open_dir ? HALL_OPEN : HALL_CLOSED;
+
+    if (!drive_needed(s_grp_moving[i], s_grp_fwd[i], s_grp_target[i],
+                      open_dir, want))
+        return;                       // already travelling this way
+
+    if (s_grp_moving[i]) group_stop(i);
+
+    ledc_channel_t off = open_dir ? g->rev_ch : g->fwd_ch;
+    ledc_channel_t on  = open_dir ? g->fwd_ch : g->rev_ch;
+
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, off, 0);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, off);
+    vTaskDelay(1);
+    if (ledc_get_duty(LEDC_LOW_SPEED_MODE, off) != 0)
+        return;                       // opposite side has not let go
+    esp_rom_delay_us(PWM_DEADTIME_US);
+
+    ledc_set_duty(LEDC_LOW_SPEED_MODE, on, PWM_START_DUTY);
+    ledc_update_duty(LEDC_LOW_SPEED_MODE, on);
+    ledc_set_fade_with_time(LEDC_LOW_SPEED_MODE, on, PWM_MAX, PWM_FADE_MS);
+    ledc_fade_start(LEDC_LOW_SPEED_MODE, on, LEDC_FADE_NO_WAIT);
+
+    s_grp_moving[i] = true;
+    s_grp_fwd[i]    = open_dir;
+    s_grp_target[i] = want;
 }
 
 // BIQU's hall_get_state, 0x400deb24. Not a plateau detector: a four band
@@ -95,7 +193,7 @@ static int hall_raw(const group_t *g)
 
 static void stop_all(void)
 {
-    for (int i = 0; i < s_groups; ++i) duty(&GROUPS[i], true, 0);
+    for (int i = 0; i < s_groups; ++i) group_stop(i);
 }
 
 // BIQU's motor loop, from the task at 0x400de55c.
@@ -129,8 +227,6 @@ static void stop_all(void)
 #define PV_BTN_POLL_MS           10     // vTaskDelay(1) at 0x400df07a
 #define PV_BTN_LONG_MS           2999   // literal 0x400d0948
 #define PV_BTN_CLICK_SETTLE_MS   300    // 0x12c at 0x400df05a
-#define HALL_OPEN       1
-#define HALL_CLOSED     2
 
 static void drive_task(void *arg)
 {
@@ -149,11 +245,14 @@ static void drive_task(void *arg)
         for (int i = 0; i < s_groups; ++i) {
             int st = hall_state_from_raw(hall_raw(&GROUPS[i]));
             if (st != target) {
-                duty(&GROUPS[i], open_dir, PWM_MAX);
+                // group_drive holds stock's guard: on every tick after the
+                // first it returns immediately rather than re-issuing, so the
+                // 20 ms ramp is never stamped on.
+                group_drive(i, open_dir);
                 moving[i] = true;
                 ++running;
             } else if (moving[i]) {
-                duty(&GROUPS[i], open_dir, 0);
+                group_stop(i);
                 moving[i] = false;
                 ESP_LOGI(TAG, "group %d reached hall state %d", i, st);
             }
@@ -331,6 +430,16 @@ void pv_motor_start(void)
         .clk_cfg = LEDC_AUTO_CLK,
     };
     err = ledc_timer_config(&t);
+    if (err == ESP_OK) {
+        // Stock installs the fade service at the end of
+        // motor_ledc_timer_init: call8 0x400f5080 with a10 = 0, i.e.
+        // ledc_fade_func_install(0). Without it ledc_fade_start returns
+        // ESP_ERR_INVALID_STATE and the startup ramp silently never happens.
+        esp_err_t fe = ledc_fade_func_install(0);
+        if (fe != ESP_OK)
+            ESP_LOGE(TAG, "ledc fade service failed (%s); no startup ramp",
+                     esp_err_to_name(fe));
+    }
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "ledc timer failed (%s); motors disabled",
                  esp_err_to_name(err));
