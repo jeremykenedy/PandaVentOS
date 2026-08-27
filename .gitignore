@@ -2,6 +2,8 @@
 .DS_Store
 analysis/
 build/
+managed_components/
+sdkconfig
 frames/
 reference-BEFORE.json
 reference-timeline.json
