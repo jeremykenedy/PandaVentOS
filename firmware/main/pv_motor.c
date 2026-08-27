@@ -32,8 +32,8 @@ static const group_t GROUPS[PV_MOTOR_GROUPS] = {
 };
 
 #define PWM_FREQ_HZ   30000
-// From BIQU's motor_ledc_timer_init at 0x400deaf0: speed_mode 1,
-// duty_resolution 10 bits, freq_hz 30000 (literal 0x7530 at 0x400d0e24).
+// From BIQU's motor_ledc_timer_init at 0x400deae8: speed_mode 1,
+// duty_resolution 10 bits, freq_hz 30000 (literal 0x7530 at 0x400d0e1c).
 #define PWM_RES       LEDC_TIMER_10_BIT
 #define PWM_DUTY_MAX  1023
 // 10 bit resolution means full scale is 1023, not 255. Getting this wrong
@@ -54,24 +54,35 @@ static void duty(const group_t *g, bool open_dir, uint32_t d)
     ledc_update_duty(LEDC_LOW_SPEED_MODE, open_dir ? g->rev_ch : g->fwd_ch);
 }
 
-// BIQU's hall_get_state, 0x400deb2c. Not a plateau detector: a four band
+// BIQU's hall_get_state, 0x400deb24. Not a plateau detector: a four band
 // classifier over the raw ADC value, with the bands hardcoded in the image.
 //
 //   raw == 0                      -> 0   (nothing on the channel)
 //   1360 <= raw <= 1680           -> 2
 //    640 <= raw <=  960           -> 1
-//   raw  >  2450                  -> 4
-//   anything else                 -> 3
+//   2080 <= raw <= 2450           -> 3
+//   anything else                 -> 4
 //
-// The magnitudes come straight from the compare sequence: raw - 1360 <= 320,
-// raw - 640 <= 320, then raw - 2080 > 370.
+// All three range tests are the same unsigned idiom. The third one is BLTU,
+// not a signed compare:
+//
+//     movi   a8, -2080
+//     add.n  a2, a2, a8      ; a2 = raw - 2080
+//     movi   a8, 370
+//     bltu   a8, a2, +       ; 370 <u (raw-2080)  ->  return 4
+//     movi.n a2, 3           ; else               ->  return 3
+//
+// Because it is unsigned, any raw below 2080 that misses both bands wraps to
+// a huge value and returns 4, not 3. This was written as a signed compare
+// with the last two bands inverted until 2026-08-27, which was wrong for raw
+// in 1..639, 961..1359 and 1681..2079.
 static int hall_state_from_raw(int raw)
 {
     if (raw == 0) return 0;
     if ((unsigned)(raw - 1360) <= 320u) return 2;
     if ((unsigned)(raw -  640) <= 320u) return 1;
-    if (raw - 2080 > 370) return 4;
-    return 3;
+    if ((unsigned)(raw - 2080) <= 370u) return 3;
+    return 4;
 }
 
 static int hall_raw(const group_t *g)
@@ -87,7 +98,7 @@ static void stop_all(void)
     for (int i = 0; i < s_groups; ++i) duty(&GROUPS[i], true, 0);
 }
 
-// BIQU's motor loop, from the task at 0x400de564.
+// BIQU's motor loop, from the task at 0x400de55c.
 //
 // The design is much simpler than a ramp-and-plateau. The vent target is
 // expressed as a HALL STATE, not a direction and a duration:
@@ -104,18 +115,20 @@ static void stop_all(void)
 // That is the whole stop rule. There is no soft-start ramp in the travel
 // path and no travel timeout: the hall sensor's own end-position bands ARE
 // the limit switches. Stopping goes through ledc_stop with a 10 ms fade
-// (0x400de324).
+// (0x400de31c).
 //
 // A travel timeout is kept here purely as a stall guard, because a jammed
 // vent that never reaches its band would otherwise drive its motor forever.
 // Stock appears to accept that risk; this firmware does not.
 
+// 200 ms. Stock's literal is 199, as movi a9, 199 then bgeu a9, elapsed,
+// skip, at 0x400de5a5. It acts once elapsed passes 199.
 #define MOTOR_TICK_MS   200
 
-// Button timings, all from BIQU's button_task at 0x400defa4.
-#define PV_BTN_POLL_MS           10     // vTaskDelay(1) at 0x400df082
-#define PV_BTN_LONG_MS           2999   // literal 0x400d0950
-#define PV_BTN_CLICK_SETTLE_MS   300    // 0x12c at 0x400df062
+// Button timings, all from BIQU's button_task at 0x400def9c.
+#define PV_BTN_POLL_MS           10     // vTaskDelay(1) at 0x400df07a
+#define PV_BTN_LONG_MS           2999   // literal 0x400d0948
+#define PV_BTN_CLICK_SETTLE_MS   300    // 0x12c at 0x400df05a
 #define HALL_OPEN       1
 #define HALL_CLOSED     2
 
@@ -213,12 +226,12 @@ static void button_task(void *arg)
     // Acting on a level would then fire a phantom long-press on every boot and
     // write NVS for a press that never happened. So: require the line to be
     // observed RELEASED once before any press counts, and act on edges only.
-    // BIQU's button_task, 0x400defa4. Their timings, read from the image:
+    // BIQU's button_task, 0x400def9c. Their timings, read from the image:
     //
-    //   poll interval        10 ms   (vTaskDelay(1) at 0x400df082)
-    //   long press fires at  > 2999 ms  (literal 0x400d0950 = 0xbb7)
+    //   poll interval        10 ms   (vTaskDelay(1) at 0x400df07a)
+    //   long press fires at  > 2999 ms  (literal 0x400d0948 = 0xbb7)
     //   a single click is dispatched only after the line has been released
-    //   for more than 300 ms (0x12c at 0x400df062), so a double tap does not
+    //   for more than 300 ms (0x12c at 0x400df05a), so a double tap does not
     //   register as two separate clicks
     //
     // They also debounce by re-reading the level after a yield before

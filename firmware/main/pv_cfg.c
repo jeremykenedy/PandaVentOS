@@ -52,7 +52,7 @@ void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode)
         //
         // The stock image builds it the same way: a loop writes white to all
         // seven slots, then a switch overwrites the active slot for states 1,
-        // 4 and 5 only (0x400dc84d onward, colour literals at file offsets
+        // 4 and 5 only (0x400dc845 onward, colour literals at file offsets
         // 0x17060 and the table at 0x1707c).
         //
         // Note the printed manual is wrong here twice over: it lists
