@@ -87,53 +87,73 @@ static void stop_all(void)
     for (int i = 0; i < s_groups; ++i) duty(&GROUPS[i], true, 0);
 }
 
+// BIQU's motor loop, from the task at 0x400de564.
+//
+// The design is much simpler than a ramp-and-plateau. The vent target is
+// expressed as a HALL STATE, not a direction and a duration:
+//
+//     open   -> hall state 1   (raw 640..960)
+//     closed -> hall state 2   (raw 1360..1680)
+//
+// The task polls on a 200 ms tick. For each motor group it reads
+// hall_get_state and compares it against the target:
+//
+//     state != target  ->  drive toward it, mark the group moving
+//     state == target  ->  if it was moving, stop it and clear the flag
+//
+// That is the whole stop rule. There is no soft-start ramp in the travel
+// path and no travel timeout: the hall sensor's own end-position bands ARE
+// the limit switches. Stopping goes through ledc_stop with a 10 ms fade
+// (0x400de324).
+//
+// A travel timeout is kept here purely as a stall guard, because a jammed
+// vent that never reaches its band would otherwise drive its motor forever.
+// Stock appears to accept that risk; this firmware does not.
+
+#define MOTOR_TICK_MS   200
+#define HALL_OPEN       1
+#define HALL_CLOSED     2
+
 static void drive_task(void *arg)
 {
     bool open_dir = (bool)(uintptr_t)arg;
+    int target = open_dir ? HALL_OPEN : HALL_CLOSED;
     s_moving = true;
-    ESP_LOGI(TAG, "vent -> %s", open_dir ? "OPEN" : "CLOSED");
+    ESP_LOGI(TAG, "vent -> %s (hall target %d)", open_dir ? "OPEN" : "CLOSED", target);
 
-    int last[PV_MOTOR_GROUPS] = {0}, flat[PV_MOTOR_GROUPS] = {0};
-    bool done[PV_MOTOR_GROUPS] = {0};
-    // Track BIQU's four-band hall STATE, not a raw millivolt level. Their
-    // hall_get_state is a position classifier, so travel is finished when the
-    // reported state stops changing.
-    //
-    // NOT YET RECOVERED: how BIQU's motor.c consumes hall_get_state to decide
-    // that a group has finished. The classifier below is theirs exactly; the
-    // "state stopped changing" rule around it is still this firmware's own.
-    for (int i = 0; i < s_groups; ++i)
-        last[i] = hall_state_from_raw(hall_raw(&GROUPS[i]));
-
+    bool moving[PV_MOTOR_GROUPS] = {0};
     TickType_t start = xTaskGetTickCount();
+
     for (;;) {
         TickType_t el = (xTaskGetTickCount() - start) * portTICK_PERIOD_MS;
-        uint32_t d = el >= RAMP_MS ? PWM_MAX : PWM_MAX * el / RAMP_MS;   // soft start
         int running = 0;
+
         for (int i = 0; i < s_groups; ++i) {
-            if (done[i]) continue;
-            duty(&GROUPS[i], open_dir, d);
-            int mv = hall_state_from_raw(hall_raw(&GROUPS[i]));
-            if (el > RAMP_MS) {
-                if (abs(mv - last[i]) < 12) {
-                    if (++flat[i] >= 8) {   // ~400 ms plateau = end of travel
-                        duty(&GROUPS[i], open_dir, 0);
-                        done[i] = 1;
-                    }
-                } else {
-                    flat[i] = 0;
-                }
+            int st = hall_state_from_raw(hall_raw(&GROUPS[i]));
+            if (st != target) {
+                duty(&GROUPS[i], open_dir, PWM_MAX);
+                moving[i] = true;
+                ++running;
+            } else if (moving[i]) {
+                duty(&GROUPS[i], open_dir, 0);
+                moving[i] = false;
+                ESP_LOGI(TAG, "group %d reached hall state %d", i, st);
             }
-            last[i] = mv;
-            if (!done[i]) ++running;
         }
-        if (!running || el >= TRAVEL_MS_MAX) break;
-        vTaskDelay(pdMS_TO_TICKS(50));
+
+        if (!running) break;
+        if (el >= TRAVEL_MS_MAX) {            // stall guard, not stock
+            ESP_LOGW(TAG, "travel timeout with %d group(s) short of target",
+                     running);
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(MOTOR_TICK_MS));
     }
+
     stop_all();
     g_live.vent_open = open_dir;
     s_moving = false;
-    pv_rgb_notify();
+
     vTaskDelete(NULL);
 }
 
