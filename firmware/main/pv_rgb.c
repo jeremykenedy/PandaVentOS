@@ -12,17 +12,159 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
-#include "led_strip.h"
+#include "driver/rmt_tx.h"
+#include "driver/rmt_encoder.h"
 
 static const char *TAG = "pv_rgb";
 
 #define FPS 30
 
-static led_strip_handle_t s_strip[PV_STRIP_COUNT_MAX];
+typedef struct { uint8_t r, g, b; } rgb_t;
+
+// ---------------------------------------------------------------------------
+// OUTPUT LAYER, rewritten 2026-08-29 to match stock exactly.
+//
+// The managed led_strip component is gone. Stock does NOT use it: its own
+// error strings name ./main/rgb/app_rgb.c calling rmt_new_tx_channel,
+// rmt_new_led_strip_encoder and rmt_enable directly. That was the one layer of
+// this firmware never cloned, and it is the layer that produced ESP_OK on
+// every transmit with no light on the wire.
+//
+// Every constant below is read out of the shipping image, not from an example.
+//
+//   channel config, built on the stack in rgb_init at 0x400dc46f:
+//       gpio_num          per-strip table at DRAM 0x3ffb031c field +16 = 14, 4
+//       clk_src           4 = SOC_MOD_CLK_APB = RMT_CLK_SRC_DEFAULT
+//       resolution_hz     0x400d0c30 = 10000000
+//       mem_block_symbols 64
+//       trans_queue_depth 4
+//       intr_priority     0, flags 0 (so invert_out is NOT set)
+//
+//   bit timings, doubles split across the literal pool and recombined from
+//   the (low, high) pairs the code actually loads into a12/a13:
+//       T_short = (0x400d0cec, 0x400d0d58) = 0.3 us -> 3 ticks at 10 MHz
+//       T_long  = (0x400d03fc, 0x400d0d60) = 0.9 us -> 9 ticks
+//       divisor = (0x400d0cc4, 0x400d0d5c) = 1e6, i.e. ticks = res * T / 1e6
+//   giving, at 0x400de105 / 0x400de143 / 0x400de181 / 0x400de1bc:
+//       bit0 = { 3 ticks high, 9 ticks low }
+//       bit1 = { 9 ticks high, 3 ticks low }
+//
+//   reset code, computed at 0x400de254 as (resolution / 1000000) * 25 per
+//   half, both halves low: 250 + 250 ticks = 50 us at 10 MHz.
+//
+// An earlier note in this file said 0.6 us. That was wrong: it paired
+// 0x400d0cec with the following pool word instead of the high half the code
+// actually loads. The correct value is 0.3.
+#define RMT_RES_HZ        10000000u
+#define WS_T_SHORT_TICKS  3       // 0.3 us
+#define WS_T_LONG_TICKS   9       // 0.9 us
+#define WS_RESET_TICKS    250     // per half, both halves low -> 50 us total
+
+typedef struct {
+    rmt_encoder_t      base;
+    rmt_encoder_t     *bytes;
+    rmt_encoder_t     *copy;
+    rmt_symbol_word_t  reset_code;
+    int                state;
+} ws_encoder_t;
+
+static size_t ws_encode(rmt_encoder_t *enc, rmt_channel_handle_t chan,
+                        const void *data, size_t len, rmt_encode_state_t *ret)
+{
+    ws_encoder_t *e = __containerof(enc, ws_encoder_t, base);
+    rmt_encode_state_t sess = RMT_ENCODING_RESET;
+    rmt_encode_state_t out  = RMT_ENCODING_RESET;
+    size_t n = 0;
+
+    if (e->state == 0) {
+        n += e->bytes->encode(e->bytes, chan, data, len, &sess);
+        if (sess & RMT_ENCODING_COMPLETE) e->state = 1;
+        if (sess & RMT_ENCODING_MEM_FULL) {
+            out |= RMT_ENCODING_MEM_FULL;
+            *ret = out;
+            return n;
+        }
+    }
+    if (e->state == 1) {
+        n += e->copy->encode(e->copy, chan, &e->reset_code,
+                             sizeof(e->reset_code), &sess);
+        if (sess & RMT_ENCODING_COMPLETE) {
+            e->state = 0;
+            out |= RMT_ENCODING_COMPLETE;
+        }
+        if (sess & RMT_ENCODING_MEM_FULL) out |= RMT_ENCODING_MEM_FULL;
+    }
+    *ret = out;
+    return n;
+}
+
+static esp_err_t ws_del(rmt_encoder_t *enc)
+{
+    ws_encoder_t *e = __containerof(enc, ws_encoder_t, base);
+    rmt_del_encoder(e->bytes);
+    rmt_del_encoder(e->copy);
+    free(e);
+    return ESP_OK;
+}
+
+static esp_err_t ws_reset(rmt_encoder_t *enc)
+{
+    ws_encoder_t *e = __containerof(enc, ws_encoder_t, base);
+    rmt_encoder_reset(e->bytes);
+    rmt_encoder_reset(e->copy);
+    e->state = 0;
+    return ESP_OK;
+}
+
+static esp_err_t ws_encoder_new(rmt_encoder_handle_t *out)
+{
+    ws_encoder_t *e = calloc(1, sizeof(ws_encoder_t));
+    if (!e) return ESP_ERR_NO_MEM;
+    e->base.encode = ws_encode;
+    e->base.del    = ws_del;
+    e->base.reset  = ws_reset;
+
+    rmt_bytes_encoder_config_t bc = {
+        .bit0 = { .level0 = 1, .duration0 = WS_T_SHORT_TICKS,
+                  .level1 = 0, .duration1 = WS_T_LONG_TICKS  },
+        .bit1 = { .level0 = 1, .duration0 = WS_T_LONG_TICKS,
+                  .level1 = 0, .duration1 = WS_T_SHORT_TICKS },
+        .flags.msb_first = 1,          // 0x400de1f2 sets the msb_first bit
+    };
+    esp_err_t err = rmt_new_bytes_encoder(&bc, &e->bytes);   // 0x400f2834
+    if (err != ESP_OK) { free(e); return err; }
+    rmt_copy_encoder_config_t cc = {};
+    err = rmt_new_copy_encoder(&cc, &e->copy);
+    if (err != ESP_OK) { rmt_del_encoder(e->bytes); free(e); return err; }
+
+    e->reset_code = (rmt_symbol_word_t){
+        .level0 = 0, .duration0 = WS_RESET_TICKS,
+        .level1 = 0, .duration1 = WS_RESET_TICKS,
+    };
+    *out = &e->base;
+    return ESP_OK;
+}
+
+static rmt_channel_handle_t s_chan[PV_STRIP_COUNT_MAX];
+static rmt_encoder_handle_t s_enc[PV_STRIP_COUNT_MAX];
+// GRB on the wire, which is how stock lays its buffer out ([g][r][b]).
+static uint8_t s_buf[PV_STRIP_COUNT_MAX][PV_LEDS_PER_STRIP * 3];
 static int s_strips;
 static SemaphoreHandle_t s_lock;
 
-typedef struct { uint8_t r, g, b; } rgb_t;
+static esp_err_t strip_push(int i, const rgb_t *px, int n)
+{
+    for (int k = 0; k < n; ++k) {
+        s_buf[i][3 * k + 0] = px[k].g;
+        s_buf[i][3 * k + 1] = px[k].r;
+        s_buf[i][3 * k + 2] = px[k].b;
+    }
+    rmt_transmit_config_t tc = { .loop_count = 0 };
+    esp_err_t err = rmt_transmit(s_chan[i], s_enc[i], s_buf[i], (size_t)n * 3, &tc);
+    if (err != ESP_OK) return err;
+    return rmt_tx_wait_all_done(s_chan[i], pdMS_TO_TICKS(100));
+}
+
 
 static rgb_t hex_to_rgb(const char *hex)
 {
@@ -647,11 +789,9 @@ static TaskHandle_t s_render;
 
 static void strip_blank(void)
 {
-    for (int s = 0; s < s_strips; ++s) {
-        for (int i = 0; i < PV_LEDS_PER_STRIP; ++i)
-            led_strip_set_pixel(s_strip[s], i, 0, 0, 0);
-        led_strip_refresh(s_strip[s]);
-    }
+    rgb_t off[PV_LEDS_PER_STRIP];
+    memset(off, 0, sizeof(off));
+    for (int s = 0; s < s_strips; ++s) strip_push(s, off, PV_LEDS_PER_STRIP);
 }
 
 void pv_rgb_stop(void)
@@ -669,6 +809,12 @@ static void render_task(void *arg)
     // 0x400dcabd, the task's first act: arm the link indicator to 2 so the
     // strip is blue from power-on until the link settles.
     s_link_ind = 2;
+    // ---- TEMPORARY INSTRUMENTATION, remove once the dark-strip fault is found
+    ESP_LOGI(TAG, "DIAG render_task entered, s_strips=%d", s_strips);
+    uint32_t diag_frame = 0;
+    int64_t  diag_last = 0;
+    esp_err_t diag_err = ESP_OK;
+    // ----
     for (;;) {
         // ---- Level 0: 0x400dcae2, a NON-BLOCKING poll (xTicksToWait 0) ----
         uint32_t note = 0;
@@ -700,11 +846,38 @@ static void render_task(void *arg)
         // path and costs a transfer per frame, so skip it outright.
         if (fx != PV_FX_HOLD) {
             for (int s = 0; s < s_strips; ++s) {
-                for (int i = 0; i < PV_LEDS_PER_STRIP; ++i)
-                    led_strip_set_pixel(s_strip[s], i, px[i].r, px[i].g, px[i].b);
-                led_strip_refresh(s_strip[s]);
+                esp_err_t e = strip_push(s, px, PV_LEDS_PER_STRIP);
+                if (e != ESP_OK) diag_err = e;
             }
         }
+        // ---- TEMPORARY INSTRUMENTATION ----
+        ++diag_frame;
+        static bool diag_dumped;
+        if (!diag_dumped && (px[0].r | px[0].g | px[0].b)) {
+            diag_dumped = true;
+            char line[PV_LEDS_PER_STRIP * 7 + 1];
+            int o = 0;
+            for (int i = 0; i < PV_LEDS_PER_STRIP; ++i)
+                o += snprintf(line + o, sizeof(line) - o, "%02X%02X%02X ",
+                              px[i].r, px[i].g, px[i].b);
+            ESP_LOGI(TAG, "DIAG buffer all %d px (RGB): %s", PV_LEDS_PER_STRIP, line);
+            ESP_LOGI(TAG, "DIAG wire buf0 (GRB): %02X%02X%02X %02X%02X%02X ... %02X%02X%02X",
+                     s_buf[0][0], s_buf[0][1], s_buf[0][2],
+                     s_buf[0][3], s_buf[0][4], s_buf[0][5],
+                     s_buf[0][45], s_buf[0][46], s_buf[0][47]);
+        }
+        if (diag_frame <= 3)
+            ESP_LOGI(TAG, "DIAG frame %u fx=%d px0=%02X%02X%02X refresh=%s",
+                     (unsigned)diag_frame, fx, px[0].r, px[0].g, px[0].b,
+                     esp_err_to_name(diag_err));
+        int64_t now_us = esp_timer_get_time();
+        if (now_us - diag_last >= 2000000) {
+            diag_last = now_us;
+            ESP_LOGI(TAG, "DIAG alive frame=%u fx=%d strips=%d px0=%02X%02X%02X refresh=%s",
+                     (unsigned)diag_frame, fx, s_strips,
+                     px[0].r, px[0].g, px[0].b, esp_err_to_name(diag_err));
+        }
+        // ----
         xSemaphoreGive(s_lock);
         vTaskDelay(pdMS_TO_TICKS(wait_ms));   // stock: the effect owns its frame period
     }
@@ -720,17 +893,33 @@ void pv_rgb_start(void)
     s_lock = xSemaphoreCreateMutex();
     static const int pins[PV_STRIP_COUNT_MAX] = { PV_PIN_STRIP0, PV_PIN_STRIP1 };
     for (int i = 0; i < PV_STRIP_COUNT_MAX; ++i) {
-        led_strip_config_t sc = {
-            .strip_gpio_num = pins[i],
-            .max_leds = PV_LEDS_PER_STRIP,
-            .led_pixel_format = LED_PIXEL_FORMAT_GRB,
-            .led_model = LED_MODEL_WS2812,
+        // Stock's three calls, in stock's order: rmt_new_tx_channel,
+        // rmt_new_led_strip_encoder, rmt_enable (0x400f3010, 0x400de088,
+        // 0x400f2730). Nothing else is called per strip, and stock calls
+        // nothing we do not.
+        rmt_tx_channel_config_t tx = {
+            .gpio_num          = pins[i],
+            .clk_src           = RMT_CLK_SRC_DEFAULT,   // stock's 4 = APB
+            .resolution_hz     = RMT_RES_HZ,
+            .mem_block_symbols = 64,
+            .trans_queue_depth = 4,
         };
-        led_strip_rmt_config_t rc = { .resolution_hz = 10 * 1000 * 1000 };
-        if (led_strip_new_rmt_device(&sc, &rc, &s_strip[i]) == ESP_OK) {
+        esp_err_t e1 = rmt_new_tx_channel(&tx, &s_chan[i]);
+        esp_err_t e2 = e1 == ESP_OK ? ws_encoder_new(&s_enc[i]) : e1;
+        esp_err_t e3 = e2 == ESP_OK ? rmt_enable(s_chan[i])     : e2;
+        if (e3 == ESP_OK) {
             ++s_strips;
+            // DIAG: init success does not prove the right pin. Stock drives
+            // GPIO 14 and GPIO 4 (per-strip table at DRAM 0x3ffb031c, field
+            // +16, read out of the shipping image), at 10 MHz resolution.
+            ESP_LOGI(TAG, "DIAG strip %d on GPIO %d, %d leds, res %lu Hz, "
+                          "bit0=%u/%u bit1=%u/%u reset=%u",
+                     i, pins[i], PV_LEDS_PER_STRIP, (unsigned long)RMT_RES_HZ,
+                     WS_T_SHORT_TICKS, WS_T_LONG_TICKS,
+                     WS_T_LONG_TICKS, WS_T_SHORT_TICKS, WS_RESET_TICKS);
         } else {
-            ESP_LOGW(TAG, "strip %d init failed", i);
+            ESP_LOGW(TAG, "strip %d init failed: chan=%s enc=%s enable=%s", i,
+                     esp_err_to_name(e1), esp_err_to_name(e2), esp_err_to_name(e3));
             break;
         }
     }
