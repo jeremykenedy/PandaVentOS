@@ -8,6 +8,7 @@
 #include <math.h>
 #include <string.h>
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
@@ -131,6 +132,10 @@ static bool s_strobe_on = true;
 // Marquee, 0x400dd614: a travelling Gaussian, NOT a single lit pixel.
 // Direction from the reverse switch. Frame period 70 - 0.6*speed ms, floor 10.
 static float s_marquee_pos;
+// Stock keeps the link indicator's position in its OWN float at 0x3ffb6910,
+// not in Marquee's. Sharing one would make the two interfere whenever the
+// indicator comes up over a running Marquee.
+static float s_link_pos;
 
 // Color_Cycle 0x400ddb00 and Rainbow 0x400ddc34 each keep a hue phase in a
 // global, exactly as stock does (uint16 at 0x3ffb690c and int at 0x3ffb6908).
@@ -174,6 +179,41 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         // so the frame is 100 ms.
         for (int i = 0; i < n; ++i) px[i] = (rgb_t){127, 0, 0};
         return 100;
+
+    case PV_FX_HOLD:                         // 0x400dcab0
+        // Leave px exactly as the last frame left it.
+        return 500;
+
+    case PV_FX_FAULT_STROBE:                 // 0x400dd33c -> 0x400dd1b0
+        // Not a renderer. Stock fills { brightness 100, speed 150, colour }
+        // and tail calls Strobing, so the behaviour IS Strobing; only the
+        // parameters are fixed. Expressed that way here so there is one
+        // strobe implementation, not two that can drift.
+        return render_effect(PV_FX_STROBING, color, 100, 150, reverse, px, n);
+
+    case PV_FX_LINK_MARQUEE: {               // 0x400dd840
+        // Marquee's Gaussian with no speed input and a fixed frame. The
+        // cutoff, the sigma and the 0.3 step are the same literals Marquee
+        // uses; only the period and the position global differ.
+        for (int i = 0; i < n; ++i) {
+            float dist = fabsf((float)i - s_link_pos);
+            float d = dist < (n - dist) ? dist : (n - dist);   // fminf
+            if (d > 5.0f) {
+                px[i] = (rgb_t){0, 0, 0};
+                continue;
+            }
+            float f = expf(-(d * d) / 4.5f);
+            px[i].r = chan_f(color.r, bright100, f);
+            px[i].g = chan_f(color.g, bright100, f);
+            px[i].b = chan_f(color.b, bright100, f);
+        }
+        // 0x400dd9c9: dir (+/-1.0f at 0x400d0cd0 / 0x400d0cd4) times 0.3f,
+        // then the same wrap as Marquee at 0x400dd9db.
+        s_link_pos += reverse ? -0.3f : 0.3f;
+        if (s_link_pos >= (float)n)      s_link_pos = 0.0f;
+        else if (s_link_pos < 0.0f)      s_link_pos = (float)n - 1e-6f;
+        return 50;                           // vTaskDelay(5) at 0x400dda16
+    }
 
     case PV_FX_STATIC:                       // 0x400dcef4
         for (int i = 0; i < n; ++i) px[i] = base;
@@ -364,10 +404,157 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
 //   Warning Hot Mode  safe below 50 C, hazard above.
 //
 // Returns false when the strips should be dark.
+// ---------------------------------------------------------------------------
+// THE INDICATOR LEVELS AHEAD OF THE CONFIGURED EFFECT
+//
+// Recovered 2026-08-28. The rgb task is stock's 0x400dcab8, created as
+// xTaskCreatePinnedToCore(0x400dcab8, "rgb", ..., prio 15, tskNO_AFFINITY) at
+// 0x400d8cc2. Its loop top is 0x400dcad6 and it tests FOUR things before it
+// ever reaches the gate chain this file used to start at:
+//
+//   level 0  0x400dcae2  task notification, value 255 stops the task
+//   level 1  0x400dcb2d  factory test mode
+//   level 2  0x400dcc1c  motor fault      -> red strobe
+//   level 3  0x400dcc44  printer link     -> yellow / blue marquee
+//   level 4  0x400dcc84  the gate chain in resolve() below
+//
+// Only level 4 existed here before. The most visible consequence was at boot:
+// the task's very first instruction, 0x400dcabd, arms the level 3 word to 2,
+// so a stock vent shows a blue 50 ms marquee from power-on and leaves it when
+// the link settles. The clone went straight to the configured effect.
+// ---------------------------------------------------------------------------
+
+// Level 1 state. 0x400dc980 is registered as the SHORT click handler for
+// GPIO 0 at 0x400de965 (the LONG press, 0x400de938, is the factory reset the
+// clone already implements), so these modes ship on every unit and are not
+// jig-only. s_test_entered is stock's latch byte at 0x3ffb68d8: once set it
+// is never cleared, so the vent stays in test mode until it is power cycled.
+static int  s_test_mode;        // 0x3ffb68d4, cycles 0 -> 1 -> 2 -> 3 -> 1
+static bool s_test_entered;     // 0x3ffb68d8
+
+// Level 3 state, stock's word at 0x3ffb6900. Armed to 2 by the render task
+// before its loop, then driven by 0x400d9840.
+static int s_link_ind = 2;
+
+// Test mode 2 cycles these once a second, from the table at DROM 0x3f417070.
+static const rgb_t TEST_CYCLE[4] = {
+    {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255},
+};
+
+void pv_rgb_test_cycle(void)
+{
+    if (s_test_mode == 0) {
+        // 0x400dc995: latch, then ask for a scan, then mode 1.
+        s_test_entered = true;
+        pv_wifi_scan_start();
+        s_test_mode = 1;
+    } else if (s_test_mode == 1) {
+        s_test_mode = 2;            // 0x400dc9af
+    } else if (s_test_mode == 2) {
+        s_test_mode = 3;            // 0x400dc9bc
+    } else {
+        // 0x400dc9c8: wrapping back to 1 re-requests the scan, the same way
+        // entering from 0 does.
+        pv_wifi_scan_start();
+        s_test_mode = 1;            // 0x400dc9ce
+    }
+    ESP_LOGI(TAG, "==================current_mode is %d", s_test_mode);
+}
+
+// Stock's level 3 evaluation, 0x400d986b onward. Both halves are now read
+// out of the image; nothing here is inferred.
+//
+// The link half: the word at 0x3ffb4a7c. Every writer in the image was
+// enumerated and it takes exactly the values 2, 3, 4, 5, 6, 7 (stores at
+// 0x400d9632, 0x400d9584, 0x400d964e/0x400d9645, 0x400d95f4/0x400d960a,
+// 0x400d965f, 0x400d95bc), which is the factory schema's printer.state:
+// 2 connecting, 3 connected, 4 ip err, 5 sn err, 6 access code err,
+// 7 unknown err. 0x400d986b raises the indicator for 2 and 4..7, so yellow
+// means trying to reach the printer, or failing to.
+//
+// The fallback half: CLOSED as a constant 2026-08-28. The word at +44 of the
+// same block is 0x3ffb56a4, and that address occurs ZERO times in the whole
+// image. Its only two possible bases each occur exactly once as a literal
+// (0x3ffb5678 at file offset 0x40884, 0x3ffb4a78 at 0x40908), no load site of
+// either is followed by a store at +44, and of the twenty base+0xc00 sites in
+// IROM exactly one stores at +44: the initialiser at 0x400d9854, which writes
+// 3. Nothing else ever writes it, so it is 3 for the life of the device and 3
+// means normal. There is no fallback to model and no stand-in is needed.
+static void link_indicator_update(void)
+{
+    int ps = g_live.printer_state;
+    s_link_ind = (ps == 2 || (ps >= 4 && ps <= 7)) ? 1 : 0;
+}
+
 static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
 {
     const pv_rgb_cfg_t *r = &g_cfg.rgb;
 
+    // ---- Level 1: factory test mode, gate at 0x400dcb2d ----
+    if (s_test_entered) {
+        if (s_test_mode == 1) {
+            // 0x400dc9e8. A radio self test: Static at brightness 100, blue
+            // while the scan runs, then green if an AP named "test1" is in
+            // range and red if it is not. With no verdict yet stock delays
+            // 500 ms at 0x400dcab0 and draws nothing at all.
+            *bright = 100; *speed = 0; *fx = PV_FX_STATIC;
+            if (pv_wifi_test_scan_state() == 1) {
+                *color = (rgb_t){0, 0, 255};
+            } else if (pv_wifi_test_scan_state() == 2) {
+                *color = pv_wifi_saw_test_ap() ? (rgb_t){0, 255, 0}
+                                               : (rgb_t){255, 0, 0};
+            } else {
+                *fx = PV_FX_HOLD;
+                *color = (rgb_t){0, 0, 0};
+            }
+            return true;
+        }
+        if (s_test_mode == 2) {
+            // 0x400dcb4a. One colour per second, red green blue white, timed
+            // off esp_timer_get_time against 999999 us at 0x400d0c88 and
+            // indexed by a counter masked to two bits at 0x400dcb7a.
+            static int64_t last_us;
+            static uint8_t idx;
+            int64_t now = esp_timer_get_time();
+            if (now - last_us > 999999) { last_us = now; idx = (idx + 1) & 3; }
+            *fx = PV_FX_STATIC; *bright = 100; *speed = 0;
+            *color = TEST_CYCLE[idx];
+            return true;
+        }
+        // mode 3 falls through to level 2, then straight to green, never to
+        // the gate chain. 0x400dcbc9.
+    }
+
+    // ---- Level 2: motor fault, gate at 0x400dcc1c (0x400dcbcf in mode 3) ----
+    if (pv_motor_fault_any()) {
+        *fx = PV_FX_FAULT_STROBE;
+        *color = (rgb_t){255, 0, 0};
+        *bright = 100; *speed = 0;
+        return true;
+    }
+
+    if (s_test_entered) {
+        // Test mode 3 tail, 0x400dcbf8: green link marquee, no gates.
+        *fx = PV_FX_LINK_MARQUEE;
+        *color = (rgb_t){0, 255, 0};
+        *bright = 100; *speed = 0;
+        return true;
+    }
+
+    // ---- Level 3: printer link, gate at 0x400dcc44 ----
+    // The 2 armed at task start stands until the link layer has run its first
+    // evaluation, which in stock is inside the bambu init at 0x400d9840. That
+    // is what puts the blue marquee on the strip from power-on.
+    if (pv_bambu_started()) link_indicator_update();
+    if (s_link_ind != 0) {
+        *fx = PV_FX_LINK_MARQUEE;
+        // 0x400dcc4d: 1 is yellow. 0x400dcc60: anything else is blue.
+        *color = (s_link_ind == 1) ? (rgb_t){255, 255, 0} : (rgb_t){0, 0, 255};
+        *bright = 100; *speed = 0;
+        return true;
+    }
+
+    // ---- Level 4 ----
     // Gate order is stock's, 0x400dcc87 through 0x400dcd08, outermost first:
     // total_switch, then warning_overide, then follow_printer, then
     // follow_vent. warning_overide used to be evaluated LAST here, which
@@ -452,12 +639,49 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
     }
 }
 
+static TaskHandle_t s_render;
+
+static void strip_blank(void)
+{
+    for (int s = 0; s < s_strips; ++s) {
+        for (int i = 0; i < PV_LEDS_PER_STRIP; ++i)
+            led_strip_set_pixel(s_strip[s], i, 0, 0, 0);
+        led_strip_refresh(s_strip[s]);
+    }
+}
+
+void pv_rgb_stop(void)
+{
+    // 0x400dcae5 tests the notification for 255. Anything else is ignored and
+    // the frame proceeds normally.
+    TaskHandle_t t = s_render;
+    if (t) xTaskNotify(t, 255, eSetValueWithOverwrite);
+}
+
 static void render_task(void *arg)
 {
     rgb_t px[PV_LEDS_PER_STRIP];
+    memset(px, 0, sizeof(px));
+    // 0x400dcabd, the task's first act: arm the link indicator to 2 so the
+    // strip is blue from power-on until the link settles.
+    s_link_ind = 2;
     for (;;) {
+        // ---- Level 0: 0x400dcae2, a NON-BLOCKING poll (xTicksToWait 0) ----
+        uint32_t note = 0;
+        if (xTaskNotifyWait(0, UINT32_MAX, &note, 0) == pdTRUE && note == 255) {
+            // 0x400dcaf0 through 0x400dcb08: brightness to 0, everything off,
+            // then the task RETURNS. Stock does this so an OTA leaves the
+            // strip dark and the RMT channels released.
+            xSemaphoreTake(s_lock, portMAX_DELAY);
+            strip_blank();
+            s_render = NULL;
+            xSemaphoreGive(s_lock);
+            ESP_LOGI(TAG, "render task stopped");
+            vTaskDelete(NULL);
+            return;
+        }
         xSemaphoreTake(s_lock, portMAX_DELAY);
-        int fx; rgb_t color; uint8_t bright, speed;
+        int fx = PV_FX_STATIC; rgb_t color; uint8_t bright, speed;
         uint32_t wait_ms = 50;
         if (resolve(&fx, &color, &bright, &speed)) {
             wait_ms = render_effect(fx, color, bright, speed,
@@ -465,10 +689,17 @@ static void render_task(void *arg)
         } else {
             memset(px, 0, sizeof(px));
         }
-        for (int s = 0; s < s_strips; ++s) {
-            for (int i = 0; i < PV_LEDS_PER_STRIP; ++i)
-                led_strip_set_pixel(s_strip[s], i, px[i].r, px[i].g, px[i].b);
-            led_strip_refresh(s_strip[s]);
+        // PV_FX_HOLD is stock's 0x400dcab0: it returns without reaching the
+        // shared refresh at 0x400dce68, so no RMT transaction is queued at
+        // all and the WS2812s simply hold their latched frame. Re-pushing an
+        // identical buffer would look the same but is a different instruction
+        // path and costs a transfer per frame, so skip it outright.
+        if (fx != PV_FX_HOLD) {
+            for (int s = 0; s < s_strips; ++s) {
+                for (int i = 0; i < PV_LEDS_PER_STRIP; ++i)
+                    led_strip_set_pixel(s_strip[s], i, px[i].r, px[i].g, px[i].b);
+                led_strip_refresh(s_strip[s]);
+            }
         }
         xSemaphoreGive(s_lock);
         vTaskDelay(pdMS_TO_TICKS(wait_ms));   // stock: the effect owns its frame period
@@ -500,6 +731,8 @@ void pv_rgb_start(void)
         }
     }
     ESP_LOGI(TAG, "%d strip(s) up", s_strips);
+    // Stock's rgb task runs at priority 15, not 4 (0x400d8cb6 passes 15 to
+    // xTaskCreatePinnedToCore at 0x400d8cc2).
     if (s_strips)
-        xTaskCreate(render_task, "pv_rgb", 4096, NULL, 4, NULL);
+        xTaskCreate(render_task, "pv_rgb", 4096, NULL, 15, &s_render);
 }

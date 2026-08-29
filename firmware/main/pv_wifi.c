@@ -17,6 +17,18 @@ static const char *TAG = "pv_wifi";
 
 static esp_netif_t *s_sta_netif, *s_ap_netif;
 static bool s_ever_connected;
+// Stock's factory self test looks for this exact SSID among the 20 scan
+// records; the string lives at DROM 0x3f4039b8 and is compared with the ROM
+// strcmp at 0x40001274.
+#define TEST_AP_SSID "test1"
+static bool s_saw_test_ap;
+// Kept separate from g_live.wifi_scan on purpose: that field is part of the
+// WebSocket schema and scan_done() returns it to 0 as soon as the list has
+// been pushed, so it cannot carry the "done" verdict the self test needs.
+static int s_test_scan;           // 0 idle, 1 scanning, 2 complete
+
+bool pv_wifi_saw_test_ap(void)    { return s_saw_test_ap; }
+int  pv_wifi_test_scan_state(void) { return s_test_scan; }
 
 static const char *hostname_effective(void)
 {
@@ -89,12 +101,15 @@ void pv_wifi_join(const char *ssid, const char *password)
 void pv_wifi_scan_start(void)
 {
     g_live.wifi_scan = 1;
+    s_test_scan = 1;
+    s_saw_test_ap = false;
     pv_ws_push_state();
     wifi_scan_config_t sc = { .show_hidden = false };
     esp_err_t err = esp_wifi_scan_start(&sc, false /* async */);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "scan start: %d", err);
         g_live.wifi_scan = 0;
+        s_test_scan = 0;
         pv_ws_push_state();
     }
 }
@@ -118,6 +133,13 @@ static void scan_done(void)
         cJSON_AddNumberToObject(e, "rssi", recs[i].rssi);
         cJSON_AddItemToArray(list, e);
     }
+    for (int i = 0; i < got; ++i) {
+        if (strcmp((const char *)recs[i].ssid, TEST_AP_SSID) == 0) {
+            s_saw_test_ap = true;
+            break;
+        }
+    }
+    s_test_scan = 2;
     g_live.wifi_scan = 0;
     char *out = cJSON_Print(root);
     cJSON_Delete(root);

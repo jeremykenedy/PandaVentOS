@@ -146,6 +146,11 @@ static esp_err_t ota_post(httpd_req_t *req)
     }
     ESP_LOGI(TAG, "ota_fw: %d bytes -> %s", (int)req->content_len, dst->label);
 
+    // Stock stops its render task before an OTA: notification 255 at
+    // 0x400dcae5, all-off through 0x400ddf98, then the task returns, so the
+    // strip goes dark and the RMT channels are released for the duration.
+    pv_rgb_stop();
+
     esp_ota_handle_t h;
     esp_err_t err = esp_ota_begin(dst, req->content_len, &h);
     char *buf = err == ESP_OK ? malloc(4096) : NULL;

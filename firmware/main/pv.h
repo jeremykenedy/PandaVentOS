@@ -49,6 +49,28 @@
 // scaling, and delays 10 ticks = 100 ms.
 #define PV_FX_OVERRIDE_RED 100
 
+// The other two non-selectable renderers the rgb task reaches, both recovered
+// 2026-08-28 by enumerating every vTaskDelay in the render region.
+//
+// PV_FX_FAULT_STROBE is stock's 0x400dd33c: it does not render anything
+// itself, it builds a stack record { brightness 100, speed 150, r, g, b } and
+// tail calls Strobing at 0x400dd1b0. speed 150 through Strobing's own
+// 200 - speed gives a 50 ms half period.
+//
+// PV_FX_LINK_MARQUEE is stock's 0x400dd840. Same prologue as Static, same
+// travelling Gaussian as Marquee (fminf, 5.0f cutoff at 0x400d0cfc, 0.3f
+// step at 0x400d0cd8), but it takes no speed and its frame is a fixed
+// vTaskDelay(5) = 50 ms at 0x400dda16, and it keeps its OWN position global
+// at 0x3ffb6910 rather than sharing Marquee's.
+#define PV_FX_FAULT_STROBE 101
+#define PV_FX_LINK_MARQUEE 102
+
+// Not a renderer at all. Stock's test mode 1 falls through to 0x400dcab0 when
+// the radio self test has no verdict yet: vTaskDelay(50) and NOTHING is
+// written, so the previous frame stays on the strip for 500 ms. That is not
+// the same as rendering black, so it needs its own id.
+#define PV_FX_HOLD         103
+
 // Warning Hot boundary, stated verbatim in the factory app's own copy:
 // the printer's maximum temperature crossing 50 C is the burn-risk line.
 // Warning Hot boundary, read out of the image at 0x400dc5da: movi.n a9, 50
@@ -179,6 +201,13 @@ void pv_apply_message(const char *json, int len);
 // pv_wifi.c
 void pv_wifi_start(void);
 void pv_wifi_scan_start(void);
+// Whether the last completed scan saw an AP named "test1". Stock's factory
+// self-test at 0x400dc9e8 strcmps that name (string at 0x3f4039b8, strcmp is
+// ROM 0x40001274) against all 20 scan records at 0x3ffb63f8.
+bool pv_wifi_saw_test_ap(void);
+// 0 idle, 1 scanning, 2 complete. Mirrors the word stock reads at 0x3ffb63f0
+// to pick blue / green / red in test mode 1.
+int  pv_wifi_test_scan_state(void);
 void pv_wifi_join(const char *ssid, const char *password);
 void pv_ap_apply(void);                             // reconfigure softAP now
 void pv_hostname_apply(void);                       // mDNS + netif hostname
@@ -188,13 +217,28 @@ void pv_bambu_start(void);
 void pv_bambu_rebind(void);                         // apply g_cfg.printer now
 void pv_bambu_disconnect(void);
 void pv_bambu_scan_start(void);                     // SSDP discovery
+// Whether the link layer has run once. Stock's equivalent is the init at
+// 0x400d9840, which is what first evaluates the level 3 indicator; until then
+// the word keeps the 2 the rgb task armed at 0x400dcabd.
+bool pv_bambu_started(void);
 
 // pv_rgb.c
 void pv_rgb_start(void);
 void pv_rgb_notify(void);                           // config/state changed
+// Stops the render task the way stock does: notification value 255 at
+// 0x400dcae5, all-off through 0x400ddf98, then the task returns. Used before
+// an OTA so the strip goes dark and RMT is released.
+void pv_rgb_stop(void);
+// Advances stock's test mode, 0x400dc980. Registered as the SHORT click
+// handler for GPIO 0 at 0x400de965, so it ships on every unit.
+void pv_rgb_test_cycle(void);
 
 // pv_motor.c
 void pv_motor_start(void);
 void pv_motor_set_auto(bool auto_mode);
 void pv_motor_manual_toggle(void);
 void pv_motor_update(void);                         // printer state changed
+// Any group latched in fault. Stock keeps four per-group bytes at 0x3ffb6958
+// and ORs them into 0x3ffb6954 at 0x400de524; that byte is what the rgb task
+// reads through 0x400de550 to raise the red strobe.
+bool pv_motor_fault_any(void);

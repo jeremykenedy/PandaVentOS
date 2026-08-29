@@ -17,6 +17,8 @@ static const char *TAG = "pv_bambu";
 static esp_mqtt_client_handle_t s_client;
 static char s_report_topic[80], s_request_topic[80];
 static bool s_started;
+
+bool pv_bambu_started(void) { return s_started; }
 static volatile TickType_t s_last_report;   // 0 until the bound SN answers
 static volatile TickType_t s_connected_at;
 static void relocate_start(void);           // defined with the scan code
@@ -140,7 +142,13 @@ void pv_bambu_disconnect(void)
         esp_mqtt_client_destroy(s_client);
         s_client = NULL;
     }
-    g_live.printer_state = 0;
+    // printer_state is NOT reset. Every writer of stock's link word at
+    // 0x3ffb4a7c was enumerated 2026-08-28 and the only values ever stored
+    // are 3, 7, 5, 5, 2, 4, 4, 6 (0x400d9584, 0x400d95bc, 0x400d95f4,
+    // 0x400d960a, 0x400d9632, 0x400d9645, 0x400d964e, 0x400d965f). Nothing
+    // stores 0 after boot, so stock leaves the last state standing on
+    // disconnect and so do we. Setting it to 0 here was an invented reset,
+    // and it also cleared the level 3 yellow marquee that stock keeps up.
     g_live.device_state = PV_ST_IDLE;
     // Deliberately NOT reset. Stock's report array is written only by the
     // parser at 0x400d9244 and nothing in the image ever clears it: not on

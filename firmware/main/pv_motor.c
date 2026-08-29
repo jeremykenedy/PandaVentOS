@@ -78,6 +78,39 @@ static volatile bool s_want_open, s_moving;
 static bool s_grp_moving[PV_MOTOR_GROUPS];
 static bool s_grp_fwd[PV_MOTOR_GROUPS];
 static int  s_grp_target[PV_MOTOR_GROUPS];
+// Stock's four per-group fault bytes at 0x3ffb6958. 0x400de524 ORs them into
+// the byte at 0x3ffb6954 once per motor-task pass (called at 0x400de7cc, right
+// after the per-group loop), and the rgb task reads that byte through
+// 0x400de550 to raise the red strobe.
+//
+// The predicate is RECOVERED, 2026-08-28. It is not a stall guard and it is
+// not the >= 4 threshold. 0x400de695 is the in-progress path for group i; it
+// runs only while the group's moving byte at 0x3ffb6964 is set, and only once
+// its per-group timestamp at 0x3ffb6924 has aged past the same 199 literal the
+// drive loop uses (0x400de6f4). At that re-check:
+//
+//   arrived, target == hall   0x400de720: stop, retry = 0, moving = 0,
+//                             fault = 0
+//   not yet                   0x400de745: fault = 1, then if the retry count
+//                             at 0x3ffb6944 has reached 4 (blti a8, 4 at
+//                             0x400de75a) the group is stopped and its moving
+//                             byte cleared WITHOUT clearing fault
+//
+// So the flag is raised at the FIRST re-check that finds the group off target,
+// not the fourth, and a group abandoned at four re-checks keeps its flag until
+// the next command. The visible consequence is that any travel outlasting one
+// re-check strobes the strip red while it runs. That is what stock does.
+#define MOTOR_FAULT_GIVEUP 4
+static bool s_grp_fault[PV_MOTOR_GROUPS];
+static bool s_grp_seen[PV_MOTOR_GROUPS];   // a re-check has already happened
+static int  s_grp_retry[PV_MOTOR_GROUPS];
+
+bool pv_motor_fault_any(void)
+{
+    for (int i = 0; i < PV_MOTOR_GROUPS; ++i)
+        if (s_grp_fault[i]) return true;
+    return false;
+}
 
 // The guard, lifted straight out of both helpers. Stock checks all three
 // pieces of state and RETURNS rather than re-issuing the drive sequence:
@@ -249,10 +282,30 @@ static void drive_task(void *arg)
                 group_drive(i, open_dir);
                 moving[i] = true;
                 ++running;
-            } else if (moving[i]) {
-                group_stop(i);
-                moving[i] = false;
-                ESP_LOGI(TAG, "group %d reached hall state %d", i, st);
+                if (s_grp_seen[i]) {
+                    // 0x400de745. First re-check off target, not the fourth.
+                    s_grp_fault[i] = true;
+                    if (++s_grp_retry[i] >= MOTOR_FAULT_GIVEUP) {
+                        // 0x400de75d: stop and clear moving, leaving fault set.
+                        group_stop(i);
+                        moving[i] = false;
+                        s_grp_seen[i] = false;
+                        ESP_LOGW(TAG, "group %d abandoned off target %d", i, target);
+                    }
+                } else {
+                    s_grp_seen[i] = true;
+                }
+            } else {
+                // 0x400de720 clears retry, the moving byte at 0x3ffb6964 and
+                // the fault byte together when the group reaches its band.
+                s_grp_retry[i] = 0;
+                s_grp_fault[i] = false;
+                s_grp_seen[i] = false;
+                if (moving[i]) {
+                    group_stop(i);
+                    moving[i] = false;
+                    ESP_LOGI(TAG, "group %d reached hall state %d", i, st);
+                }
             }
         }
 
@@ -329,8 +382,8 @@ static void button_task(void *arg)
     // They also debounce by re-reading the level after a yield before
     // accepting an edge.
     int user_held = 0, boot_held = 0, blink = 0;
-    int user_released_ms = 0;
-    bool user_pending_click = false;
+    int user_released_ms = 0, boot_released_ms = 0;
+    bool user_pending_click = false, boot_pending_click = false;
     bool user_armed = false, boot_armed = false;
 
     for (;; vTaskDelay(pdMS_TO_TICKS(PV_BTN_POLL_MS))) {
@@ -381,12 +434,31 @@ static void button_task(void *arg)
         if (boot_armed) {
             if (boot_down) {
                 boot_held += PV_BTN_POLL_MS;
+                boot_released_ms = 0;
                 if (boot_held > PV_BTN_LONG_MS) {
+                    // ctx[8], 0x400de938, dispatched at 0x400df035 once the
+                    // hold passes the 0xbb7 literal.
                     boot_held = -1000000;
+                    boot_pending_click = false;
                     pv_factory_reset_and_reboot();
                 }
             } else {
+                if (boot_held > 0) {
+                    boot_pending_click = true;
+                    boot_released_ms = 0;
+                }
                 boot_held = 0;
+                // ctx[4], 0x400dc980, dispatched at 0x400df06x after the same
+                // 300 ms quiet window the user button uses.
+                if (boot_pending_click) {
+                    boot_released_ms += PV_BTN_POLL_MS;
+                    if (boot_released_ms > PV_BTN_CLICK_SETTLE_MS) {
+                        ESP_LOGI(TAG, "boot click: test mode");
+                        pv_rgb_test_cycle();
+                        boot_pending_click = false;
+                        boot_released_ms = 0;
+                    }
+                }
             }
         }
     }

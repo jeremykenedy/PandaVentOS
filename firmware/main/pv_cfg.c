@@ -110,6 +110,33 @@ void pv_cfg_factory_defaults(pv_cfg_t *c)
     c->motor_manual_open = false;
 }
 
+// DELIBERATE DEPARTURE, documented rather than silent.
+//
+// Stock does NOT validate. Its store is one nvs_get_blob per subsystem
+// through the wrapper at 0x400d8cdc (namespace "app_nvs", keys "sign",
+// "wifi_info", "bambu_mqtt_info", "ui_info", "sys_rgb_mode" 0x138 bytes,
+// "rgb_sundry" 6, "key_mode" 4), and the loader at 0x400d8e38 issues the
+// three reads and returns 1 with no magic, no version and no range check on
+// any field.
+//
+// We keep the magic AND clamp, for one concrete reason: resolve() indexes
+// warnhot_bg[lvl][warnhot_current[lvl]] and warnhot_speed likewise, both
+// [2][2]. pv_apply.c masks the wire value with & 1 so a message cannot break
+// it, but nothing clamps what comes back from flash, and pv_cfg_load copies
+// the blob wholesale. A corrupt-but-magic-valid blob therefore reads out of
+// bounds. Stock has the same shape of exposure and lives with it; we do not.
+static void cfg_clamp_loaded(void)
+{
+    pv_rgb_cfg_t *r = &g_cfg.rgb;
+    if (r->light_mode > PV_MODE_WARNING)   r->light_mode = PV_MODE_SIMPLE;
+    if (r->simple_current >= PV_FX_COUNT)  r->simple_current = PV_FX_STATIC;
+    for (int st = 0; st < PV_ST_COUNT; ++st)
+        if (r->h2d_active[st] >= PV_FX_COUNT) r->h2d_active[st] = PV_FX_STATIC;
+    // The one that is actually reachable as an out-of-bounds READ.
+    for (int lvl = 0; lvl < 2; ++lvl)
+        if (r->warnhot_current[lvl] > 1) r->warnhot_current[lvl] = 0;
+}
+
 void pv_cfg_load(void)
 {
     pv_cfg_factory_defaults(&g_cfg);
@@ -124,6 +151,7 @@ void pv_cfg_load(void)
     nvs_close(h);
     if (err == ESP_OK && size == sizeof(stored) && stored.magic == CFG_MAGIC) {
         g_cfg = stored;
+        cfg_clamp_loaded();
         ESP_LOGI(TAG, "config loaded (%u B)", (unsigned)size);
     } else {
         ESP_LOGW(TAG, "stored config unusable (err=%d size=%u), defaults kept",
