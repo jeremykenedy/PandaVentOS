@@ -61,8 +61,6 @@ static const group_t GROUPS[PV_MOTOR_GROUPS] = {
 #define PWM_STOP_FADE_MS 10     // 0x400de358, movi.n a13, 10
 #define PWM_DEADTIME_US  500    // 0x400de42d, movi a10, 0x1f4
 
-#define TRAVEL_MS_MAX 5000
-
 // The motor task expresses the destination as a hall STATE, not a direction.
 // Confirmed against the image: target 1 drives fwd_chan and target 2 drives
 // rev_chan. See RE-NOTES.md, Motor section, for the chain through BIQU's own
@@ -215,9 +213,11 @@ static void stop_all(void)
 // the limit switches. Stopping goes through ledc_stop with a 10 ms fade
 // (0x400de31c).
 //
-// A travel timeout is kept here purely as a stall guard, because a jammed
-// vent that never reaches its band would otherwise drive its motor forever.
-// Stock appears to accept that risk; this firmware does not.
+// There is no travel timeout, because stock has none. A jammed vent that
+// never reaches its band will drive its motor until the target changes.
+// That is stock's behaviour and this is a clone, so it is ours. A stall
+// guard was carried here until 2026-08-28 and has been removed: a
+// deliberate departure is still a departure.
 
 // 200 ms. Stock's literal is 199, as movi a9, 199 then bgeu a9, elapsed,
 // skip, at 0x400de5a5. It acts once elapsed passes 199.
@@ -236,10 +236,8 @@ static void drive_task(void *arg)
     ESP_LOGI(TAG, "vent -> %s (hall target %d)", open_dir ? "OPEN" : "CLOSED", target);
 
     bool moving[PV_MOTOR_GROUPS] = {0};
-    TickType_t start = xTaskGetTickCount();
 
     for (;;) {
-        TickType_t el = (xTaskGetTickCount() - start) * portTICK_PERIOD_MS;
         int running = 0;
 
         for (int i = 0; i < s_groups; ++i) {
@@ -259,11 +257,6 @@ static void drive_task(void *arg)
         }
 
         if (!running) break;
-        if (el >= TRAVEL_MS_MAX) {            // stall guard, not stock
-            ESP_LOGW(TAG, "travel timeout with %d group(s) short of target",
-                     running);
-            break;
-        }
         vTaskDelay(pdMS_TO_TICKS(MOTOR_TICK_MS));
     }
 
