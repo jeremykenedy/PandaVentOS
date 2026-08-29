@@ -396,15 +396,18 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
         return true;
     }
     case PV_MODE_WARNING: {
-        // Factory boundary is 50 C on the printer's MAXIMUM temperature:
-        // "The maximum temperature of the printer is below 50 C, with no risk
-        // of burns" / "...above 50 C, which poses a risk of burns!".
-        // 2 C of hysteresis so a printer sitting on the line does not flicker.
-        float tmax = g_live.bed_temp > g_live.nozzle_temp
-                   ? g_live.bed_temp : g_live.nozzle_temp;
-        static bool hot;
-        if (tmax >= PV_WARN_HOT_C)            hot = true;
-        else if (tmax < PV_WARN_HOT_C - 2.0f) hot = false;
+        // 0x400dc5d7 onward, exactly:
+        //     l32i a8, a8, 180      bed_temper
+        //     movi.n a9, 50
+        //     blt  a9, a8, HOT      50 < bed     -> hot
+        //     l32i a8, a8, 176      nozzle_temper
+        //     bge  a9, a8, SAFE     50 >= nozzle -> safe, else hot
+        // Strict >, on either temperature, on the truncated integer, and NO
+        // hysteresis. This carried >= and 2 C of hysteresis until 2026-08-28,
+        // which read hot across 50.0..50.9 where stock reads safe, and held
+        // hot down to 48 on the way back.
+        bool hot = (PV_WARN_HOT_C < g_live.bed_temp)
+                || (PV_WARN_HOT_C < g_live.nozzle_temp);
 
         int lvl = hot ? 1 : 0;
         // Each level offers Static or Strobing only.

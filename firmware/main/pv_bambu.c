@@ -51,9 +51,9 @@ static void handle_report(const char *data, int len)
             }
         }
         cJSON *bed = cJSON_GetObjectItemCaseSensitive(print, "bed_temper");
-        if (cJSON_IsNumber(bed)) g_live.bed_temp = (float)bed->valuedouble;
+        if (cJSON_IsNumber(bed)) g_live.bed_temp = (int)bed->valuedouble;
         cJSON *noz = cJSON_GetObjectItemCaseSensitive(print, "nozzle_temper");
-        if (cJSON_IsNumber(noz)) g_live.nozzle_temp = (float)noz->valuedouble;
+        if (cJSON_IsNumber(noz)) g_live.nozzle_temp = (int)noz->valuedouble;
 
         // The printer's own chamber light, for "Follow Printer Light".
         // Bambu reports it as print.lights_report:
@@ -142,7 +142,12 @@ void pv_bambu_disconnect(void)
     }
     g_live.printer_state = 0;
     g_live.device_state = PV_ST_IDLE;
-    g_live.bed_temp = g_live.nozzle_temp = -1.0f;
+    // Deliberately NOT reset. Stock's report array is written only by the
+    // parser at 0x400d9244 and nothing in the image ever clears it: not on
+    // disconnect, not on unbind, and a report that omits a key leaves the
+    // slot alone (the loop just continues, 0x400d92bd). So stock keeps the
+    // last temperature it ever saw, and stays hot on a dropped printer.
+    // Resetting here made the vent go green where stock stays red.
     g_live.printer_light = false;
     pv_rgb_notify();
 }

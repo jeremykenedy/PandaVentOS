@@ -45,7 +45,10 @@
 
 // Warning Hot boundary, stated verbatim in the factory app's own copy:
 // the printer's maximum temperature crossing 50 C is the burn-risk line.
-#define PV_WARN_HOT_C     50.0f
+// Warning Hot boundary, read out of the image at 0x400dc5da: movi.n a9, 50
+// then blt/bge. STRICT greater-than, on either temperature, and stock
+// compares the strtol'd INTEGER, so 50.9 is 50 and reads safe.
+#define PV_WARN_HOT_C     50
 
 #define PV_MODE_SIMPLE    0
 #define PV_MODE_H2D       1
@@ -130,8 +133,11 @@ typedef struct {
     int  printer_scan;
     // Printer telemetry driving H2D + warning modes and AUTO venting.
     int   device_state;          // PV_ST_*
-    float bed_temp;
-    float nozzle_temp;
+    // int, not float: stock parses these with strtol base 10 at 0x400d92cd,
+    // which stops at the decimal point. Zero at boot, because stock's report
+    // array is in .bss and nothing ever clears it.
+    int bed_temp;
+    int nozzle_temp;
     bool  vent_open;             // current vent target (all groups)
     // The printer's own chamber light, from print.lights_report. Drives the
     // "Follow Printer Light" switch, which the factory app describes as
