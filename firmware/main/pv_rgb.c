@@ -89,6 +89,22 @@ static inline uint8_t chan(uint8_t colour, uint8_t bright100)
     return (uint8_t)(((uint32_t)colour * (uint32_t)bright100) / 100u);
 }
 
+// The float path, for the three effects that use it. Stock's order is exact
+// and it is not the same as scaling an already-divided byte: the INTEGER
+// product first, then the factor, then the divide by 100.0f, then truncate.
+//
+//   Breathing 0x400dd125  mull / float.s / mul.s <factor> / divide / utrunc.s
+//   Wave      0x400dd435  same shape, factor 0.3f for the background
+//   Marquee   0x400dd73d  same shape, factor expf(-(d*d)/4.5)
+//
+// Applying the factor to chan()'s output instead loses the low bits of the
+// product before the factor is applied. See RE-NOTES.md, Universal section.
+static inline uint8_t chan_f(uint8_t colour, uint8_t bright100, float f)
+{
+    return (uint8_t)(((float)((uint32_t)colour * (uint32_t)bright100) * f)
+                     / 100.0f);
+}
+
 // Breathing, 0x400dd008.
 //   phase += step;  step is +1.5 rising, -1.5 falling
 //   if (phase >= 60) { phase = 60; step = -1.5; }
@@ -112,9 +128,9 @@ static float breath_factor(void)
 // Strobing, 0x400dd1b0: full colour for one half period, dark for the next.
 static bool s_strobe_on = true;
 
-// Marquee, 0x400dd614: one lit pixel travelling along the strip, direction
-// from the reverse switch. Frame period 70 - 0.6*speed ms, floor 10 ms.
-static int s_marquee_pos = 0;
+// Marquee, 0x400dd614: a travelling Gaussian, NOT a single lit pixel.
+// Direction from the reverse switch. Frame period 70 - 0.6*speed ms, floor 10.
+static float s_marquee_pos;
 
 // Color_Cycle 0x400ddb00 and Rainbow 0x400ddc34 each keep a hue phase in a
 // global, exactly as stock does (uint16 at 0x3ffb690c and int at 0x3ffb6908).
@@ -172,11 +188,38 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
     }
 
     case PV_FX_MARQUEE: {                    // 0x400dd614
-        for (int i = 0; i < n; ++i) px[i] = (rgb_t){0, 0, 0};
-        int pos = reverse ? (n - 1 - s_marquee_pos) : s_marquee_pos;
-        if (pos >= 0 && pos < n) px[pos] = base;
-        s_marquee_pos = (s_marquee_pos + 1) % n;
-        int ms = 70 - (int)((speed * 6) / 10);   // 70 - 0.6*speed
+        // Recovered 2026-08-28. A travelling Gaussian, not one lit pixel,
+        // using the same circular distance metric as Wave:
+        //
+        //   d = fminf(|i - pos|, n - |i - pos|)   fminf at 0x400dd70b, the
+        //                                         same one Wave calls
+        //   if 5.0 < d  the pixel is dark         (olt.s at 0x400dd717)
+        //   else        f = expf(-(d*d) / 4.5)    (4.5f, expf at 0x40171d90)
+        //   out = colour * brightness * f / 100   (0x400dd73d, chan_f order)
+        //
+        // The position is a FLOAT global advancing +/-0.3 px per frame (0.3f
+        // at 0x400d0cd8, the same literal Wave uses for its background),
+        // wrapping to 0 at n and to n-1e-6 below zero (0x400dd7d0). Reverse
+        // negates the step; it does not mirror the index. The old code lit a
+        // single pixel and stepped a whole pixel per frame, so it ran 3.33x
+        // too fast and looked nothing like stock.
+        for (int i = 0; i < n; ++i) {
+            float dist = fabsf((float)i - s_marquee_pos);
+            float d = dist < (n - dist) ? dist : (n - dist);   // fminf
+            if (d > 5.0f) {
+                px[i] = (rgb_t){0, 0, 0};
+                continue;
+            }
+            float f = expf(-(d * d) / 4.5f);
+            px[i].r = chan_f(color.r, bright100, f);
+            px[i].g = chan_f(color.g, bright100, f);
+            px[i].b = chan_f(color.b, bright100, f);
+        }
+        s_marquee_pos += reverse ? -0.3f : 0.3f;
+        if (s_marquee_pos >= (float)n)      s_marquee_pos = 0.0f;
+        else if (s_marquee_pos < 0.0f)      s_marquee_pos = (float)n - 1e-6f;
+        // stock does this in double then truncates: 0x400dd658 onward
+        int ms = (int)(70.0 - (double)speed * 0.6);
         return ms < 10 ? 10 : (uint32_t)ms;
     }
 
@@ -197,16 +240,22 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         // The peak position is a float global that advances by +/-0.5 pixels
         // per frame (0.5f at 0x400d0ce4, sign from the reverse switch) and
         // wraps around 0..n. Frame period max(20, 100 - speed) ms.
-        rgb_t full = base;
-        rgb_t bg = { (uint8_t)((base.r * 3) / 10),
-                     (uint8_t)((base.g * 3) / 10),
-                     (uint8_t)((base.b * 3) / 10) };
+        // Stock's order, 0x400dd435 onward: the integer product colour *
+        // brightness, converted to float ONCE, then the 0.3 factor for the
+        // background, then the divide by 100. Scaling an already-divided
+        // byte by 3/10 is not the same number.
+        rgb_t full = { chan_f(color.r, bright100, 1.0f),
+                       chan_f(color.g, bright100, 1.0f),
+                       chan_f(color.b, bright100, 1.0f) };
+        rgb_t bg   = { chan_f(color.r, bright100, 0.3f),
+                       chan_f(color.g, bright100, 0.3f),
+                       chan_f(color.b, bright100, 0.3f) };
 
         for (int i = 0; i < n; ++i) {
             float dist = s_wave_pos - (float)i;
             if (dist < 0) dist = -dist;
             float d = dist < (n - dist) ? dist : (n - dist);   // fminf
-            if (d >= 6.0f) {
+            if (d > 6.0f) {                 // olt.s 6.0, d at 0x400dd51a
                 px[i] = bg;
                 continue;
             }
@@ -246,10 +295,7 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         // value. phase advances by +/-5 per frame, sign taken from the
         // reverse switch (sext a4, a4, 7 then addx4 a4, a4, a4 at
         // 0x400dde44, so the step is +5 or -5 and never 0: both directions
-        // do scroll). The POLARITY is not settled. Stock's flag is threaded
-        // down from at least two call levels above the dispatcher, so the
-        // reverse ? -5 : 5 below may be inverted. That would scroll the
-        // wrong way. Visible, not a malfunction. Settle it on hardware.
+        // do scroll).
         //
         // The detail worth keeping: stock does not light every pixel at the
         // configured brightness. It subtracts ((i + 2) mod 7) from it, with
@@ -270,7 +316,13 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
             px[i].g = chan(c.g, b);
             px[i].b = chan(c.b, b);
         }
-        s_rainbow_phase += reverse ? -5 : 5;
+        // Sign confirmed at 0x400ddc83: stock normalises the flag to +1 when
+        // set and 255 (= -1 after sext a4,a4,7) when clear, then multiplies
+        // by 5 with addx4. So reverse OFF DECREMENTS the phase. Since
+        // hue(i) = i*360/n + phase, a decreasing phase moves the pattern
+        // toward increasing i, the same way Wave and Marquee travel with
+        // reverse off. This was inverted until 2026-08-28.
+        s_rainbow_phase += reverse ? +5 : -5;
         if (s_rainbow_phase >= 360)  s_rainbow_phase -= 360;
         if (s_rainbow_phase <= -360) s_rainbow_phase += 360;
         // Base 100, not 150. movi a8, 0x64 at 0x400dde85, floored at 10.

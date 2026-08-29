@@ -54,16 +54,35 @@ UI, with a defined list of what it clears).
 
 ## Hardware truths that were learned the hard way (keep these)
 
-Two WS2812 strips, 30 px each, GPIO 14 (SPI-capable) and GPIO 4, button GPIO
-12, button ring LED GPIO 27, 4 motor groups (LEDC PWM + hall ADC), no display,
-no fan header. EACH STRIP SNAKES THROUGH THREE VISIBLE WINDOWS: roughly px 0-9
-behind the front honeycomb grille (diffuse glow), px 10-19 behind a front lens
-window, px 20-29 behind the side louver run; the two strips mirror left/right.
-Mapped on the real device 2026-08-24 with color-block and walking-dot test
-frames and photos. Any lighting renderer that treats a strip as one bare
-30-pixel line looks broken on this hardware. The factory firmware's lighting
-was designed around these windows; the re-creation must reproduce the factory
-LOOK on the windows, not just factory math on a strip.
+Two WS2812 strips, GPIO 14 (SPI-capable) and GPIO 4, button GPIO 12, button
+ring LED GPIO 27, 4 motor groups (LEDC PWM + hall ADC), no display, no fan
+header.
+
+**The factory firmware drives 16 pixels per strip, 32 in total.** That number
+is read out of the shipping image, not inferred: it is the 32-bit word at DRAM
+`0x3ffb0318` in the initialised data, returned by the accessor at `0x400dc934`
+and passed down as every effect function's pixel count. Two strips, from the
+channel loop bound in `rgb_init` and the outer loop in every effect function.
+The per-strip frame buffer is allocated as 3 * 16 = 48 bytes.
+
+EACH STRIP SNAKES THROUGH THREE VISIBLE WINDOWS: the front honeycomb grille
+(diffuse glow), a front lens window, and the side louver run; the two strips
+mirror left/right. That much was mapped on the real device 2026-08-24 with
+colour-block and walking-dot test frames and photos, and it still holds.
+
+**The pixel RANGES recorded for those windows do not.** They were written as
+px 0-9 / 10-19 / 20-29 against a 30-pixel strip, which was the earlier
+firmware generation's configuration, not the factory's. With 16 driven the
+three windows cannot span 30 indices. The correct split has not been
+re-measured and the ranges should not be relied on.
+
+Whether the hardware carries more physical LEDs than the factory firmware
+drives is a separate question and is still open.
+
+Any lighting renderer that treats a strip as one bare line looks broken on
+this hardware. The factory firmware's lighting was designed around these
+windows; the re-creation must reproduce the factory LOOK on the windows, not
+just factory math on a strip.
 
 ## Rules for this project
 

@@ -16,9 +16,15 @@
 #define PV_PIN_USER_BUTTON   12   // active-low, internal pull-up
 #define PV_PIN_BOOT_BUTTON   0    // active-low; long-press = factory reset
 #define PV_PIN_BUTTON_LED    27   // ring LED: off = AUTO, blink = MANUAL
-#define PV_PIN_STRIP0        14   // WS2812, 30 px
-#define PV_PIN_STRIP1        4    // WS2812, 30 px (2-strip kits)
-#define PV_LEDS_PER_STRIP    30
+#define PV_PIN_STRIP0        14   // WS2812, 16 px
+#define PV_PIN_STRIP1        4    // WS2812, 16 px (both strips always driven)
+// The count stock actually drives. It is the 32-bit word at DRAM 0x3ffb0318
+// in the shipping image's initialised data (file offset 0x3a714), returned by
+// the accessor at 0x400dc934, cached in the byte at 0x3ffb68d1 by the render
+// task at 0x400dcaf9, and passed down as every effect function's n. Two
+// strips (blti a7,2 in rgb_init 0x400dc4fc, bgei a2,2 in every effect), so
+// 32 LEDs driven in total, with a 3*n = 48 byte buffer each (0x400dce3e).
+#define PV_LEDS_PER_STRIP    16
 #define PV_STRIP_COUNT_MAX   2
 #define PV_MOTOR_GROUPS      4
 
