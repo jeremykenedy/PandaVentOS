@@ -167,9 +167,18 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
 
     switch (fx) {
 
+    case PV_FX_OVERRIDE_RED:                 // 0x400ddeac, not an effect
+        // Stock's warning override renderer. R=127 written straight to the
+        // buffer at 0x400ddf29, no brightness scaling, then vTaskDelay(10)
+        // at 0x400ddf4c. The delay argument is TICKS and the tick is 10 ms,
+        // so the frame is 100 ms.
+        for (int i = 0; i < n; ++i) px[i] = (rgb_t){127, 0, 0};
+        return 100;
+
     case PV_FX_STATIC:                       // 0x400dcef4
         for (int i = 0; i < n; ++i) px[i] = base;
-        return 100;                          // static: nothing moves
+        // vTaskDelay(50) at 0x400dd001. Ticks, not ms: 50 ticks = 500 ms.
+        return 500;
 
     case PV_FX_BREATHING: {                  // 0x400dd008
         // chan_f, not base * f: stock's order at 0x400dd125 is the integer
@@ -359,28 +368,42 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
 {
     const pv_rgb_cfg_t *r = &g_cfg.rgb;
 
-    // 1. Master switch overrides everything else.
+    // Gate order is stock's, 0x400dcc87 through 0x400dcd08, outermost first:
+    // total_switch, then warning_overide, then follow_printer, then
+    // follow_vent. warning_overide used to be evaluated LAST here, which
+    // meant a printer in error with follow_printer on and the chamber light
+    // off showed nothing at all where stock shows red.
+    //
+    // None of these gates consult a connection or bind state. Stock reads
+    // report bytes directly and has no notion of "bound" at this point, so
+    // the bound check that used to guard two of them is gone.
+
+    // 1. total_switch, switch array +3, gate at 0x400dcc87.
     if (!r->light_on) return false;
 
-    // 2. Follow Printer Light: gate on the printer's own chamber light.
-    //    Only meaningful while actually bound to a printer.
-    bool bound = g_live.printer_state == 3;
-    if (r->follow_printer && bound) {
-        if (!g_live.printer_light) return false;
-    }
-    // 3. Follow Vent, explicitly lower priority than Follow Printer.
-    else if (r->follow_vent) {
-        if (!g_live.vent_open) return false;
-    }
-
-    // 4. Warning override: printer in error state forces red flashing,
-    //    whatever mode is selected.
-    if (r->warning_sw && bound && g_live.device_state == PV_ST_ERROR) {
-        *fx = PV_FX_STROBING;
-        *color = (rgb_t){255, 0, 0};
-        *bright = r->h2d[PV_ST_ERROR][PV_FX_STROBING].brightness;
-        *speed = r->h2d[PV_ST_ERROR][PV_FX_STROBING].speed;
-        return true;
+    // 2. warning_overide, switch array +4, gate at 0x400dcc90, and only when
+    //    the printer state byte reads ERROR (0x400dcc98 tests == 1).
+    if (r->warning_sw && g_live.device_state == PV_ST_ERROR) {
+        if (r->light_mode != PV_MODE_H2D) {
+            // 0x400dcc9d: mode != 1 routes to 0x400ddeac, solid red 127.
+            *fx = PV_FX_OVERRIDE_RED;
+            *color = (rgb_t){127, 0, 0};
+            *bright = 100; *speed = 0;
+            return true;
+        }
+        // mode == 1 routes to 0x400dc59c, the ordinary H2D renderer, which
+        // lands on h2d[ERROR]. Fall through to the mode switch and let it.
+    } else {
+        // 3. follow_printer, +1, gate at 0x400dccd0, qualified by the
+        //    printer's own chamber-light byte at 0x3ffb5578+188.
+        if (r->follow_printer) {
+            if (!g_live.printer_light) return false;
+        }
+        // 4. follow_vent, +2, gate at 0x400dcd08, qualified by the vent-open
+        //    byte at 0x3ffb5678+19. Only reached when follow_printer is off.
+        else if (r->follow_vent) {
+            if (!g_live.vent_open) return false;
+        }
     }
 
     // 5. The selected light mode.

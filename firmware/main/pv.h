@@ -43,6 +43,12 @@
 #define PV_FX_RAINBOW     6
 #define PV_FX_COUNT       7
 
+// Not user selectable and not part of the config arrays. Stock's warning
+// override renderer at 0x400ddeac is a separate function, not one of the
+// seven: it paints every pixel R=127 G=0 B=0 directly, with no brightness
+// scaling, and delays 10 ticks = 100 ms.
+#define PV_FX_OVERRIDE_RED 100
+
 // Warning Hot boundary, stated verbatim in the factory app's own copy:
 // the printer's maximum temperature crossing 50 C is the burn-risk line.
 // Warning Hot boundary, read out of the image at 0x400dc5da: movi.n a9, 50
