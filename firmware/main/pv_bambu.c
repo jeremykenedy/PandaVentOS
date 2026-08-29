@@ -29,28 +29,139 @@ static const char PUSHALL[] =
 
 // ---------- report parsing ----------
 
+// ---------------------------------------------------------------------------
+// THE ERROR PREDICATE, recovered 2026-08-29 from 0x400d9158.
+//
+// Stock does not derive its ERROR state from gcode_state. The chain is:
+//
+//   error = classify(print_error) || hms_has_pair()
+//   error -> internal 1 at 0x400d91c7
+//         -> H2D state 5 at 0x400dc424   (5 is reachable ONLY from internal 1:
+//            0x400dc300 returns only 1 or 2 across all eleven of its exits and
+//            0x400dc3a8 returns only 4 or 0)
+//         -> the warning override red
+//
+// The clone gated on gcode_state == "FAILED" until now, which is a different
+// signal entirely: an HMS fault during a RUNNING print showed red on stock and
+// the printing effect here.
+//
+// classify() is 0x400d8fa4. Three tables, all read out of DROM:
+//
+//   A  0x3f416e5c  4 entries, stride 4, exact match  -> IS an error
+//   B  0x3f416e6c  3 entries, stride 8 {value, mask} -> NOT an error when the
+//                  bits that differ from value all fall inside mask
+//                  (ball a8, a10 at 0x400d8fd2)
+//   C  0x3f416e84  42 entries, stride 4, exact match -> NOT an error
+//
+// Order matters: zero first, then A, then B, then C, then default to error.
+static const uint32_t ERR_FORCE[4] = {          // table A
+    0x05004014, 0x0500402D, 0x0500402E, 0x0500402F,
+};
+static const struct { uint32_t value, mask; } ERR_MASKED[3] = {   // table B
+    { 0x05004017, 0x0000000F },
+    { 0x05004020, 0x0000000F },
+    { 0x0501401A, 0x00000FFF },
+};
+static const uint32_t ERR_IGNORE[42] = {        // table C
+    0x07FFC008, 0x07FF8003, 0x07FFC003, 0x07FE8006, 0x07FE8007, 0x07FEC006,
+    0x07FEC009, 0x07FEC00A, 0x07FEC010, 0x07FEC011, 0x07FEC012, 0x07FF8006,
+    0x07FF8007, 0x07FFC006, 0x07FFC009, 0x07FFC00A, 0x07FFC010, 0x07FFC011,
+    0x07FFC012, 0x18FE8006, 0x18FE8007, 0x18FEC006, 0x18FEC009, 0x18FEC00A,
+    0x18FF8006, 0x18FF8007, 0x18FFC006, 0x18FFC009, 0x18FFC00A, 0x05008079,
+    0x03008054, 0x03004067, 0x0300400C, 0x0500400E, 0x05008030, 0x0500C011,
+    0x0C008002, 0x05004001, 0x0300800C, 0x03008013, 0x12FF8007, 0x12FFC003,
+};
+
+// The single hms pair stock matches at 0x400d9015. Entry field 0 is compared
+// against the literal at 0x400d087c and field 4 against 0x400d0878.
+//
+// INFERRED, and the only inferred thing here: which of the two JSON members is
+// which. The pair itself is exact. Bambu reports hms entries as
+// { "attr": N, "code": M } and the magnitudes make attr the 0x0300_1200 half,
+// so that is the assignment used. If it is ever shown to be reversed, swap
+// these two constants and nothing else changes.
+#define HMS_FAULT_ATTR  0x03001200u
+#define HMS_FAULT_CODE  0x00020001u
+
+// 0x400d9158: classify(print_error) first, and only if that says no does the
+// hms pair get consulted.
+static bool error_now(void);
+
+static bool print_error_is_fault(uint32_t code)
+{
+    if (code == 0) return false;                        // 0x400d8fa7
+    for (int i = 0; i < 4; ++i)                         // 0x400d8fb0
+        if (ERR_FORCE[i] == code) return true;
+    for (int i = 0; i < 3; ++i) {                       // 0x400d8fc5
+        uint32_t diff = ERR_MASKED[i].value ^ code;
+        if ((diff & ~ERR_MASKED[i].mask) == 0) return false;
+    }
+    for (int i = 0; i < 42; ++i)                        // 0x400d8fe0
+        if (ERR_IGNORE[i] == code) return false;
+    return true;                                        // 0x400d8ff2
+}
+
+static bool error_now(void)
+{
+    return print_error_is_fault((uint32_t)g_live.print_error) || g_live.hms_fault;
+}
+
 static void handle_report(const char *data, int len)
 {
     cJSON *root = cJSON_ParseWithLength(data, len);
     if (!root) return;
     cJSON *print = cJSON_GetObjectItemCaseSensitive(root, "print");
     if (print) {
+        // Report key index 1. Parsed before gcode_state because the ERROR
+        // decision below depends on it.
+        cJSON *pe = cJSON_GetObjectItemCaseSensitive(print, "print_error");
+        if (cJSON_IsNumber(pe)) g_live.print_error = pe->valueint;
+
+        // 0x400d900c walks the array looking for one exact pair. A report
+        // that omits hms leaves the previous verdict standing, matching
+        // stock, whose list and count are only ever overwritten by a parse.
+        cJSON *hms = cJSON_GetObjectItemCaseSensitive(print, "hms");
+        if (cJSON_IsArray(hms)) {
+            bool hit = false;
+            cJSON *ent;
+            cJSON_ArrayForEach(ent, hms) {
+                cJSON *at = cJSON_GetObjectItemCaseSensitive(ent, "attr");
+                cJSON *cd = cJSON_GetObjectItemCaseSensitive(ent, "code");
+                if (cJSON_IsNumber(at) && cJSON_IsNumber(cd) &&
+                    (uint32_t)at->valuedouble == HMS_FAULT_ATTR &&
+                    (uint32_t)cd->valuedouble == HMS_FAULT_CODE) {
+                    hit = true;
+                    break;
+                }
+            }
+            g_live.hms_fault = hit;
+        }
+
+        // Stock re-evaluates the error on EVERY report pass: 0x400d91c1 is
+        // reached unconditionally, including down the 0x400d91b0 path, so it
+        // does not depend on gcode_state being present. Keep that shape here,
+        // or a report carrying only hms would never raise red.
+        int ds = g_live.device_state;
         cJSON *gs = cJSON_GetObjectItemCaseSensitive(print, "gcode_state");
-        if (cJSON_IsString(gs)) {
-            const char *st = gs->valuestring;
-            int ds = g_live.device_state;
+        const char *st = cJSON_IsString(gs) ? gs->valuestring : NULL;
+        if (st) {
             if (!strcmp(st, "IDLE") || !strcmp(st, "INIT")) ds = PV_ST_IDLE;
             else if (!strcmp(st, "PREPARE") || !strcmp(st, "SLICING")) ds = PV_ST_PREPARE;
             else if (!strcmp(st, "RUNNING")) ds = PV_ST_PRINTING;
             else if (!strcmp(st, "PAUSE")) ds = PV_ST_PAUSED;
             else if (!strcmp(st, "FINISH")) ds = PV_ST_COMPLETE;
-            else if (!strcmp(st, "FAILED")) ds = PV_ST_ERROR;
-            if (ds != g_live.device_state) {
-                g_live.device_state = ds;
-                ESP_LOGI(TAG, "printer state -> %d (%s)", ds, st);
-                pv_rgb_notify();
-                pv_motor_update();
-            }
+            // "FAILED" is deliberately not matched. Stock's ERROR comes from
+            // the predicate above and gcode_state never reaches it, so mapping
+            // FAILED would raise red on a signal stock does not use. Leaving
+            // it unmatched keeps the previous state, which is "no information"
+            // rather than an invented transition.
+        }
+        if (error_now()) ds = PV_ST_ERROR;
+        if (ds != g_live.device_state) {
+            g_live.device_state = ds;
+            ESP_LOGI(TAG, "printer state -> %d (%s)", ds, st ? st : "no gcode_state");
+            pv_rgb_notify();
+            pv_motor_update();
         }
         cJSON *bed = cJSON_GetObjectItemCaseSensitive(print, "bed_temper");
         if (cJSON_IsNumber(bed)) g_live.bed_temp = (int)bed->valuedouble;

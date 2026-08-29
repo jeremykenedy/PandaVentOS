@@ -172,6 +172,13 @@ typedef struct {
     // "Automatically turns RGB effect ON and OFF following the printers
     // stock light."
     bool  printer_light;
+    // print_error, report key index 1. Stock feeds it to the classifier at
+    // 0x400d8fa4; see pv_bambu.c. Zero at boot because stock's report array is
+    // .bss and nothing ever clears it.
+    int   print_error;
+    // Whether the last report's hms array carried the one pair stock looks
+    // for at 0x400d900c.
+    bool  hms_fault;
 } pv_live_t;
 
 // ---------------------------------------------------------------------------
