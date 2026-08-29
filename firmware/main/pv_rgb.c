@@ -461,25 +461,29 @@ void pv_rgb_test_cycle(void)
     ESP_LOGI(TAG, "==================current_mode is %d", s_test_mode);
 }
 
-// Stock's level 3 evaluation, 0x400d986b onward. Both halves are now read
-// out of the image; nothing here is inferred.
+// Stock's level 3 evaluation, 0x400d986b onward.
 //
-// The link half: the word at 0x3ffb4a7c. Every writer in the image was
-// enumerated and it takes exactly the values 2, 3, 4, 5, 6, 7 (stores at
-// 0x400d9632, 0x400d9584, 0x400d964e/0x400d9645, 0x400d95f4/0x400d960a,
-// 0x400d965f, 0x400d95bc), which is the factory schema's printer.state:
-// 2 connecting, 3 connected, 4 ip err, 5 sn err, 6 access code err,
-// 7 unknown err. 0x400d986b raises the indicator for 2 and 4..7, so yellow
-// means trying to reach the printer, or failing to.
+// RECOVERED: the link half. The word at 0x3ffb4a7c takes exactly 2, 3, 4, 5,
+// 6, 7 across every writer in the image (0x400d9632, 0x400d9584, 0x400d964e,
+// 0x400d9645, 0x400d95f4, 0x400d960a, 0x400d965f, 0x400d95bc), which is the
+// factory printer.state enum. 0x400d986b raises the indicator for 2 and 4..7,
+// so yellow means trying to reach the printer, or failing to.
 //
-// The fallback half: CLOSED as a constant 2026-08-28. The word at +44 of the
-// same block is 0x3ffb56a4, and that address occurs ZERO times in the whole
-// image. Its only two possible bases each occur exactly once as a literal
-// (0x3ffb5678 at file offset 0x40884, 0x3ffb4a78 at 0x40908), no load site of
-// either is followed by a store at +44, and of the twenty base+0xc00 sites in
-// IROM exactly one stores at +44: the initialiser at 0x400d9854, which writes
-// 3. Nothing else ever writes it, so it is 3 for the life of the device and 3
-// means normal. There is no fallback to model and no stand-in is needed.
+// NOT RECOVERED, and previously claimed closed IN ERROR: the fallback. When
+// the link half is false stock consults the word at +44 of the printer block
+// (0x3ffb56a4), 1 -> yellow, 2 -> blue, 3 -> normal. On 2026-08-28 this was
+// reported here as a constant 3 on the strength of a scan that found no
+// writers. That scan was broken: it split objdump output on tabs and took the
+// last field, which is the OPERAND list, so its "is this a store" test could
+// never match and it returned zero hits by construction. Re-run correctly on
+// 2026-08-29 the field has THREE writers: 0x400d9854 (init, 3), 0x400d9985
+// (0), and 0x400d9056, which stores its caller's argument and is reached with
+// 1 from at least 0x400d9905, 0x400d9acd and 0x400d9ae6.
+//
+// The conditions behind those three "= 1" sites are not yet traced, so this
+// function implements the link half only. That means the clone misses some
+// yellow the vent shows. It does NOT affect the boot blue, which comes from
+// the 2 the render task arms at 0x400dcabd.
 static void link_indicator_update(void)
 {
     int ps = g_live.printer_state;
