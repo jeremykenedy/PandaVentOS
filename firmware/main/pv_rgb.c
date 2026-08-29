@@ -172,9 +172,15 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         return 100;                          // static: nothing moves
 
     case PV_FX_BREATHING: {                  // 0x400dd008
+        // chan_f, not base * f: stock's order at 0x400dd125 is the integer
+        // product colour * brightness, converted once, then the smoothstep
+        // factor, then the divide by 100. Scaling the already-divided byte
+        // differed in 22.84 percent of cases, the worst of the three float
+        // effects.
         float f = breath_factor();
-        rgb_t c = { (uint8_t)(base.r * f), (uint8_t)(base.g * f),
-                    (uint8_t)(base.b * f) };
+        rgb_t c = { chan_f(color.r, bright100, f),
+                    chan_f(color.g, bright100, f),
+                    chan_f(color.b, bright100, f) };
         for (int i = 0; i < n; ++i) px[i] = c;
         uint32_t ms = 150u - (speed > 150 ? 150 : speed);
         return ms < 10 ? 10 : ms;
