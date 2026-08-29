@@ -6,6 +6,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lwip/sockets.h"
@@ -106,6 +107,104 @@ static bool error_now(void)
     return print_error_is_fault((uint32_t)g_live.print_error) || g_live.hms_fault;
 }
 
+// ---------------------------------------------------------------------------
+// THE H2D STATE MACHINE, recovered 2026-08-29 from 0x400d9178 and 0x400dc400.
+//
+// The discriminant is gcode_state, stored by stock as an int at REPORT BASE
+// + 124 = 0x3ffb568c (writers 0x400d9300 through 0x400d9379):
+//
+//     IDLE 0    RUNNING 1    PREPARE 2    PAUSE 3    FINISH 4    FAILED 5
+//
+// That address was invisible to three earlier scans because they were anchored
+// on the printer block base with offset 20, or on addmi from 0x3ffb4a78. Same
+// address, different base and offset. A scan that found only two writers, both
+// zero, and concluded the machine was dead was wrong for exactly that reason.
+//
+// 0x400d9178 turns gcode_state into the internal state at 0x3ffb5690, and
+// 0x400dc400 maps that to the H2D state the renderer indexes with.
+#define FINISH_HOLD_MS 30015          // literal at 0x400d0898
+
+// 0x400dc300. Splits a RUNNING print into PREPARE or PRINTING using stg_cur
+// (0x3ffb5620, report index 4) and layer_num (0x3ffb561c, index 3).
+static int stage_split(int stg, int layer)
+{
+    if (stg == -1) return PV_ST_PREPARE;                    // 0x400dc309
+    if (stg > 54)                                           // 0x400dc314
+        return (stg == 255) ? (layer ? PV_ST_PRINTING : PV_ST_PREPARE)
+                            : PV_ST_PRINTING;               // 0x400dc350
+    if (stg >= 24)                                          // 0x400dc319
+        return ((0x48008021u >> (stg - 24)) & 1u)           // 0x400d0c04
+               ? PV_ST_PREPARE : PV_ST_PRINTING;            // 0x400dc32f
+    if (stg > 19) return PV_ST_PRINTING;                    // 0x400dc31e
+    if (stg < 0)  return PV_ST_PRINTING;                    // 0x400dc321
+    uint32_t bit = 1u << stg;                               // 0x400dc338
+    if (bit & 0x0008698Eu) return PV_ST_PREPARE;            // 0x400d0c00
+    if (bit & 0x00000011u)                                  // 0x400dc346
+        return layer ? PV_ST_PRINTING : PV_ST_PREPARE;      // 0x400dc35c
+    return PV_ST_PRINTING;                                  // 0x400dc34b
+}
+
+// 0x400d9178. Produces the internal state at 0x3ffb5690.
+static int internal_state_now(void)
+{
+    static int  prev = 0;
+    static bool armed, fired;
+    static int64_t t0;
+
+    int gs = g_live.gcode_state;
+
+    if (gs == 4 && prev == 1 && !armed) {        // 0x400d9189
+        armed = true;
+        t0 = esp_timer_get_time();
+        fired = false;
+    } else if (gs != 4) {                        // 0x400d91b0
+        armed = false;
+    }
+    prev = gs;                                   // 0x400d91b8
+
+    if (error_now()) { armed = false; return 1; }             // 0x400d91c7
+    if (gs == 2) return 3;                                    // 0x400d91d8
+    if (gs == 3) return 4;                                    // 0x400d91e5
+    if (gs == 1) return 2;                                    // 0x400d91f4
+    if (armed && !fired) {                                    // 0x400d9207
+        if ((esp_timer_get_time() - t0) / 1000 <= FINISH_HOLD_MS)
+            return 5;                                         // 0x400d9225
+        fired = true;                                         // 0x400d9230
+    }
+    return 0;                                                 // 0x400d9238
+}
+
+// 0x400dc400.
+//
+// Internal 5 does NOT map straight to COMPLETE: it goes through 0x400dc3a8,
+// which is a SECOND 30 second hold with its own latch byte at 0x3ffb68e8 and
+// its own timestamp pair at 0x3ffb68e0, measured in microseconds against
+// 29999999 (0x400d0c14). Internals 1, 2 and 4 each clear that latch on the way
+// past. The two timers are chained, not duplicated, so both are modelled.
+static int h2d_state_now(void)
+{
+    static bool fin_latched;          // 0x3ffb68e8
+    static int64_t fin_t0;            // 0x3ffb68e0
+
+    switch (internal_state_now()) {
+    case 1: fin_latched = false; return PV_ST_ERROR;      // 0x400dc424
+    case 2: fin_latched = false;                          // 0x400dc431
+            return stage_split(g_live.stg_cur, g_live.layer_num);
+    case 3: return PV_ST_PREPARE;                         // 0x400dc448
+    case 4: fin_latched = false; return PV_ST_PAUSED;     // 0x400dc455
+    case 5:                                               // 0x400dc462
+        if (!fin_latched) {                               // 0x400dc3b1
+            fin_t0 = esp_timer_get_time();
+            fin_latched = true;
+            return PV_ST_COMPLETE;                        // 0x400dc3c8
+        }
+        if (esp_timer_get_time() - fin_t0 > 29999999)     // 0x400d0c14
+            return PV_ST_IDLE;                            // 0x400dc3f5
+        return PV_ST_COMPLETE;                            // 0x400dc3fa
+    default: return PV_ST_IDLE;                           // 0x400dc414
+    }
+}
+
 static void handle_report(const char *data, int len)
 {
     cJSON *root = cJSON_ParseWithLength(data, len);
@@ -137,29 +236,34 @@ static void handle_report(const char *data, int len)
             g_live.hms_fault = hit;
         }
 
-        // Stock re-evaluates the error on EVERY report pass: 0x400d91c1 is
-        // reached unconditionally, including down the 0x400d91b0 path, so it
-        // does not depend on gcode_state being present. Keep that shape here,
-        // or a report carrying only hms would never raise red.
-        int ds = g_live.device_state;
+        // Stored as stock's enum, not mapped to a device state here. A report
+        // that omits the key leaves the value alone, exactly as stock's slot is
+        // only ever touched by a parse.
         cJSON *gs = cJSON_GetObjectItemCaseSensitive(print, "gcode_state");
-        const char *st = cJSON_IsString(gs) ? gs->valuestring : NULL;
-        if (st) {
-            if (!strcmp(st, "IDLE") || !strcmp(st, "INIT")) ds = PV_ST_IDLE;
-            else if (!strcmp(st, "PREPARE") || !strcmp(st, "SLICING")) ds = PV_ST_PREPARE;
-            else if (!strcmp(st, "RUNNING")) ds = PV_ST_PRINTING;
-            else if (!strcmp(st, "PAUSE")) ds = PV_ST_PAUSED;
-            else if (!strcmp(st, "FINISH")) ds = PV_ST_COMPLETE;
-            // "FAILED" is deliberately not matched. Stock's ERROR comes from
-            // the predicate above and gcode_state never reaches it, so mapping
-            // FAILED would raise red on a signal stock does not use. Leaving
-            // it unmatched keeps the previous state, which is "no information"
-            // rather than an invented transition.
+        if (cJSON_IsString(gs)) {
+            const char *st = gs->valuestring;
+            if      (!strcmp(st, "IDLE"))    g_live.gcode_state = 0;
+            else if (!strcmp(st, "RUNNING")) g_live.gcode_state = 1;
+            else if (!strcmp(st, "PREPARE")) g_live.gcode_state = 2;
+            else if (!strcmp(st, "PAUSE"))   g_live.gcode_state = 3;
+            else if (!strcmp(st, "FINISH"))  g_live.gcode_state = 4;
+            else if (!strcmp(st, "FAILED"))  g_live.gcode_state = 5;
+            // Stock matches these six strings and nothing else, so "INIT" and
+            // "SLICING", which the clone used to fold into IDLE and PREPARE,
+            // are not stock behaviour and are no longer matched.
         }
-        if (error_now()) ds = PV_ST_ERROR;
+        cJSON *sc = cJSON_GetObjectItemCaseSensitive(print, "stg_cur");
+        if (cJSON_IsNumber(sc)) g_live.stg_cur = sc->valueint;
+        cJSON *ln = cJSON_GetObjectItemCaseSensitive(print, "layer_num");
+        if (cJSON_IsNumber(ln)) g_live.layer_num = ln->valueint;
+
+        // Stock runs the machine on EVERY report pass: 0x400d91c1 and the
+        // branches after it are reached unconditionally, including down the
+        // 0x400d91b0 path.
+        int ds = h2d_state_now();
         if (ds != g_live.device_state) {
             g_live.device_state = ds;
-            ESP_LOGI(TAG, "printer state -> %d (%s)", ds, st ? st : "no gcode_state");
+            ESP_LOGI(TAG, "printer state -> %d (gcode_state %d)", ds, g_live.gcode_state);
             pv_rgb_notify();
             pv_motor_update();
         }

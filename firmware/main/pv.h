@@ -179,6 +179,14 @@ typedef struct {
     // Whether the last report's hms array carried the one pair stock looks
     // for at 0x400d900c.
     bool  hms_fault;
+    // gcode_state as stock stores it, at report base + 124 = 0x3ffb568c.
+    // 0 IDLE, 1 RUNNING, 2 PREPARE, 3 PAUSE, 4 FINISH, 5 FAILED (0x400d9300
+    // through 0x400d9379). This is the discriminant of the H2D state machine.
+    int   gcode_state;
+    // Report keys 4 and 3. Both are consumed, by the stage classifier at
+    // 0x400dc300 (0x3ffb5620 and 0x3ffb561c).
+    int   stg_cur;
+    int   layer_num;
 } pv_live_t;
 
 // ---------------------------------------------------------------------------
