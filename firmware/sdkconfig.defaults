@@ -43,3 +43,11 @@ CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 CONFIG_ESP_TASK_WDT_EN=y
 CONFIG_ESP_TASK_WDT_INIT=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+
+# The Wi-Fi SCAN_DONE handler runs on the esp_event task ("sys_evt"), whose IDF
+# default stack is 2304 B. That is tight once the handler also builds JSON and
+# queues httpd work, and it overflowed: the device panicked and rebooted on
+# every scan, which the setup page showed as "communication interrupted" and
+# which made a factory-reset vent impossible to put back on Wi-Fi. The AP
+# records are heap-allocated now; this is the second belt.
+CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096

@@ -4,6 +4,7 @@
 #include "pv.h"
 
 #include <string.h>
+#include <stdlib.h>
 #include "esp_event.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -125,12 +126,24 @@ void pv_wifi_scan_start(void)
     }
 }
 
+// Runs on the esp_event task (sys_evt), whose stack is small. A
+// wifi_ap_record_t is over 100 bytes, so twenty of them on the stack is more
+// than 2 KB and overflows it: the device panicked and rebooted on every scan,
+// which the factory UI reported as "communication interrupted" and which made
+// the hotspot setup page unusable after a factory reset. Heap-allocate.
 static void scan_done(void)
 {
     uint16_t n = 0;
     esp_wifi_scan_get_ap_num(&n);
     if (n > 20) n = 20;
-    wifi_ap_record_t recs[20];
+    wifi_ap_record_t *recs = calloc(n ? n : 1, sizeof(wifi_ap_record_t));
+    if (!recs) {
+        ESP_LOGE(TAG, "scan: out of memory for %u records", n);
+        s_test_scan = 2;
+        g_live.wifi_scan = 0;
+        pv_ws_push_state();
+        return;
+    }
     uint16_t got = n;
     esp_wifi_scan_get_ap_records(&got, recs);
 
@@ -152,6 +165,7 @@ static void scan_done(void)
     }
     s_test_scan = 2;
     g_live.wifi_scan = 0;
+    free(recs);
     char *out = cJSON_Print(root);
     cJSON_Delete(root);
     pv_ws_broadcast(out);
