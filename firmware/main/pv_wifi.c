@@ -104,7 +104,18 @@ void pv_wifi_scan_start(void)
     s_test_scan = 1;
     s_saw_test_ap = false;
     pv_ws_push_state();
-    wifi_scan_config_t sc = { .show_hidden = false };
+    // Scanning in APSTA takes the radio off the AP's channel. With ESP-IDF's
+    // default dwell (120 ms active max, 13 channels) the hotspot is away for
+    // over a second and a browser sitting on the setup page drops its
+    // WebSocket, which the factory UI reports as "communication interrupted".
+    // Bound the per-channel dwell and give the AP channel a longer slice
+    // between hops so the client rides through the scan.
+    wifi_scan_config_t sc = {
+        .show_hidden = false,
+        .scan_type   = WIFI_SCAN_TYPE_ACTIVE,
+        .scan_time   = { .active = { .min = 20, .max = 60 } },
+        .home_chan_dwell_time = 60,
+    };
     esp_err_t err = esp_wifi_scan_start(&sc, false /* async */);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "scan start: %d", err);
