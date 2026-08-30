@@ -154,7 +154,16 @@ typedef struct {
     char language[6];            // "en" / "zh"
     bool motor_manual;           // false = AUTO (factory default)
     bool motor_manual_open;      // manual-mode vent target
+    // ADDITION, appended on purpose. Everything above keeps its offset, so a
+    // config stored by the previous build migrates by copying up to here and
+    // letting this field take its default. What is shown on the Control
+    // Panel's Device row; empty means use PV_DEVICE_NAME_DEFAULT.
+    char device_name[32];
 } pv_cfg_t;
+
+// Stock hard-codes this string into the web app, where it is a translation
+// entry rather than a setting. Same text, now editable.
+#define PV_DEVICE_NAME_DEFAULT "Panda Vent"
 
 // ---------------------------------------------------------------------------
 // Material-aware vent policy. AN ADDITION, NOT PART OF THE STOCK CLONE.

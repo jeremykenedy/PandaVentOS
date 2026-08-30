@@ -3,6 +3,7 @@
 // push and the factory manual's defaults table).
 #include "pv.h"
 
+#include <stddef.h>
 #include <string.h>
 #include "esp_log.h"
 #include "esp_system.h"
@@ -13,7 +14,8 @@ static const char *TAG = "pv_cfg";
 
 #define CFG_NS    "pv"
 #define CFG_KEY   "cfg"
-#define CFG_MAGIC 0x50564332   // "PVC2": seven effects became nine
+#define CFG_MAGIC 0x50564333   // "PVC3": device_name appended
+#define CFG_MAGIC_V2 0x50564332   // "PVC2": nine effects, no device_name
 #define CFG_MAGIC_V1 0x50564331   // "PVC1": the seven effect layout
 
 // The v1 layout, kept verbatim so a device that has been running since before
@@ -144,6 +146,7 @@ void pv_cfg_factory_defaults(pv_cfg_t *c)
     c->ap.on = true;
     c->hostname[0] = '\0';           // empty = derive from AP suffix
     snprintf(c->language, sizeof(c->language), "en");
+    snprintf(c->device_name, sizeof(c->device_name), "%s", PV_DEVICE_NAME_DEFAULT);
     c->motor_manual = false;         // AUTO is the factory default
     c->motor_manual_open = false;
 }
@@ -185,16 +188,33 @@ void pv_cfg_load(void)
     }
     // Big enough for either layout. nvs_get_blob fills in the stored length,
     // and the magic says which shape those bytes are.
-    union { pv_cfg_t v2; pv_cfg_v1_t v1; } stored;
+    union { pv_cfg_t v3; pv_cfg_v1_t v1; } stored;
     size_t size = sizeof(stored);
     esp_err_t err = nvs_get_blob(h, CFG_KEY, &stored, &size);
     nvs_close(h);
 
     if (err == ESP_OK && size == sizeof(pv_cfg_t) &&
-        stored.v2.magic == CFG_MAGIC) {
-        g_cfg = stored.v2;
+        stored.v3.magic == CFG_MAGIC) {
+        g_cfg = stored.v3;
         cfg_clamp_loaded();
         ESP_LOGI(TAG, "config loaded (%u B)", (unsigned)size);
+        return;
+    }
+
+    // v2 -> v3. device_name was APPENDED, so every field before it kept its
+    // offset and the whole prefix copies straight across. Copying exactly
+    // offsetof(device_name) bytes rather than the stored size is what keeps
+    // v2's trailing struct padding out of the new field.
+    if (err == ESP_OK && stored.v3.magic == CFG_MAGIC_V2 &&
+        size >= offsetof(pv_cfg_t, device_name) && size <= sizeof(pv_cfg_t)) {
+        memcpy(&g_cfg, &stored.v3, offsetof(pv_cfg_t, device_name));
+        g_cfg.magic = CFG_MAGIC;
+        // device_name keeps the default pv_cfg_factory_defaults already put
+        // there, which is the string stock hard-codes into the web app.
+        cfg_clamp_loaded();
+        ESP_LOGW(TAG, "migrated config v2 -> v3 (%u B -> %u B), device_name defaulted",
+                 (unsigned)size, (unsigned)sizeof(pv_cfg_t));
+        pv_cfg_save();
         return;
     }
 
@@ -231,10 +251,11 @@ void pv_cfg_load(void)
         memcpy(g_cfg.language, stored.v1.language, sizeof(g_cfg.language));
         g_cfg.motor_manual      = stored.v1.motor_manual;
         g_cfg.motor_manual_open = stored.v1.motor_manual_open;
+        // device_name did not exist in v1 either; it keeps its default.
         g_cfg.magic             = CFG_MAGIC;
 
         cfg_clamp_loaded();
-        ESP_LOGW(TAG, "migrated config v1 -> v2 (%u B -> %u B), %d effects -> %d",
+        ESP_LOGW(TAG, "migrated config v1 -> v3 (%u B -> %u B), %d effects -> %d",
                  (unsigned)size, (unsigned)sizeof(pv_cfg_t),
                  PV_FX_COUNT_V1, PV_FX_COUNT);
         pv_cfg_save();      // write it back in the new shape straight away

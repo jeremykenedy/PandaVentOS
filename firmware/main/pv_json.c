@@ -97,6 +97,11 @@ char *pv_json_state(void)
     cJSON *se = cJSON_AddObjectToObject(root, "settings");
     cJSON_AddStringToObject(se, "fw_version", "V1.0.0");
     cJSON_AddStringToObject(se, "language", g_cfg.language);
+    // NOT a stock key. What the Control Panel's Device row shows; stock has
+    // the same string baked into the web app as a translation entry.
+    cJSON_AddStringToObject(se, "device_name",
+        g_cfg.device_name[0] ? g_cfg.device_name : PV_DEVICE_NAME_DEFAULT);
+    cJSON_AddStringToObject(se, "device_name_default", PV_DEVICE_NAME_DEFAULT);
 
     // vent_policy: material-aware venting. NOT a stock key. The factory app
     // ignores objects it does not know, so its presence is harmless there.

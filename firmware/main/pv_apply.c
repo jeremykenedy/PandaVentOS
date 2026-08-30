@@ -51,6 +51,21 @@ static void apply_settings(cJSON *o)
         ESP_LOGW(TAG, "restart requested");
         schedule_restart();
     }
+    // NOT a stock key. An empty string, or the word "default", puts the
+    // stock name back, so the UI's reset button does not have to know it.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "device_name")) && cJSON_IsString(e)) {
+        const char *v = e->valuestring;
+        if (!v[0] || strcmp(v, "default") == 0) {
+            snprintf(g_cfg.device_name, sizeof(g_cfg.device_name),
+                     "%s", PV_DEVICE_NAME_DEFAULT);
+        } else {
+            snprintf(g_cfg.device_name, sizeof(g_cfg.device_name), "%s", v);
+        }
+        pv_cfg_save();
+        ESP_LOGI(TAG, "device name -> %s", g_cfg.device_name);
+        pv_ws_broadcast(pv_json_response("set_device_name", 1));
+        pv_ws_push_state();
+    }
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "factory_reset")) && cJSON_IsNumber(e) && e->valueint) {
         pv_ws_broadcast(pv_json_response("factory_reset", 1));
         vTaskDelay(pdMS_TO_TICKS(300));
