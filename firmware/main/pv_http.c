@@ -23,7 +23,10 @@ extern const uint8_t index_gz_end[]   asm("_binary_factory_index_html_gz_end");
 static httpd_handle_t s_server;
 static volatile bool s_up;
 
-#define MAX_WS 4
+// One tracked websocket per socket the server will accept. It was 4 against a
+// pool of 8, so the server would happily accept clients it had no room to talk
+// to. Eight ints is not a meaningful amount of RAM.
+#define MAX_WS 8
 static int s_ws_fd[MAX_WS];
 static int s_ws_count;
 
@@ -43,7 +46,25 @@ static void ws_track(int fd)
 {
     for (int i = 0; i < s_ws_count; ++i)
         if (s_ws_fd[i] == fd) return;
-    if (s_ws_count < MAX_WS) s_ws_fd[s_ws_count++] = fd;
+    if (s_ws_count == MAX_WS) {
+        // Table full: drop the OLDEST client, never the one that just arrived.
+        //
+        // Silently ignoring the newcomer, which is what this did before, gives
+        // the worst symptom in the whole UI. The handshake succeeds, the
+        // browser reports the socket OPEN, and then nothing ever arrives: no
+        // state on connect, no updates. The page sits there empty and there is
+        // nothing on screen to explain it, because the device is still busy
+        // talking to tabs somebody left open on another machine.
+        //
+        // Measured on the running device with probe/ws-client-limit.py: six
+        // clients connected, three were served, three got an open socket and
+        // total silence.
+        ESP_LOGW(TAG, "ws table full, evicting fd=%d to make room for fd=%d",
+                 s_ws_fd[0], fd);
+        for (int i = 1; i < MAX_WS; ++i) s_ws_fd[i - 1] = s_ws_fd[i];
+        --s_ws_count;
+    }
+    s_ws_fd[s_ws_count++] = fd;
 }
 
 static void ws_untrack(int fd)
