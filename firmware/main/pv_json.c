@@ -143,6 +143,10 @@ char *pv_json_state(void)
     cJSON_AddNumberToObject(vp, "ring_blink", g_cfg.ring_blink ? 1 : 0);
     cJSON_AddNumberToObject(vp, "device_state", g_live.device_state);
     cJSON_AddNumberToObject(vp, "bed_temp", g_live.bed_temp);
+    // NOT STOCK. print.mc_percent, which drives the Progress Bar effect.
+    // Exposed as read-only telemetry beside the other live values so the
+    // effect can be checked from outside instead of only by looking at it.
+    cJSON_AddNumberToObject(vp, "print_percent", g_live.print_percent);
     cJSON *mats = cJSON_AddArrayToObject(vp, "materials");
     for (int i = 0; i < PV_MAT_COUNT; ++i) {
         cJSON *m = cJSON_CreateObject();
