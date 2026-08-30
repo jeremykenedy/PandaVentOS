@@ -11,6 +11,8 @@
 #include "driver/gpio.h"
 #include "driver/ledc.h"
 #include "esp_adc/adc_oneshot.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
 #include "freertos/FreeRTOS.h"
@@ -69,6 +71,7 @@ static const group_t GROUPS[PV_MOTOR_GROUPS] = {
 #define HALL_CLOSED     2
 
 static adc_oneshot_unit_handle_t s_adc;
+static adc_cali_handle_t          s_cali;
 static int s_groups = PV_MOTOR_GROUPS;
 static volatile bool s_want_open, s_moving;
 
@@ -214,7 +217,25 @@ static int hall_state_from_raw(int raw)
     return 4;
 }
 
+// Stock does NOT classify raw ADC counts. At 0x400deb45 it takes the raw
+// reading, passes it through adc_cali_raw_to_voltage (call8 0x40115404) and
+// classifies the resulting MILLIVOLTS at 0x400deb51. The bands 640..960,
+// 1360..1680 and 2080..2450 are volts, not counts. Classifying counts against
+// them is a unit error that makes every target unreachable, which is what
+// drove the motors against their stops on 2026-08-30.
 static int hall_raw(const group_t *g)
+{
+    int raw = 0;
+    if (!s_adc) return 0;
+    if (adc_oneshot_read(s_adc, g->hall, &raw) != ESP_OK) return 0;
+    if (!s_cali) return raw;          // uncalibrated: caller sees counts
+    int mv = 0;
+    if (adc_cali_raw_to_voltage(s_cali, raw, &mv) != ESP_OK) return raw;
+    return mv;
+}
+
+// Raw counts, for the kit-detect line and the safe-build probe.
+__attribute__((unused)) static int hall_raw_counts(const group_t *g)
 {
     int raw = 0;
     if (s_adc) adc_oneshot_read(s_adc, g->hall, &raw);
@@ -269,11 +290,18 @@ static void drive_task(void *arg)
     ESP_LOGI(TAG, "vent -> %s (hall target %d)", open_dir ? "OPEN" : "CLOSED", target);
 
     bool moving[PV_MOTOR_GROUPS] = {0};
+    // SAFETY DEPARTURE FROM STOCK. Stock re-issues the drive on the tick after
+    // it gives up, so a group whose target is unreachable is driven on/off at
+    // 200 ms forever. On 2026-08-30 that ground the mechanism audibly and the
+    // unit had to be unplugged. Once a group is abandoned it stays abandoned
+    // for the rest of this travel. Recorded in RE-NOTES.md.
+    bool abandoned[PV_MOTOR_GROUPS] = {0};
 
     for (;;) {
         int running = 0;
 
         for (int i = 0; i < s_groups; ++i) {
+            if (abandoned[i]) continue;
             int st = hall_state_from_raw(hall_raw(&GROUPS[i]));
             if (st != target) {
                 // group_drive holds stock's guard: on every tick after the
@@ -290,6 +318,7 @@ static void drive_task(void *arg)
                         group_stop(i);
                         moving[i] = false;
                         s_grp_seen[i] = false;
+                        abandoned[i] = true;
                         ESP_LOGW(TAG, "group %d abandoned off target %d", i, target);
                     }
                 } else {
@@ -322,6 +351,10 @@ static void drive_task(void *arg)
 
 static void vent_go(bool open_dir)
 {
+#if PV_SAFE_NO_MOTORS
+    ESP_LOGW(TAG, "SAFE BUILD: drive to %s refused", open_dir ? "OPEN" : "CLOSED");
+    return;
+#endif
     if (s_moving || g_live.vent_open == open_dir) {
         if (!s_moving) return;
     }
@@ -464,6 +497,29 @@ static void button_task(void *arg)
     }
 }
 
+#if PV_SAFE_NO_MOTORS
+// SAFE BUILD ONLY. Reads the hall ADC and reports raw plus classified state so
+// the real travel range can be measured by hand. Reads only; drives nothing.
+static void hall_probe_task(void *arg)
+{
+    for (;;) {
+        char line[160];
+        int o = 0;
+        for (int i = 0; i < 2; ++i) {
+            int cnt = hall_raw_counts(&GROUPS[i]);
+            int mv  = hall_raw(&GROUPS[i]);
+            int st  = hall_state_from_raw(mv);
+            const char *n = st == 0 ? "zero" : st == 1 ? "OPEN" :
+                            st == 2 ? "CLOSED" : st == 3 ? "mid3" : "none4";
+            o += snprintf(line + o, sizeof(line) - o,
+                          "g%d cnt=%4d mv=%4d st=%d(%s)  ", i, cnt, mv, st, n);
+        }
+        ESP_LOGW(TAG, "HALL %s", line);
+        vTaskDelay(pdMS_TO_TICKS(500));
+    }
+}
+#endif
+
 void pv_motor_start(void)
 {
     // Every failure here is logged and survived. A vent that cannot drive its
@@ -481,10 +537,27 @@ void pv_motor_start(void)
     adc_oneshot_chan_cfg_t cc = { .bitwidth = ADC_BITWIDTH_12, .atten = ADC_ATTEN_DB_12 };
     for (int i = 0; i < PV_MOTOR_GROUPS; ++i)
         adc_oneshot_config_channel(s_adc, GROUPS[i].hall, &cc);
+
+    // Stock builds a line-fitting calibration scheme
+    // (adc_cali_create_scheme_line_fitting, string at file offset 0x2a934)
+    // and converts every hall reading to millivolts before classifying it.
+    // Without this the hall bands are compared against raw counts and no
+    // target is ever reachable.
+    adc_cali_line_fitting_config_t lf = {
+        .unit_id  = ADC_UNIT_1,
+        .atten    = ADC_ATTEN_DB_12,
+        .bitwidth = ADC_BITWIDTH_12,
+    };
+    esp_err_t ce = adc_cali_create_scheme_line_fitting(&lf, &s_cali);
+    if (ce != ESP_OK) {
+        ESP_LOGE(TAG, "adc cali failed (%s); hall readings will be raw counts",
+                 esp_err_to_name(ce));
+        s_cali = NULL;
+    }
     // Kit auto-detect line (GPIO35): ~1900-2400 raw = 4 motors, ~1100-1700 = 2.
     adc_oneshot_config_channel(s_adc, ADC_CHANNEL_7, &cc);
     int det = 0;
-    adc_oneshot_read(s_adc, ADC_CHANNEL_7, &det);
+    adc_oneshot_read(s_adc, ADC_CHANNEL_7, &det);   // raw counts, not calibrated
     (void)det;
     if (det >= 1100 && det < 1800) s_groups = 2;
     ESP_LOGI(TAG, "config-detect raw=%d -> %d motor group(s)", det, s_groups);
@@ -512,6 +585,10 @@ void pv_motor_start(void)
         xTaskCreate(button_task, "pv_btn", 3072, NULL, 3, NULL);
         return;
     }
+#if PV_SAFE_NO_MOTORS
+    ESP_LOGW(TAG, "SAFE BUILD: motor channels not configured, motors inert");
+    s_groups = 0;
+#endif
     for (int i = 0; i < s_groups; ++i) {
         ledc_channel_config_t f = {
             .gpio_num = GROUPS[i].fwd_gpio, .speed_mode = LEDC_LOW_SPEED_MODE,
@@ -529,4 +606,7 @@ void pv_motor_start(void)
         vent_go(g_cfg.motor_manual_open);
     }
     xTaskCreate(button_task, "pv_btn", 3072, NULL, 3, NULL);
+#if PV_SAFE_NO_MOTORS
+    xTaskCreate(hall_probe_task, "pv_hall", 3072, NULL, 3, NULL);
+#endif
 }

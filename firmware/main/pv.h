@@ -28,6 +28,12 @@
 #define PV_STRIP_COUNT_MAX   2
 #define PV_MOTOR_GROUPS      4
 
+// SAFE BUILD SWITCH. When 1, the LEDC channels are never configured and every
+// drive request is refused, so no code path can energise a motor. For bench
+// debugging only after the 2026-08-29 incident where a button press drove the
+// vent against its stops until it was unplugged.
+#define PV_SAFE_NO_MOTORS    0
+
 // ---------------------------------------------------------------------------
 // Factory data model. Field names and value ranges mirror the factory
 // WebSocket schema one to one (rgb_mode / rgb_switch / printer / ap / sta /
