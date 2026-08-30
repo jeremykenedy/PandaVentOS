@@ -107,7 +107,14 @@ static esp_err_t ws_handler(httpd_req_t *req)
     httpd_ws_frame_t f = { .type = HTTPD_WS_TYPE_TEXT };
     esp_err_t err = httpd_ws_recv_frame(req, &f, 0);
     if (err != ESP_OK) return err;
-    if (f.len == 0 || f.len > 4096) return ESP_OK;
+    // Shipping cap stays exactly 4096. The test build takes whole captured
+    // printer reports through this path, which do not fit in that.
+#if PV_POLICY_TEST_HOOK
+#define PV_WS_MAX_FRAME 16384
+#else
+#define PV_WS_MAX_FRAME 4096
+#endif
+    if (f.len == 0 || f.len > PV_WS_MAX_FRAME) return ESP_OK;
     f.payload = malloc(f.len + 1);
     if (!f.payload) return ESP_ERR_NO_MEM;
     err = httpd_ws_recv_frame(req, &f, f.len);

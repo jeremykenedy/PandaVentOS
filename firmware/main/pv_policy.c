@@ -30,12 +30,9 @@ static const char *TAG = "pv_policy";
 #define POL_KEY   "pol"
 #define POL_MAGIC 0x5056504FU   // 'PVPO'
 
-// The filament families, in match order. First rule whose name is a prefix of
-// the reported material wins, so PETG must be tested before PET. Same list and
-// the same order as DragonVent's DEFAULT_FILAMENT_RULES.
-//
-// Known wart, kept for parity: "PC" is a prefix of "PCTG", which is a PETG-like
-// copolyester that would rather vent. Switch the PC rule off if you print it.
+// The filament families, in match order. First rule whose name matches the
+// front of the reported material wins, so PETG must be tested before PET. Same
+// list and the same order as DragonVent's DEFAULT_FILAMENT_RULES.
 const char *const pv_material_name[PV_MAT_COUNT] = {
     "PLA", "PETG", "PET", "TPU", "ABS", "ASA", "PC", "PA", "HIPS",
 };
@@ -104,8 +101,20 @@ void pv_policy_save(void)
     if (err != ESP_OK) ESP_LOGE(TAG, "policy save failed: %d", err);
 }
 
-// Index of the first enabled rule whose name is a prefix of the reported
-// material, or -1. Case-insensitive, so "pla" and "PLA+" both hit PLA.
+// Index of the first enabled rule matching the front of the reported material,
+// or -1. Case-insensitive, so "pla" and "PLA+" both hit PLA.
+//
+// A plain prefix test is WRONG, and the printer proves it. Bambu Studio ships
+// 33 distinct filament_type values, which is exactly what lands in tray_type,
+// and one of them is "PCTG". A prefix test hands PCTG to the PC rule and seals
+// the chamber for a PETG-family copolyester that wants venting.
+//
+// So the family name has to end on a boundary: end of string, or a character
+// that is not a letter. Checked against all 33 real values, this changes PCTG
+// and nothing else. The separators that actually occur are '-' (PLA-CF,
+// ABS-GF, ASA-AERO, TPU-AMS), a digit (PA6-CF), and in sub-brand strings a
+// space or '+' (PLA Basic, PLA Silk+). A letter continuing the token means a
+// different material, not a variant of this one.
 int pv_policy_match(const char *material)
 {
     if (!material || !material[0]) return -1;
@@ -118,7 +127,9 @@ int pv_policy_match(const char *material)
     for (int r = 0; r < PV_MAT_COUNT; ++r) {
         if (!(g_pol.rule_on & (1u << r))) continue;
         size_t n = strlen(pv_material_name[r]);
-        if (strncmp(up, pv_material_name[r], n) == 0) return r;
+        if (strncmp(up, pv_material_name[r], n) != 0) continue;
+        char next = up[n];
+        if (next == '\0' || !isalpha((unsigned char)next)) return r;
     }
     return -1;
 }

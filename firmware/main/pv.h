@@ -185,6 +185,7 @@ extern pv_policy_cfg_t g_pol;
 #endif
 #if PV_POLICY_TEST_HOOK
 extern bool g_test_live_lock;
+void pv_test_feed_report(const char *json, int len);
 #endif
 
 void pv_policy_defaults(pv_policy_cfg_t *p);

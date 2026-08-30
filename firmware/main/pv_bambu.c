@@ -382,6 +382,21 @@ static void handle_report(const char *data, int len)
     cJSON_Delete(root);
 }
 
+#if PV_POLICY_TEST_HOOK
+// TEST BUILD ONLY, compiled out of every shipping image. Pushes a report
+// through the real parser, so the filament path can be exercised with real
+// captured printer JSON instead of only with whatever spool happens to be
+// loaded. The lock is lifted for this one call so the report is not the thing
+// it is meant to hold off.
+void pv_test_feed_report(const char *json, int len)
+{
+    bool saved = g_test_live_lock;
+    g_test_live_lock = false;
+    handle_report(json, len);
+    g_test_live_lock = saved;
+}
+#endif
+
 static void on_mqtt(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     esp_mqtt_event_handle_t ev = data;

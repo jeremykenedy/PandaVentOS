@@ -268,6 +268,13 @@ static void apply_vent_policy(cJSON *o)
         ESP_LOGW(TAG, "TEST: bed_temp := %d", g_live.bed_temp);
         touched = true;
     }
+    // A whole printer report, pushed through the real parser.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "__test_report")) && cJSON_IsString(e)) {
+        ESP_LOGW(TAG, "TEST: feeding a %d byte report", (int)strlen(e->valuestring));
+        pv_test_feed_report(e->valuestring, (int)strlen(e->valuestring));
+        pv_ws_push_state();
+        return;        // the report is the whole message; nothing else to apply
+    }
 #endif
 
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "enable")) && cJSON_IsNumber(e)) {
