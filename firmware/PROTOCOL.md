@@ -292,3 +292,87 @@ Vent, then the error override, then the selected mode.
 * mDNS goes stale across a device reboot. Anything that waits for the device
   to come back should resolve the hostname to an IP once and then use the
   IP.
+
+---
+
+# PandaVent OS extensions
+
+Everything above is the factory protocol and is spoken unchanged. What
+follows is added by this firmware. A stock device sends none of it, and the
+factory web app ignores keys it does not recognise, so the two remain
+compatible in both directions.
+
+## Added to the state document
+
+Under `settings`:
+
+| key | type | meaning |
+|---|---|---|
+| `os_name` | string | `"PandaVent OS"` |
+| `os_version` | string | this project's own semantic version, distinct from `fw_version`, which stays `"V1.0.0"` because it names the FACTORY protocol revision on the wire |
+| `device_name` | string | what the Control Panel shows on its Device row |
+| `cfg_save_failed` | 0/1 | 1 means the last attempt to persist the configuration did not reach flash. The settings are live in RAM and will be lost at the next reboot. See the NVS budget note in `pv_cfg.c` |
+
+Under `vent_policy` (the whole object is an addition):
+
+| key | type | meaning |
+|---|---|---|
+| `enable` | 0/1 | master switch. Off restores stock venting exactly |
+| `heat_hold` | 0/1 | keep venting while the bed is still hot after a print |
+| `bed_open_c`, `bed_close_c` | int | the residual-heat thresholds, in °C |
+| `material` | string | the filament the printer reports as loaded, verbatim |
+| `matched` | int | index into `materials`, or -1 when no rule applies |
+| `materials` | array | `{index, name, seal, on}` per material |
+| `vent_open` | 0/1 | where the flap ACTUALLY is, read only |
+| `vent_mode` | string | `auto` / `open` / `closed`, the three-way selection |
+| `ring_mode` | 0..4 | `PV_RING_*`: auto, always on, always off, on when open, off when closed |
+| `ring_blink` | 0/1 | blink the button ring while in manual, which is stock's behaviour |
+| `device_state`, `bed_temp`, `print_percent` | int | live printer telemetry, read only. `print_percent` is the printer's own `mc_percent` |
+
+Inside every effect object of `rgb_mode.effects` and
+`rgb_mode.h2d_mode.device_states[].effects`:
+
+| key | type | meaning |
+|---|---|---|
+| `color_closed` | `"RRGGBB"` | the colour used while the vent is CLOSED. `color` remains the vent-OPEN colour, so the factory app's understanding of it is unchanged |
+
+## Added inbound messages
+
+    {"vent": {"mode": "auto" | "open" | "closed"}}
+
+Three-way manual override of the flap. Anything else is ignored rather than
+guessed at, because a wrong guess here drives a motor.
+
+    {"ring": {"mode": 0..4}}
+    {"ring": {"blink": 0|1}}
+
+The button's ring LED. Out-of-range values are refused, not clamped.
+
+    {"vent_policy": {"enable": 0|1}}
+    {"vent_policy": {"heat_hold": 0|1}}
+    {"vent_policy": {"material": {"index": 0..8, "on": 0|1}}}
+    {"vent_policy": {"bed_open_c": 45, "bed_close_c": 35}}
+
+    {"settings": {"device_name": "..."}}
+
+An empty string, or the literal word `default`, restores the stock name, so
+the UI's reset button does not have to know what that name is.
+
+Inside `rgb_mode.simple_mode` and `rgb_mode.h2d_mode`:
+
+    "rgb_closed": "RRGGBB"
+
+Sets the vent-closed colour. `rgb` keeps its factory meaning as the
+vent-open colour, so existing senders need no change.
+
+## Added HTTP
+
+    GET /backup
+
+Streams the entire 4 MB flash: bootloader, partition table, otadata, both app
+slots and NVS. Byte-for-byte what esptool produces over serial, verified
+against a USB read. About seventeen seconds. An `X-Flash-Size` header carries
+the expected length so a truncated transfer is detectable.
+
+**The image contains the Wi-Fi password, the printer serial and its access
+code in plaintext, in the NVS region.** Treat it as a secret.
