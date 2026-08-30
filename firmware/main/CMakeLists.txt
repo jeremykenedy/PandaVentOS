@@ -8,6 +8,7 @@ idf_component_register(
         "pv_bambu.c"
         "pv_rgb.c"
         "pv_motor.c"
+        "pv_policy.c"
         "pv_http.c"
     INCLUDE_DIRS "."
     EMBED_FILES "factory_index.html.gz"

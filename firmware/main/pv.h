@@ -149,6 +149,38 @@ typedef struct {
 } pv_cfg_t;
 
 // ---------------------------------------------------------------------------
+// Material-aware vent policy. AN ADDITION, NOT PART OF THE STOCK CLONE.
+//
+// Deliberately NOT a member of pv_cfg_t: that blob is a fixed-size struct
+// guarded by a magic and a size equality test, so growing it would discard
+// every stored setting on the first boot after an update. This lives in its
+// own NVS key and defaults cleanly when absent.
+// ---------------------------------------------------------------------------
+#define PV_MAT_COUNT           9
+#define PV_BED_OPEN_C_DEFAULT  45      // DragonVent's BED_OPEN_C_DEFAULT
+#define PV_BED_CLOSE_C_DEFAULT 35      // DragonVent's BED_CLOSE_C_DEFAULT
+
+extern const char *const pv_material_name[PV_MAT_COUNT];
+extern const bool        pv_material_seal[PV_MAT_COUNT];
+
+typedef struct {
+    uint32_t magic;
+    bool     enable;         // master switch
+    uint16_t rule_on;        // bit i = material rule i is active
+    bool     heat_hold;      // residual-heat hysteresis once the print ends
+    int16_t  bed_open_c;     // hold OPEN above this bed temperature
+    int16_t  bed_close_c;    // allow CLOSED below this one
+} pv_policy_cfg_t;
+
+extern pv_policy_cfg_t g_pol;
+
+void pv_policy_defaults(pv_policy_cfg_t *p);
+void pv_policy_load(void);
+void pv_policy_save(void);
+int  pv_policy_match(const char *material);          // rule index or -1
+bool pv_policy_decide(bool stock_open, bool hold);   // final vent target
+
+// ---------------------------------------------------------------------------
 // Live (non-persisted) state pushed to the UI.
 // ---------------------------------------------------------------------------
 typedef struct {
@@ -193,6 +225,10 @@ typedef struct {
     // 0x400dc300 (0x3ffb5620 and 0x3ffb561c).
     int   stg_cur;
     int   layer_num;
+    // Filament in the active tray, as the printer names it ("PLA", "ABS",
+    // "PETG"...). Empty until a report carries one. NOT a stock field: stock
+    // never reads the AMS. Feeds the material-aware vent policy only.
+    char  material[24];
 } pv_live_t;
 
 // ---------------------------------------------------------------------------

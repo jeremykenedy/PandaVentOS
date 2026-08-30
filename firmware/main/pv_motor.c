@@ -365,9 +365,21 @@ static void vent_go(bool open_dir)
 void pv_motor_update(void)
 {
     if (g_cfg.motor_manual) return;
+    // Stock's whole AUTO rule, one line: open while printing or paused.
     bool open_dir = (g_live.device_state == PV_ST_PRINTING ||
                      g_live.device_state == PV_ST_PAUSED);
-    vent_go(open_dir);
+    // The material-aware policy sits on top and can override it. With its
+    // master switch off it returns stock_open unchanged, so stock behaviour is
+    // bit-for-bit what it was.
+    bool want = pv_policy_decide(open_dir, g_live.vent_open);
+    if (want != open_dir) {
+        int r = pv_policy_match(g_live.material);
+        ESP_LOGI(TAG, "policy overrides vent: %s -> %s (mat=%s rule=%s bed=%d)",
+                 open_dir ? "OPEN" : "CLOSED", want ? "OPEN" : "CLOSED",
+                 g_live.material[0] ? g_live.material : "?",
+                 r >= 0 ? pv_material_name[r] : "none", g_live.bed_temp);
+    }
+    vent_go(want);
 }
 
 void pv_motor_set_auto(bool auto_mode)

@@ -229,6 +229,50 @@ static void apply_rgb_mode(cJSON *o)
     pv_rgb_notify();
 }
 
+// vent_policy. NOT a stock message. Accepted shapes:
+//   {"vent_policy":{"enable":0|1}}
+//   {"vent_policy":{"heat_hold":0|1}}
+//   {"vent_policy":{"material":{"index":0..8,"on":0|1}}}
+//   {"vent_policy":{"bed_open_c":45,"bed_close_c":35}}
+static void apply_vent_policy(cJSON *o)
+{
+    cJSON *e;
+    bool touched = false;
+
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "enable")) && cJSON_IsNumber(e)) {
+        g_pol.enable = e->valueint != 0;
+        touched = true;
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "heat_hold")) && cJSON_IsNumber(e)) {
+        g_pol.heat_hold = e->valueint != 0;
+        touched = true;
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "material")) && cJSON_IsObject(e)) {
+        cJSON *ix = cJSON_GetObjectItemCaseSensitive(e, "index");
+        cJSON *on = cJSON_GetObjectItemCaseSensitive(e, "on");
+        if (cJSON_IsNumber(ix) && cJSON_IsNumber(on) &&
+            ix->valueint >= 0 && ix->valueint < PV_MAT_COUNT) {
+            uint16_t bit = (uint16_t)(1u << ix->valueint);
+            if (on->valueint) g_pol.rule_on |= bit;
+            else              g_pol.rule_on &= (uint16_t)~bit;
+            touched = true;
+        }
+    }
+    // Both thresholds arrive together from the UI so the open > close
+    // invariant can be checked once, after both have landed. pv_policy_save
+    // clamps, so a bad pair cannot brick the hysteresis.
+    cJSON *bo = cJSON_GetObjectItemCaseSensitive(o, "bed_open_c");
+    cJSON *bc = cJSON_GetObjectItemCaseSensitive(o, "bed_close_c");
+    if (cJSON_IsNumber(bo)) { g_pol.bed_open_c  = (int16_t)bo->valuedouble; touched = true; }
+    if (cJSON_IsNumber(bc)) { g_pol.bed_close_c = (int16_t)bc->valuedouble; touched = true; }
+
+    if (!touched) return;
+    pv_policy_save();
+    pv_motor_update();            // apply the new rule immediately
+    pv_ws_broadcast(pv_json_response("vent_policy", 1));
+    pv_ws_push_state();
+}
+
 void pv_apply_message(const char *json, int len)
 {
     cJSON *root = cJSON_ParseWithLength(json, len);
@@ -241,5 +285,6 @@ void pv_apply_message(const char *json, int len)
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "printer")))    apply_printer(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "rgb_switch"))) apply_rgb_switch(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "rgb_mode")))   apply_rgb_mode(o);
+    if ((o = cJSON_GetObjectItemCaseSensitive(root, "vent_policy"))) apply_vent_policy(o);
     cJSON_Delete(root);
 }

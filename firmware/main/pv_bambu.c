@@ -205,6 +205,74 @@ static int h2d_state_now(void)
     }
 }
 
+// NOT STOCK. Reads the filament in the active tray so the material-aware vent
+// policy has something to decide on. Stock never touches the AMS.
+//
+// Bambu's report carries it as:
+//   print.ams.tray_now  "0".."15" global tray index, "254" = external spool
+//   print.ams.ams[]     one object per AMS unit, id "0".., tray[] of four
+//   print.vt_tray       the external spool, id "254"
+// A partial report often omits tray_now, so the last one seen is kept.
+static int s_tray_now = -1;
+
+static void take_material(const char *s)
+{
+    if (!s || !s[0]) return;
+    if (strcmp(s, g_live.material) == 0) return;
+    snprintf(g_live.material, sizeof(g_live.material), "%s", s);
+    ESP_LOGI(TAG, "filament -> %s", g_live.material);
+}
+
+static void parse_material(cJSON *print)
+{
+    cJSON *vt = cJSON_GetObjectItemCaseSensitive(print, "vt_tray");
+    cJSON *ams = cJSON_GetObjectItemCaseSensitive(print, "ams");
+
+    if (cJSON_IsObject(ams)) {
+        cJSON *tn = cJSON_GetObjectItemCaseSensitive(ams, "tray_now");
+        if (cJSON_IsString(tn) && tn->valuestring[0]) {
+            s_tray_now = atoi(tn->valuestring);
+        }
+    }
+
+    // External spool. 255 is Bambu's "nothing selected".
+    if (s_tray_now == 254 && cJSON_IsObject(vt)) {
+        cJSON *tt = cJSON_GetObjectItemCaseSensitive(vt, "tray_type");
+        if (cJSON_IsString(tt)) take_material(tt->valuestring);
+        return;
+    }
+    if (s_tray_now < 0 || s_tray_now > 15) {
+        // No AMS selection yet. A printer with no AMS at all still reports
+        // vt_tray, so fall back to it rather than staying blank forever.
+        if (cJSON_IsObject(vt)) {
+            cJSON *tt = cJSON_GetObjectItemCaseSensitive(vt, "tray_type");
+            if (cJSON_IsString(tt)) take_material(tt->valuestring);
+        }
+        return;
+    }
+
+    if (!cJSON_IsObject(ams)) return;
+    cJSON *units = cJSON_GetObjectItemCaseSensitive(ams, "ams");
+    if (!cJSON_IsArray(units)) return;
+    cJSON *unit;
+    cJSON_ArrayForEach(unit, units) {
+        cJSON *uid = cJSON_GetObjectItemCaseSensitive(unit, "id");
+        if (!cJSON_IsString(uid)) continue;
+        int ubase = atoi(uid->valuestring) * 4;
+        cJSON *trays = cJSON_GetObjectItemCaseSensitive(unit, "tray");
+        if (!cJSON_IsArray(trays)) continue;
+        cJSON *tray;
+        cJSON_ArrayForEach(tray, trays) {
+            cJSON *tid = cJSON_GetObjectItemCaseSensitive(tray, "id");
+            if (!cJSON_IsString(tid)) continue;
+            if (ubase + atoi(tid->valuestring) != s_tray_now) continue;
+            cJSON *tt = cJSON_GetObjectItemCaseSensitive(tray, "tray_type");
+            if (cJSON_IsString(tt)) take_material(tt->valuestring);
+            return;
+        }
+    }
+}
+
 static void handle_report(const char *data, int len)
 {
     cJSON *root = cJSON_ParseWithLength(data, len);
@@ -272,6 +340,10 @@ static void handle_report(const char *data, int len)
         cJSON *noz = cJSON_GetObjectItemCaseSensitive(print, "nozzle_temper");
         if (cJSON_IsNumber(noz)) g_live.nozzle_temp = (int)noz->valuedouble;
 
+        // NOT STOCK. Stock never looks at the AMS; this is here only to feed
+        // the material-aware vent policy.
+        parse_material(print);
+
         // The printer's own chamber light, for "Follow Printer Light".
         // Bambu reports it as print.lights_report:
         //   [ { "node": "chamber_light", "mode": "on" | "off" }, ... ]
@@ -293,6 +365,14 @@ static void handle_report(const char *data, int len)
                 }
             }
         }
+
+        // NOT STOCK. Stock only re-evaluates the vent when the device state
+        // changes, which is why this is a second call rather than a move: with
+        // the policy off, nothing below runs and the stock path above is the
+        // only one that ever touches the motor. With it on, the vent has to
+        // react to bed temperature and to a filament swap, neither of which
+        // moves the device state.
+        if (g_pol.enable) pv_motor_update();
     }
     cJSON_Delete(root);
 }

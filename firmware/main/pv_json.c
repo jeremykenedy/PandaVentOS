@@ -98,6 +98,27 @@ char *pv_json_state(void)
     cJSON_AddStringToObject(se, "fw_version", "V1.0.0");
     cJSON_AddStringToObject(se, "language", g_cfg.language);
 
+    // vent_policy: material-aware venting. NOT a stock key. The factory app
+    // ignores objects it does not know, so its presence is harmless there.
+    cJSON *vp = cJSON_AddObjectToObject(root, "vent_policy");
+    cJSON_AddNumberToObject(vp, "enable", g_pol.enable ? 1 : 0);
+    cJSON_AddNumberToObject(vp, "heat_hold", g_pol.heat_hold ? 1 : 0);
+    cJSON_AddNumberToObject(vp, "bed_open_c", g_pol.bed_open_c);
+    cJSON_AddNumberToObject(vp, "bed_close_c", g_pol.bed_close_c);
+    // Live, read-only: what the printer says is loaded and which rule that
+    // hits. Lets the UI show why the vent is doing what it is doing.
+    cJSON_AddStringToObject(vp, "material", g_live.material);
+    cJSON_AddNumberToObject(vp, "matched", pv_policy_match(g_live.material));
+    cJSON *mats = cJSON_AddArrayToObject(vp, "materials");
+    for (int i = 0; i < PV_MAT_COUNT; ++i) {
+        cJSON *m = cJSON_CreateObject();
+        cJSON_AddNumberToObject(m, "index", i);
+        cJSON_AddStringToObject(m, "name", pv_material_name[i]);
+        cJSON_AddNumberToObject(m, "seal", pv_material_seal[i] ? 1 : 0);
+        cJSON_AddNumberToObject(m, "on", (g_pol.rule_on & (1u << i)) ? 1 : 0);
+        cJSON_AddItemToArray(mats, m);
+    }
+
     char *out = cJSON_Print(root);
     cJSON_Delete(root);
     return out;

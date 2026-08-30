@@ -84,6 +84,7 @@ void app_main(void)
     if (err != ESP_OK) ESP_LOGE(TAG, "nvs_flash_init: %s", esp_err_to_name(err));
 
     pv_cfg_load();
+    pv_policy_load();   // separate NVS key, so it cannot disturb the config blob
 
     // Probation watchdog starts before anything can go wrong.
     xTaskCreate(health_task, "pv_health", 3072, NULL, 2, NULL);
