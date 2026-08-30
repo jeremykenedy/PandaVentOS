@@ -8,6 +8,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "esp_flash.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
 #include "esp_ota_ops.h"
@@ -38,6 +39,71 @@ static esp_err_t root_get(httpd_req_t *req)
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
     return httpd_resp_send(req, (const char *)index_gz_start,
                            index_gz_end - index_gz_start);
+}
+
+// ---------- full-flash backup over the network ----------
+//
+// Streams the ENTIRE flash, byte for byte: bootloader, partition table,
+// otadata, both app slots and NVS. The same image esptool produces over USB,
+// and interchangeable with it, so vent-restore-golden.sh can write it back.
+//
+// This exists because a backup was the one job that still needed the cable,
+// and needing the cable is how a device ends up with no backup at all. The
+// running app can read its own flash: esp_flash_read goes to the SPI part
+// directly rather than through the instruction cache, so the region holding
+// this very code reads out correctly.
+//
+// It is a plain unauthenticated GET on the LAN, like everything else this
+// server serves, and the image contains the Wi-Fi password, the printer serial
+// and its access code in the NVS region. That is the same exposure as the
+// password field on the settings page, but the file is the whole of it at
+// once, so treat what comes out of here the way you treat the goldens folder.
+static esp_err_t backup_get(httpd_req_t *req)
+{
+    uint32_t size = 0;
+    if (esp_flash_get_size(NULL, &size) != ESP_OK || size == 0) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "flash size");
+        return ESP_FAIL;
+    }
+    const size_t CHUNK = 8192;
+    uint8_t *buf = malloc(CHUNK);
+    if (!buf) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "out of memory");
+        return ESP_FAIL;
+    }
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "Content-Disposition",
+                       "attachment; filename=\"panda-vent-flash.bin\"");
+    // Length up front so a client can tell a short read from a complete one.
+    char len[16];
+    snprintf(len, sizeof(len), "%u", (unsigned)size);
+    httpd_resp_set_hdr(req, "X-Flash-Size", len);
+
+    ESP_LOGW(TAG, "backup: streaming %u bytes of flash", (unsigned)size);
+    esp_err_t err = ESP_OK;
+    for (uint32_t off = 0; off < size; off += CHUNK) {
+        size_t n = (size - off) < CHUNK ? (size - off) : CHUNK;
+        if (esp_flash_read(NULL, buf, off, n) != ESP_OK) {
+            ESP_LOGE(TAG, "backup: flash read failed at 0x%06x", (unsigned)off);
+            err = ESP_FAIL;
+            break;
+        }
+        if (httpd_resp_send_chunk(req, (const char *)buf, n) != ESP_OK) {
+            ESP_LOGW(TAG, "backup: client went away at 0x%06x", (unsigned)off);
+            err = ESP_FAIL;
+            break;
+        }
+        // Yield so the Wi-Fi and motor tasks are not starved for the whole
+        // transfer. Every 512 KB is often enough to matter and rare enough
+        // not to slow the read down.
+        if ((off & 0x7FFFF) == 0) vTaskDelay(1);
+    }
+    free(buf);
+    // Terminating chunk. On the error path this ends the body early, and the
+    // client sees fewer bytes than X-Flash-Size promised.
+    httpd_resp_send_chunk(req, NULL, 0);
+    if (err == ESP_OK) ESP_LOGW(TAG, "backup: done");
+    return err;
 }
 
 // ---------- websocket ----------
@@ -223,9 +289,13 @@ esp_err_t pv_http_start(void)
         .is_websocket = true,
     };
     static const httpd_uri_t ota = { .uri = "/ota", .method = HTTP_POST, .handler = ota_post };
+    static const httpd_uri_t backup = {
+        .uri = "/backup", .method = HTTP_GET, .handler = backup_get,
+    };
     httpd_register_uri_handler(s_server, &root);
     httpd_register_uri_handler(s_server, &ws);
     httpd_register_uri_handler(s_server, &ota);
+    httpd_register_uri_handler(s_server, &backup);
     s_up = true;
     ESP_LOGI(TAG, "http up");
     return ESP_OK;
