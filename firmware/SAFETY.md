@@ -3,6 +3,29 @@
 These exist because ignoring them cost a working vent and a day of the
 owner's time. They are not suggestions.
 
+
+## Rule 0a: take a FULL FLASH image before any flash, and test the restore
+
+Not the app. The whole 4 MB, offset 0 to 0x400000: bootloader, partition
+table, otadata, both app slots and NVS.
+
+    ~/vent-control/esptool-venv/bin/python -m esptool --chip esp32 \
+      --port /dev/cu.wchusbserial310 -b 115200 \
+      read-flash 0 0x400000 ~/vent-control/goldens/GOLDEN-$(date +%Y%m%d-%H%M%S)-full-4MB.bin
+
+Restore with:
+
+    zsh ~/vent-control/vent-restore-golden.sh
+
+This rule exists because it was not followed. On 2026-08-30 the first flash of
+this project wrote the bootloader and partition table with only the app backed
+up. BIQU publishes only the app. The factory firmware on that unit can no
+longer be booted and there is nothing to restore it from. The cost of the
+missing step was thirty seconds.
+
+A backup you have not restored from is not a backup. Test it.
+
+
 ## 0. THE FIRST INSTALL FROM STOCK CANNOT SELF-REVERT
 
 Read this before anything else, because it invalidates the obvious
