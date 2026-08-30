@@ -17,3 +17,8 @@ ui-comparison.png
 private/*
 !private/.gitkeep
 !private/README.md
+
+# compiled host harnesses
+tools/fxdump/fxdump
+tools/uicmp/harness
+tools/uicmp/harness_live
