@@ -329,6 +329,18 @@ static void handle_report(const char *data, int len)
         if (cJSON_IsNumber(sc)) g_live.stg_cur = sc->valueint;
         cJSON *ln = cJSON_GetObjectItemCaseSensitive(print, "layer_num");
         if (cJSON_IsNumber(ln)) g_live.layer_num = ln->valueint;
+        // NOT STOCK. mc_percent is the printer's own completion figure, the
+        // same number its screen shows. Bambu sends it as a number on most
+        // firmwares and as a decimal string on a few, so accept both, and
+        // clamp: a report has been seen carrying 101 at the very end of a job.
+        cJSON *pc = cJSON_GetObjectItemCaseSensitive(print, "mc_percent");
+        if (cJSON_IsNumber(pc) || cJSON_IsString(pc)) {
+            int v = cJSON_IsNumber(pc) ? pc->valueint
+                                       : (int)strtol(pc->valuestring, NULL, 10);
+            if (v < 0)   v = 0;
+            if (v > 100) v = 100;
+            g_live.print_percent = v;
+        }
 
         // Stock runs the machine on EVERY report pass: 0x400d91c1 and the
         // branches after it are reached unconditionally, including down the

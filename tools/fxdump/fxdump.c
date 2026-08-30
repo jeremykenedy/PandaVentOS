@@ -41,6 +41,9 @@ int  pv_wifi_test_scan_state(void) { return 0; }
 static const char *NAMES[PV_FX_COUNT] = {
     "Static", "Breathing", "Strobing", "Wave",
     "Marquee", "Color_Cycle", "Rainbow", "Cylon", "Bounce",
+    "Progress_Bar",
+    "Marquee_Out", "Marquee_In", "Fill_Out", "Fill_In",
+    "Bounce_Out", "Bounce_In", "Bounce_Fill_Out", "Bounce_Fill_In",
 };
 
 #define N PV_LEDS_PER_STRIP
@@ -63,6 +66,10 @@ int main(int argc, char **argv)
     int fx = argc > 1 ? atoi(argv[1]) : PV_FX_BOUNCE;
     int frames = argc > 2 ? atoi(argv[2]) : 40;
     int ppm = argc > 3 && strcmp(argv[3], "ppm") == 0;
+    /* Progress Bar reads the live print percentage, so it needs one to read.
+     * PVPCT also lets a sweep be scripted from the shell. */
+    int rev = getenv("PVREV") && atoi(getenv("PVREV"));
+    if (getenv("PVPCT")) g_live.print_percent = atoi(getenv("PVPCT"));
 
     rgb_t color = { 0xFF, 0x37, 0x00 };   /* the factory default, FF3700 */
     rgb_t px[N];
@@ -74,7 +81,7 @@ int main(int argc, char **argv)
         const int SCALE = 12;
         printf("P6\n%d %d\n255\n", N * SCALE, frames * SCALE);
         for (int f = 0; f < frames; ++f) {
-            render_effect(fx, color, 100, 50, false, px, N);
+            render_effect(fx, color, 100, 50, rev, px, N);
             for (int sy = 0; sy < SCALE; ++sy)
                 for (int i = 0; i < N; ++i)
                     for (int sx = 0; sx < SCALE; ++sx)
@@ -88,7 +95,7 @@ int main(int argc, char **argv)
     printf("     +%.*s+\n", N, "----------------------------------------");
     uint32_t total = 0;
     for (int f = 0; f < frames; ++f) {
-        uint32_t ms = render_effect(fx, color, 100, 50, false, px, N);
+        uint32_t ms = render_effect(fx, color, 100, 50, rev, px, N);
         total += ms;
         printf("%3d  |", f);
         row_ascii(px, N);

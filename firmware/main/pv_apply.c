@@ -191,8 +191,19 @@ static void apply_fx_fields(pv_fx_param_t *p, cJSON *o)
         p->brightness = clamp100(e->valuedouble);
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "speed")) && cJSON_IsNumber(e))
         p->speed = clamp100(e->valuedouble);
-    if ((e = cJSON_GetObjectItemCaseSensitive(o, "rgb")))
-        color_from_json(e, p->color);
+    char hex[7];
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "rgb"))) {
+        pv_rgb3_to_hex(p->rgb, hex);          // keep the old value if unparsable
+        color_from_json(e, hex);
+        pv_hex_to_rgb3(hex, p->rgb);
+    }
+    // NOT STOCK. "rgb" stays the open colour so the factory app's own messages
+    // keep working unchanged; the closed colour needs an explicit key.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "rgb_closed"))) {
+        pv_rgb3_to_hex(p->rgb_closed, hex);
+        color_from_json(e, hex);
+        pv_hex_to_rgb3(hex, p->rgb_closed);
+    }
 }
 
 static void apply_rgb_mode(cJSON *o)
@@ -326,6 +337,50 @@ static void apply_vent_policy(cJSON *o)
     pv_ws_push_state();
 }
 
+// vent. NOT a stock message. Three-way manual override of the flap.
+//   {"vent":{"mode":"auto"}}    follow the printer (factory behaviour)
+//   {"vent":{"mode":"open"}}    hold it open
+//   {"vent":{"mode":"closed"}}  hold it closed
+// Anything else is ignored rather than guessed at, because the wrong guess
+// here drives a motor.
+static void apply_vent(cJSON *o)
+{
+    cJSON *m = cJSON_GetObjectItemCaseSensitive(o, "mode");
+    if (!cJSON_IsString(m) || !m->valuestring) return;
+    int mode;
+    if      (!strcmp(m->valuestring, "auto"))   mode = PV_VENT_AUTO;
+    else if (!strcmp(m->valuestring, "open"))   mode = PV_VENT_OPEN;
+    else if (!strcmp(m->valuestring, "closed")) mode = PV_VENT_CLOSED;
+    else { ESP_LOGW(TAG, "vent: unknown mode \"%s\"", m->valuestring); return; }
+    ESP_LOGI(TAG, "vent mode -> %s", m->valuestring);
+    pv_motor_set_mode(mode);
+    pv_ws_push_state();
+    pv_ws_broadcast(pv_json_response("vent", 1));
+}
+
+// ring. NOT a stock message. The button's ring LED.
+//   {"ring":{"mode":0..4}}    PV_RING_*
+//   {"ring":{"blink":0|1}}    blink while in MANUAL, or hold steady
+static void apply_ring(cJSON *o)
+{
+    bool touched = false;
+    cJSON *m = cJSON_GetObjectItemCaseSensitive(o, "mode");
+    if (cJSON_IsNumber(m) && m->valueint >= 0 && m->valueint < PV_RING_COUNT) {
+        g_cfg.ring_mode = (uint8_t)m->valueint;
+        touched = true;
+    }
+    cJSON *b = cJSON_GetObjectItemCaseSensitive(o, "blink");
+    if (cJSON_IsBool(b) || cJSON_IsNumber(b)) {
+        g_cfg.ring_blink = cJSON_IsBool(b) ? cJSON_IsTrue(b) : (b->valueint != 0);
+        touched = true;
+    }
+    if (!touched) return;
+    ESP_LOGI(TAG, "ring -> mode %d blink %d", g_cfg.ring_mode, g_cfg.ring_blink);
+    pv_cfg_save();
+    pv_ws_push_state();
+    pv_ws_broadcast(pv_json_response("ring", 1));
+}
+
 void pv_apply_message(const char *json, int len)
 {
     cJSON *root = cJSON_ParseWithLength(json, len);
@@ -339,5 +394,7 @@ void pv_apply_message(const char *json, int len)
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "rgb_switch"))) apply_rgb_switch(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "rgb_mode")))   apply_rgb_mode(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "vent_policy"))) apply_vent_policy(o);
+    if ((o = cJSON_GetObjectItemCaseSensitive(root, "vent")))       apply_vent(o);
+    if ((o = cJSON_GetObjectItemCaseSensitive(root, "ring")))       apply_ring(o);
     cJSON_Delete(root);
 }

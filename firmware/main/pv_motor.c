@@ -311,10 +311,23 @@ static void drive_task(void *arg)
                 moving[i] = true;
                 ++running;
                 if (s_grp_seen[i]) {
-                    // 0x400de745. First re-check off target, not the fourth.
-                    s_grp_fault[i] = true;
+                    // DEPARTURE FROM STOCK, 2026-08-30. Stock sets the fault
+                    // flag HERE, at the first re-check that finds the group
+                    // still moving (0x400de745), which is every travel longer
+                    // than one 200 ms tick. Since the rgb task reads that flag
+                    // to raise the red strobe, stock flashes the strip red for
+                    // the whole of every normal open and close.
+                    //
+                    // A vent that is travelling is not faulted, and painting it
+                    // red teaches people to ignore the one colour that is
+                    // supposed to mean something. The flag is now raised only
+                    // when the group is actually given up on, which is the case
+                    // that genuinely needs attention. Everything downstream is
+                    // untouched: a stuck vent still strobes red, and still
+                    // stays red until the next command.
                     if (++s_grp_retry[i] >= MOTOR_FAULT_GIVEUP) {
                         // 0x400de75d: stop and clear moving, leaving fault set.
+                        s_grp_fault[i] = true;
                         group_stop(i);
                         moving[i] = false;
                         s_grp_seen[i] = false;
@@ -398,6 +411,39 @@ void pv_motor_set_auto(bool auto_mode)
     if (auto_mode) pv_motor_update();
 }
 
+// NOT STOCK. The button gives you a manual toggle and nothing else; there was
+// no way to say "hold it open" or "go back to automatic" from the web UI. This
+// is the three-way the Control Panel drives.
+//   PV_VENT_AUTO   follow the printer, which is the factory behaviour
+//   PV_VENT_OPEN   manual, held open
+//   PV_VENT_CLOSED manual, held closed
+void pv_motor_set_mode(int mode)
+{
+    switch (mode) {
+    case PV_VENT_OPEN:
+    case PV_VENT_CLOSED: {
+        bool open_dir = (mode == PV_VENT_OPEN);
+        g_cfg.motor_manual = true;
+        g_cfg.motor_manual_open = open_dir;
+        pv_cfg_save();
+        vent_go(open_dir);
+        break;
+    }
+    case PV_VENT_AUTO:
+    default:
+        g_cfg.motor_manual = false;
+        pv_cfg_save();
+        pv_motor_update();
+        break;
+    }
+}
+
+int pv_motor_get_mode(void)
+{
+    if (!g_cfg.motor_manual) return PV_VENT_AUTO;
+    return g_cfg.motor_manual_open ? PV_VENT_OPEN : PV_VENT_CLOSED;
+}
+
 void pv_motor_manual_toggle(void)
 {
     g_cfg.motor_manual = true;
@@ -407,6 +453,30 @@ void pv_motor_manual_toggle(void)
 }
 
 // ---------- button + ring LED ----------
+
+// NOT STOCK. One place that decides what the ring LED is doing, so the modes
+// cannot drift apart from each other or from the blink toggle.
+//
+// blink is the task's own 0..49 counter; the first half of it is the lit half.
+static bool ring_level(int blink)
+{
+    // Stock's rule, and the fallback the one-sided modes defer to.
+    bool stock = g_cfg.motor_manual
+               ? (g_cfg.ring_blink ? (blink < 25) : true)
+               : false;
+
+    switch (g_cfg.ring_mode) {
+    case PV_RING_ALWAYS_ON:  return true;
+    case PV_RING_ALWAYS_OFF: return false;
+    // Each of these owns ONE side of the vent's travel and hands the other
+    // side back to the stock rule. That is what keeps them distinct: were both
+    // sides forced, the two would be the same setting under two names.
+    case PV_RING_ON_OPEN:    return g_live.vent_open ? true  : stock;
+    case PV_RING_OFF_CLOSED: return g_live.vent_open ? stock : false;
+    case PV_RING_AUTO:
+    default:                 return stock;
+    }
+}
 
 static void button_task(void *arg)
 {
@@ -441,13 +511,11 @@ static void button_task(void *arg)
     bool user_armed = false, boot_armed = false;
 
     for (;; vTaskDelay(pdMS_TO_TICKS(PV_BTN_POLL_MS))) {
-        // Ring LED: off in AUTO, blink in MANUAL (stock behavior).
-        if (g_cfg.motor_manual) {
-            if (++blink >= 50) blink = 0;          // 500 ms period at 10 ms poll
-            gpio_set_level(PV_PIN_BUTTON_LED, blink < 25);
-        } else {
-            gpio_set_level(PV_PIN_BUTTON_LED, 0);
-        }
+        // Ring LED. The stock rule is off in AUTO and blinking in MANUAL;
+        // everything else here is an addition, and PV_RING_AUTO with
+        // ring_blink set is stock bit for bit.
+        if (++blink >= 50) blink = 0;              // 500 ms period at 10 ms poll
+        gpio_set_level(PV_PIN_BUTTON_LED, ring_level(blink));
 
         bool user_down = gpio_get_level(PV_PIN_USER_BUTTON) == 0;
         bool boot_down = gpio_get_level(PV_PIN_BOOT_BUTTON) == 0;

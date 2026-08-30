@@ -9,13 +9,23 @@ owner's time. They are not suggestions.
 Not the app. The whole 4 MB, offset 0 to 0x400000: bootloader, partition
 table, otadata, both app slots and NVS.
 
-    ~/vent-control/esptool-venv/bin/python -m esptool --chip esp32 \
-      --port /dev/cu.wchusbserial310 -b 115200 \
-      read-flash 0 0x400000 ~/vent-control/goldens/GOLDEN-$(date +%Y%m%d-%H%M%S)-full-4MB.bin
+    python -m esptool --chip esp32 --port <YOUR-PORT> -b 115200 \
+      read-flash 0 0x400000 golden-$(date +%Y%m%d-%H%M%S)-full-4MB.bin
 
-Restore with:
+The port is whatever the CH34x bridge enumerates as: `/dev/cu.wchusbserial*`
+on macOS, `/dev/ttyUSB0` on Linux, a `COM` port on Windows.
 
-    zsh ~/vent-control/vent-restore-golden.sh
+Restore the same image with `write-flash 0`:
+
+    python -m esptool --chip esp32 --port <YOUR-PORT> -b 115200 \
+      write-flash 0 golden-...-full-4MB.bin
+
+This firmware also serves the whole flash over the network at `GET /backup`,
+which takes about seventeen seconds and needs no cable:
+
+    curl -o golden-$(date +%Y%m%d-%H%M%S)-full-4MB.bin http://<device>/backup
+
+Restoring still needs the cable. Only the backup side is wireless.
 
 This rule exists because it was not followed. On 2026-08-30 the first flash of
 this project wrote the bootloader and partition table with only the app backed
@@ -51,7 +61,7 @@ Consequences, stated plainly:
 
 Therefore: **the first flash of a new custom build onto a stock device is a
 cable-required operation.** Do not start it unless the USB cable is already
-connected and `~/vent-control/restore-stock-usb.sh` has been confirmed to
+connected and a tested serial restore path has been confirmed to
 run. Subsequent custom -> custom updates are wireless and protected.
 
 ## 1. Rollback protection is mandatory in this firmware
@@ -106,10 +116,11 @@ permission to deploy.
 The vent's USB port exposes a CH340 serial bridge (VID 0x1A86, PID 0x7522).
 macOS does NOT drive 0x7522 with its built-in driver: `AppleUSBCHCOM.dext`
 claims only 0x7523 and 0x5594, so the device enumerates but no `/dev/cu.*`
-node appears. The vendor driver (`CH34xVCPDriver.pkg`, in `~/vent-control/`)
+node appears. On macOS the vendor CH34x VCP driver
 is required, after which the port appears as `/dev/cu.wchusbserial*`.
 
-    zsh ~/vent-control/restore-stock-usb.sh
+    python -m esptool --chip esp32 --port <YOUR-PORT> -b 115200 \
+      write-flash 0x10000 factory/firmware/panda_vent_v1.0.0.bin
 
 flashes `panda_vent_v1.0.0-STOCK.bin` to 0x10000 and returns the device to
 factory. If the app then reports NVS-full errors (`0x1105`,
@@ -123,7 +134,9 @@ Erasing NVS also clears the saved Wi-Fi, so the owner has to redo setup
 through the hotspot. Say so before doing it.
 
 ## Wireless restore (works whenever the device still serves HTTP)
-    zsh ~/vent-control/vent-restore.sh
+    curl -X POST -H 'X-OTA-Type: ota_fw' \
+      --data-binary @factory/firmware/panda_vent_v1.0.0.bin \
+      http://<device>/ota
 
 resolves the host to an IP once (mDNS goes stale across a reboot), uploads
 the stock image to `/ota` with header `OTA-Type: ota_fw`, waits for the

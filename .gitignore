@@ -22,3 +22,6 @@ private/*
 tools/fxdump/fxdump
 tools/uicmp/harness
 tools/uicmp/harness_live
+
+# compiled config-migration harness
+tools/cfgmig/cfgmig

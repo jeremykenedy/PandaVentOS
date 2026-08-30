@@ -16,7 +16,13 @@ static cJSON *fx_param(int id_key_is_effect, int id, const pv_fx_param_t *p)
     cJSON_AddNumberToObject(o, id_key_is_effect ? "effect_id" : "id", id);
     cJSON_AddNumberToObject(o, "brightness", p->brightness);
     cJSON_AddNumberToObject(o, "speed", p->speed);
-    cJSON_AddStringToObject(o, "color", p->color);
+    char hex[7];
+    pv_rgb3_to_hex(p->rgb, hex);
+    cJSON_AddStringToObject(o, "color", hex);
+    // NOT STOCK. A stock device never sends this key; the factory UI ignores
+    // keys it does not know, so adding it costs nothing there.
+    pv_rgb3_to_hex(p->rgb_closed, hex);
+    cJSON_AddStringToObject(o, "color_closed", hex);
     return o;
 }
 
@@ -95,7 +101,13 @@ char *pv_json_state(void)
 
     // settings
     cJSON *se = cJSON_AddObjectToObject(root, "settings");
-    cJSON_AddStringToObject(se, "fw_version", "V1.0.0");
+    cJSON_AddStringToObject(se, "fw_version", PV_FW_VERSION);
+    // NOT STOCK. This project's own version, shown in the corner of the
+    // page. A stock device never sends it and the badge falls back.
+    cJSON_AddStringToObject(se, "os_name", PV_OS_NAME);
+    cJSON_AddStringToObject(se, "os_version", PV_OS_VERSION);
+    // NOT STOCK. Non-zero means the last save did not reach flash.
+    cJSON_AddNumberToObject(se, "cfg_save_failed", g_live.cfg_save_failed ? 1 : 0);
     cJSON_AddStringToObject(se, "language", g_cfg.language);
     // NOT a stock key. What the Control Panel's Device row shows; stock has
     // the same string baked into the web app as a translation entry.
@@ -118,6 +130,17 @@ char *pv_json_state(void)
     // Makes the card's behaviour checkable from outside instead of only from
     // the serial log.
     cJSON_AddNumberToObject(vp, "vent_open", g_live.vent_open ? 1 : 0);
+    // NOT STOCK. Which of the three the user has selected, as opposed to
+    // where the flap happens to be right now.
+    {
+        static const char *const mode_name[3] = { "auto", "open", "closed" };
+        int vm = pv_motor_get_mode();
+        if (vm < 0 || vm > 2) vm = PV_VENT_AUTO;
+        cJSON_AddStringToObject(vp, "vent_mode", mode_name[vm]);
+    }
+    // NOT STOCK. What the button ring is doing.
+    cJSON_AddNumberToObject(vp, "ring_mode", g_cfg.ring_mode);
+    cJSON_AddNumberToObject(vp, "ring_blink", g_cfg.ring_blink ? 1 : 0);
     cJSON_AddNumberToObject(vp, "device_state", g_live.device_state);
     cJSON_AddNumberToObject(vp, "bed_temp", g_live.bed_temp);
     cJSON *mats = cJSON_AddArrayToObject(vp, "materials");

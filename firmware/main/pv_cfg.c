@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 #include <string.h>
+#include <ctype.h>
 #include "esp_log.h"
 #include "esp_system.h"
 #include "nvs.h"
@@ -14,9 +15,22 @@ static const char *TAG = "pv_cfg";
 
 #define CFG_NS    "pv"
 #define CFG_KEY   "cfg"
-#define CFG_MAGIC 0x50564333   // "PVC3": device_name appended
+#define CFG_MAGIC 0x50564337   // "PVC7": colours stored as raw bytes
+#define CFG_MAGIC_V6 0x50564336   // "PVC6": ring light, colours as text
+#define CFG_MAGIC_V5 0x50564335   // "PVC5": two colours per effect, as text
+#define CFG_MAGIC_V4 0x50564334   // "PVC4": eighteen effects, one colour
+#define CFG_MAGIC_V3 0x50564333   // "PVC3": nine effects, device_name
 #define CFG_MAGIC_V2 0x50564332   // "PVC2": nine effects, no device_name
 #define CFG_MAGIC_V1 0x50564331   // "PVC1": the seven effect layout
+
+// Every layout before v5 stored ONE colour per effect, so they all share this
+// nine byte parameter. pv_fx_param_t itself is now sixteen bytes, and using it
+// in the old shapes would silently mis-read every array in the blob.
+typedef struct {
+    uint8_t brightness;
+    uint8_t speed;
+    char    color[7];
+} pv_fx_param_v4_t;
 
 // The v1 layout, kept verbatim so a device that has been running since before
 // Cylon and Bounce existed keeps its settings.
@@ -28,6 +42,10 @@ static const char *TAG = "pv_cfg";
 // been one line in a serial log nobody was watching.
 #define PV_FX_COUNT_V1 7
 
+// The nine effect layout, shared by v2 and v3. Those two differ only by the
+// device_name field at the very end, so one rgb shape covers both.
+#define PV_FX_COUNT_V3 9
+
 typedef struct {
     bool    light_on;
     bool    warning_sw;
@@ -36,9 +54,130 @@ typedef struct {
     bool    reverse;
     uint8_t light_mode;
     uint8_t simple_current;
-    pv_fx_param_t simple[PV_FX_COUNT_V1];
+    pv_fx_param_v4_t simple[PV_FX_COUNT_V3];
     uint8_t h2d_active[PV_ST_COUNT];
-    pv_fx_param_t h2d[PV_ST_COUNT][PV_FX_COUNT_V1];
+    pv_fx_param_v4_t h2d[PV_ST_COUNT][PV_FX_COUNT_V3];
+    uint8_t warnhot_current[2];
+    uint8_t warnhot_bg[2][2];
+    uint8_t warnhot_speed[2][2];
+} pv_rgb_cfg_v3_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v3_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+    char device_name[32];
+} pv_cfg_v3_t;
+
+// The eighteen effect, one colour layout. Same field order as v5; only the
+// parameter inside the effect arrays is different.
+typedef struct {
+    bool    light_on;
+    bool    warning_sw;
+    bool    follow_printer;
+    bool    follow_vent;
+    bool    reverse;
+    uint8_t light_mode;
+    uint8_t simple_current;
+    pv_fx_param_v4_t simple[PV_FX_COUNT];
+    uint8_t h2d_active[PV_ST_COUNT];
+    pv_fx_param_v4_t h2d[PV_ST_COUNT][PV_FX_COUNT];
+    uint8_t warnhot_current[2];
+    uint8_t warnhot_bg[2][2];
+    uint8_t warnhot_speed[2][2];
+} pv_rgb_cfg_v4_t;
+
+// v5 and v6 stored colours as seven byte text, which is what made the config
+// too big for the NVS partition. They share one parameter and one rgb shape;
+// only the two trailing ring fields tell them apart.
+typedef struct {
+    uint8_t brightness;
+    uint8_t speed;
+    char    color[7];
+    char    color_closed[7];
+} pv_fx_param_v6_t;
+
+typedef struct {
+    bool    light_on;
+    bool    warning_sw;
+    bool    follow_printer;
+    bool    follow_vent;
+    bool    reverse;
+    uint8_t light_mode;
+    uint8_t simple_current;
+    pv_fx_param_v6_t simple[PV_FX_COUNT];
+    uint8_t h2d_active[PV_ST_COUNT];
+    pv_fx_param_v6_t h2d[PV_ST_COUNT][PV_FX_COUNT];
+    uint8_t warnhot_current[2];
+    uint8_t warnhot_bg[2][2];
+    uint8_t warnhot_speed[2][2];
+} pv_rgb_cfg_v6_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v6_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+    char device_name[32];
+} pv_cfg_v5_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v6_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+    char device_name[32];
+    uint8_t ring_mode;
+    bool    ring_blink;
+} pv_cfg_v6_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v4_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+    char device_name[32];
+} pv_cfg_v4_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v3_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+} pv_cfg_v2_t;
+
+typedef struct {
+    bool    light_on;
+    bool    warning_sw;
+    bool    follow_printer;
+    bool    follow_vent;
+    bool    reverse;
+    uint8_t light_mode;
+    uint8_t simple_current;
+    pv_fx_param_v4_t simple[PV_FX_COUNT_V1];
+    uint8_t h2d_active[PV_ST_COUNT];
+    pv_fx_param_v4_t h2d[PV_ST_COUNT][PV_FX_COUNT_V1];
     uint8_t warnhot_current[2];
     uint8_t warnhot_bg[2][2];
     uint8_t warnhot_speed[2][2];
@@ -55,17 +194,98 @@ typedef struct {
     bool motor_manual_open;
 } pv_cfg_v1_t;
 
+// ---------------------------------------------------------------------------
+// THE SIZE BUDGET. Read this before adding a field.
+//
+// The NVS partition is 0x3000 = 12 KB, three 4 KB pages, and it is stock's
+// layout: enlarging it would break OTA back to the factory firmware, which is
+// the one thing this project must never give up. NVS keeps one page in
+// reserve for garbage collection, so about 8 KB is usable, and rewriting a
+// blob needs room for the OLD and the NEW copy at once. Sharing that space
+// are the Wi-Fi credentials esp_wifi stores, the vent-policy blob, and this.
+//
+// On 2026-08-30 this struct reached 2320 bytes. Two copies of it plus the
+// Wi-Fi credentials no longer fit, nvs_set_blob started returning
+// ESP_ERR_NVS_NOT_ENOUGH_SPACE, the failure was logged and otherwise ignored,
+// and the device ran perfectly from RAM until the next reboot threw every
+// setting away. That is the bug this budget exists to prevent.
+//
+// 1600 bytes leaves room for two copies plus everything else with margin. If
+// this fails to compile, do NOT raise the number: make the config smaller, or
+// split it across separate NVS keys so a rewrite only relocates what changed.
+#define PV_CFG_MAX_BYTES 1600
+_Static_assert(sizeof(pv_cfg_t) <= PV_CFG_MAX_BYTES,
+               "pv_cfg_t has outgrown the NVS budget; see PV_CFG_MAX_BYTES");
+
 pv_cfg_t  g_cfg;
 pv_live_t g_live = {
     .sta_state = 1, .printer_state = 0, .device_state = PV_ST_IDLE,
     .bed_temp = -1.0f, .nozzle_temp = -1.0f,
 };
 
+// Every layout before v5 carried one colour per effect. Lifting it means
+// giving the closed position the same colour the effect already had, so a
+// migrated device looks exactly as it did before the update.
+// v5 and v6 stored both colours, as text. Only the representation changes.
+static void fx_lift_v6(pv_fx_param_t *dst, const pv_fx_param_v6_t *src)
+{
+    dst->brightness = src->brightness;
+    dst->speed = src->speed;
+    pv_hex_to_rgb3(src->color, dst->rgb);
+    pv_hex_to_rgb3(src->color_closed, dst->rgb_closed);
+}
+
+static void fx_lift_v4(pv_fx_param_t *dst, const pv_fx_param_v4_t *src)
+{
+    dst->brightness = src->brightness;
+    dst->speed = src->speed;
+    pv_hex_to_rgb3(src->color, dst->rgb);
+    pv_hex_to_rgb3(src->color, dst->rgb_closed);
+}
+
+static uint8_t hexnib(char c)
+{
+    if (c >= '0' && c <= '9') return (uint8_t)(c - '0');
+    if (c >= 'a' && c <= 'f') return (uint8_t)(c - 'a' + 10);
+    if (c >= 'A' && c <= 'F') return (uint8_t)(c - 'A' + 10);
+    return 0;
+}
+
+// "RRGGBB" (the wire format) to three stored bytes. Anything that is not six
+// hex digits yields black rather than garbage, because a malformed colour from
+// the network must not be able to put an undefined value on the strip.
+void pv_hex_to_rgb3(const char *hex, uint8_t out[3])
+{
+    out[0] = out[1] = out[2] = 0;
+    if (!hex) return;
+    size_t n = strlen(hex);
+    if (n != 6) return;
+    for (int i = 0; i < 6; ++i)
+        if (!isxdigit((unsigned char)hex[i])) return;
+    out[0] = (uint8_t)((hexnib(hex[0]) << 4) | hexnib(hex[1]));
+    out[1] = (uint8_t)((hexnib(hex[2]) << 4) | hexnib(hex[3]));
+    out[2] = (uint8_t)((hexnib(hex[4]) << 4) | hexnib(hex[5]));
+}
+
+// Three stored bytes back to the "RRGGBB" the factory protocol expects.
+void pv_rgb3_to_hex(const uint8_t rgb[3], char out[7])
+{
+    static const char H[] = "0123456789ABCDEF";
+    out[0] = H[(rgb[0] >> 4) & 15]; out[1] = H[rgb[0] & 15];
+    out[2] = H[(rgb[1] >> 4) & 15]; out[3] = H[rgb[1] & 15];
+    out[4] = H[(rgb[2] >> 4) & 15]; out[5] = H[rgb[2] & 15];
+    out[6] = '\0';
+}
+
 static void fx_set(pv_fx_param_t *p, const char *color)
 {
     p->brightness = 50;
     p->speed = 50;
-    snprintf(p->color, sizeof(p->color), "%s", color);
+    pv_hex_to_rgb3(color, p->rgb);
+    // Factory defaults give both vent positions the same colour, so a device
+    // out of the box behaves exactly as it did before the second colour
+    // existed. Anyone who wants the strip to change on the vent sets it.
+    pv_hex_to_rgb3(color, p->rgb_closed);
 }
 
 void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode)
@@ -149,6 +369,9 @@ void pv_cfg_factory_defaults(pv_cfg_t *c)
     snprintf(c->device_name, sizeof(c->device_name), "%s", PV_DEVICE_NAME_DEFAULT);
     c->motor_manual = false;         // AUTO is the factory default
     c->motor_manual_open = false;
+    // Stock's ring behaviour: dark in AUTO, blinking in MANUAL.
+    c->ring_mode = PV_RING_AUTO;
+    c->ring_blink = true;
 }
 
 // DELIBERATE DEPARTURE, documented rather than silent.
@@ -176,6 +399,7 @@ static void cfg_clamp_loaded(void)
     // The one that is actually reachable as an out-of-bounds READ.
     for (int lvl = 0; lvl < 2; ++lvl)
         if (r->warnhot_current[lvl] > 1) r->warnhot_current[lvl] = 0;
+    if (g_cfg.ring_mode >= PV_RING_COUNT) g_cfg.ring_mode = PV_RING_AUTO;
 }
 
 void pv_cfg_load(void)
@@ -188,42 +412,173 @@ void pv_cfg_load(void)
     }
     // Big enough for either layout. nvs_get_blob fills in the stored length,
     // and the magic says which shape those bytes are.
-    union { pv_cfg_t v3; pv_cfg_v1_t v1; } stored;
+    union { pv_cfg_t v7; pv_cfg_v6_t v6; pv_cfg_v5_t v5; pv_cfg_v4_t v4; pv_cfg_v3_t v3; pv_cfg_v2_t v2;
+            pv_cfg_v1_t v1; } stored;
     size_t size = sizeof(stored);
     esp_err_t err = nvs_get_blob(h, CFG_KEY, &stored, &size);
     nvs_close(h);
 
     if (err == ESP_OK && size == sizeof(pv_cfg_t) &&
-        stored.v3.magic == CFG_MAGIC) {
-        g_cfg = stored.v3;
+        stored.v7.magic == CFG_MAGIC) {
+        g_cfg = stored.v7;
         cfg_clamp_loaded();
         ESP_LOGI(TAG, "config loaded (%u B)", (unsigned)size);
         return;
     }
 
-    // v2 -> v3. device_name was APPENDED, so every field before it kept its
-    // offset and the whole prefix copies straight across. Copying exactly
-    // offsetof(device_name) bytes rather than the stored size is what keeps
-    // v2's trailing struct padding out of the new field.
-    if (err == ESP_OK && stored.v3.magic == CFG_MAGIC_V2 &&
-        size >= offsetof(pv_cfg_t, device_name) && size <= sizeof(pv_cfg_t)) {
-        memcpy(&g_cfg, &stored.v3, offsetof(pv_cfg_t, device_name));
-        g_cfg.magic = CFG_MAGIC;
-        // device_name keeps the default pv_cfg_factory_defaults already put
-        // there, which is the string stock hard-codes into the web app.
+    // v6/v5 -> v7. The effect PARAMETER shrank from sixteen bytes to eight
+    // when colours stopped being stored as text, which moves every byte after
+    // rgb.simple[0]. Field by field, as with every other layout change here.
+    //
+    // v6 and v5 differ only by the two ring bytes at the very end, so one arm
+    // reads both and v5 simply leaves the ring settings at their defaults.
+    if (err == ESP_OK &&
+        ((stored.v6.magic == CFG_MAGIC_V6 && size == sizeof(pv_cfg_v6_t)) ||
+         (stored.v5.magic == CFG_MAGIC_V5 && size == sizeof(pv_cfg_v5_t)))) {
+        bool has_ring = (stored.v6.magic == CFG_MAGIC_V6);
+        const pv_rgb_cfg_v6_t *o = &stored.v6.rgb;
+        g_cfg.rgb.light_on       = o->light_on;
+        g_cfg.rgb.warning_sw     = o->warning_sw;
+        g_cfg.rgb.follow_printer = o->follow_printer;
+        g_cfg.rgb.follow_vent    = o->follow_vent;
+        g_cfg.rgb.reverse        = o->reverse;
+        g_cfg.rgb.light_mode     = o->light_mode;
+        g_cfg.rgb.simple_current = o->simple_current;
+        for (int i = 0; i < PV_FX_COUNT; ++i)
+            fx_lift_v6(&g_cfg.rgb.simple[i], &o->simple[i]);
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
+            for (int f = 0; f < PV_FX_COUNT; ++f)
+                fx_lift_v6(&g_cfg.rgb.h2d[st][f], &o->h2d[st][f]);
+        }
+        memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
+               sizeof(g_cfg.rgb.warnhot_current));
+        memcpy(g_cfg.rgb.warnhot_bg, o->warnhot_bg, sizeof(g_cfg.rgb.warnhot_bg));
+        memcpy(g_cfg.rgb.warnhot_speed, o->warnhot_speed,
+               sizeof(g_cfg.rgb.warnhot_speed));
+
+        g_cfg.printer           = stored.v6.printer;
+        g_cfg.ap                = stored.v6.ap;
+        memcpy(g_cfg.hostname, stored.v6.hostname, sizeof(g_cfg.hostname));
+        memcpy(g_cfg.language, stored.v6.language, sizeof(g_cfg.language));
+        g_cfg.motor_manual      = stored.v6.motor_manual;
+        g_cfg.motor_manual_open = stored.v6.motor_manual_open;
+        memcpy(g_cfg.device_name, stored.v6.device_name, sizeof(g_cfg.device_name));
+        if (has_ring) {
+            g_cfg.ring_mode  = stored.v6.ring_mode;
+            g_cfg.ring_blink = stored.v6.ring_blink;
+        }
+        g_cfg.magic             = CFG_MAGIC;
+
         cfg_clamp_loaded();
-        ESP_LOGW(TAG, "migrated config v2 -> v3 (%u B -> %u B), device_name defaulted",
+        ESP_LOGW(TAG, "migrated config v%d -> v7 (%u B -> %u B), colours now stored as bytes",
+                 has_ring ? 6 : 5, (unsigned)size, (unsigned)sizeof(pv_cfg_t));
+        pv_cfg_save();
+        return;
+    }
+
+    // v4 -> v5. The effect PARAMETER grew from nine bytes to sixteen, which
+    // moves every byte after rgb.simple[0]. Same trap as v1 and v3: a prefix
+    // memcpy would shift the printer binding and the Wi-Fi credentials. Field
+    // by field, and every effect's closed colour starts equal to its open one.
+    if (err == ESP_OK && stored.v4.magic == CFG_MAGIC_V4 &&
+        size == sizeof(pv_cfg_v4_t)) {
+        const pv_rgb_cfg_v4_t *o = &stored.v4.rgb;
+        g_cfg.rgb.light_on       = o->light_on;
+        g_cfg.rgb.warning_sw     = o->warning_sw;
+        g_cfg.rgb.follow_printer = o->follow_printer;
+        g_cfg.rgb.follow_vent    = o->follow_vent;
+        g_cfg.rgb.reverse        = o->reverse;
+        g_cfg.rgb.light_mode     = o->light_mode;
+        g_cfg.rgb.simple_current = o->simple_current;
+        for (int i = 0; i < PV_FX_COUNT; ++i)
+            fx_lift_v4(&g_cfg.rgb.simple[i], &o->simple[i]);
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
+            for (int f = 0; f < PV_FX_COUNT; ++f)
+                fx_lift_v4(&g_cfg.rgb.h2d[st][f], &o->h2d[st][f]);
+        }
+        memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
+               sizeof(g_cfg.rgb.warnhot_current));
+        memcpy(g_cfg.rgb.warnhot_bg, o->warnhot_bg, sizeof(g_cfg.rgb.warnhot_bg));
+        memcpy(g_cfg.rgb.warnhot_speed, o->warnhot_speed,
+               sizeof(g_cfg.rgb.warnhot_speed));
+
+        g_cfg.printer           = stored.v4.printer;
+        g_cfg.ap                = stored.v4.ap;
+        memcpy(g_cfg.hostname, stored.v4.hostname, sizeof(g_cfg.hostname));
+        memcpy(g_cfg.language, stored.v4.language, sizeof(g_cfg.language));
+        g_cfg.motor_manual      = stored.v4.motor_manual;
+        g_cfg.motor_manual_open = stored.v4.motor_manual_open;
+        memcpy(g_cfg.device_name, stored.v4.device_name, sizeof(g_cfg.device_name));
+        g_cfg.magic             = CFG_MAGIC;
+
+        cfg_clamp_loaded();
+        ESP_LOGW(TAG, "migrated config v4 -> v7 (%u B -> %u B), closed colour = open colour",
                  (unsigned)size, (unsigned)sizeof(pv_cfg_t));
+        pv_cfg_save();
+        return;
+    }
+
+    // v3/v2 -> v4. Nine effects became eighteen, and PV_FX_COUNT is an array
+    // dimension in the MIDDLE of pv_rgb_cfg_t, so this is the same trap v1
+    // fell into: nothing after rgb.simple kept its offset and a prefix memcpy
+    // would silently shift the printer binding, the AP credentials and the
+    // hostname. Field by field, same as the v1 arm below.
+    //
+    // v3 and v2 share this arm because they share the rgb shape; the only
+    // difference is that v2 predates device_name and leaves it at default.
+    if (err == ESP_OK &&
+        ((stored.v3.magic == CFG_MAGIC_V3 && size == sizeof(pv_cfg_v3_t)) ||
+         (stored.v2.magic == CFG_MAGIC_V2 && size == sizeof(pv_cfg_v2_t)))) {
+        bool has_name = (stored.v3.magic == CFG_MAGIC_V3);
+        // Both shapes put rgb at the same offset, so one pointer serves.
+        const pv_rgb_cfg_v3_t *o = &stored.v3.rgb;
+        g_cfg.rgb.light_on       = o->light_on;
+        g_cfg.rgb.warning_sw     = o->warning_sw;
+        g_cfg.rgb.follow_printer = o->follow_printer;
+        g_cfg.rgb.follow_vent    = o->follow_vent;
+        g_cfg.rgb.reverse        = o->reverse;
+        g_cfg.rgb.light_mode     = o->light_mode;
+        g_cfg.rgb.simple_current = o->simple_current;
+        for (int i = 0; i < PV_FX_COUNT_V3; ++i)
+            fx_lift_v4(&g_cfg.rgb.simple[i], &o->simple[i]);
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
+            for (int f = 0; f < PV_FX_COUNT_V3; ++f)
+                fx_lift_v4(&g_cfg.rgb.h2d[st][f], &o->h2d[st][f]);
+        }
+        memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
+               sizeof(g_cfg.rgb.warnhot_current));
+        memcpy(g_cfg.rgb.warnhot_bg, o->warnhot_bg, sizeof(g_cfg.rgb.warnhot_bg));
+        memcpy(g_cfg.rgb.warnhot_speed, o->warnhot_speed,
+               sizeof(g_cfg.rgb.warnhot_speed));
+
+        g_cfg.printer           = stored.v3.printer;
+        g_cfg.ap                = stored.v3.ap;
+        memcpy(g_cfg.hostname, stored.v3.hostname, sizeof(g_cfg.hostname));
+        memcpy(g_cfg.language, stored.v3.language, sizeof(g_cfg.language));
+        g_cfg.motor_manual      = stored.v3.motor_manual;
+        g_cfg.motor_manual_open = stored.v3.motor_manual_open;
+        if (has_name)
+            memcpy(g_cfg.device_name, stored.v3.device_name,
+                   sizeof(g_cfg.device_name));
+        g_cfg.magic             = CFG_MAGIC;
+
+        cfg_clamp_loaded();
+        ESP_LOGW(TAG, "migrated config v%d -> v7 (%u B -> %u B), %d effects -> %d",
+                 has_name ? 3 : 2, (unsigned)size, (unsigned)sizeof(pv_cfg_t),
+                 PV_FX_COUNT_V3, PV_FX_COUNT);
         pv_cfg_save();
         return;
     }
 
     if (err == ESP_OK && size == sizeof(pv_cfg_v1_t) &&
         stored.v1.magic == CFG_MAGIC_V1) {
-        // Seven effects becoming nine moved everything after rgb.simple, so
-        // this copies field by field. g_cfg already holds factory defaults,
-        // which means the two new effect slots arrive correctly filled and
-        // only the seven that existed get overwritten.
+        // Seven effects becoming eighteen moved everything after rgb.simple,
+        // so this copies field by field. g_cfg already holds factory
+        // defaults, which means the new effect slots arrive correctly filled
+        // and only the seven that existed get overwritten.
         const pv_rgb_cfg_v1_t *o = &stored.v1.rgb;
         g_cfg.rgb.light_on       = o->light_on;
         g_cfg.rgb.warning_sw     = o->warning_sw;
@@ -233,11 +588,11 @@ void pv_cfg_load(void)
         g_cfg.rgb.light_mode     = o->light_mode;
         g_cfg.rgb.simple_current = o->simple_current;
         for (int i = 0; i < PV_FX_COUNT_V1; ++i)
-            g_cfg.rgb.simple[i] = o->simple[i];
+            fx_lift_v4(&g_cfg.rgb.simple[i], &o->simple[i]);
         for (int st = 0; st < PV_ST_COUNT; ++st) {
             g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
             for (int f = 0; f < PV_FX_COUNT_V1; ++f)
-                g_cfg.rgb.h2d[st][f] = o->h2d[st][f];
+                fx_lift_v4(&g_cfg.rgb.h2d[st][f], &o->h2d[st][f]);
         }
         memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
                sizeof(g_cfg.rgb.warnhot_current));
@@ -255,7 +610,7 @@ void pv_cfg_load(void)
         g_cfg.magic             = CFG_MAGIC;
 
         cfg_clamp_loaded();
-        ESP_LOGW(TAG, "migrated config v1 -> v3 (%u B -> %u B), %d effects -> %d",
+        ESP_LOGW(TAG, "migrated config v1 -> v7 (%u B -> %u B), %d effects -> %d",
                  (unsigned)size, (unsigned)sizeof(pv_cfg_t),
                  PV_FX_COUNT_V1, PV_FX_COUNT);
         pv_cfg_save();      // write it back in the new shape straight away
@@ -270,11 +625,46 @@ void pv_cfg_save(void)
 {
     nvs_handle_t h;
     esp_err_t err = nvs_open(CFG_NS, NVS_READWRITE, &h);
-    if (err != ESP_OK) { ESP_LOGE(TAG, "nvs_open: %d", err); return; }
-    err = nvs_set_blob(h, CFG_KEY, &g_cfg, sizeof(g_cfg));
-    if (err == ESP_OK) err = nvs_commit(h);
-    nvs_close(h);
-    if (err != ESP_OK) ESP_LOGE(TAG, "save failed: %d", err);
+    if (err == ESP_OK) {
+        err = nvs_set_blob(h, CFG_KEY, &g_cfg, sizeof(g_cfg));
+
+        // Measured on this device 2026-08-30: of the 378 entries in the three
+        // NVS pages, one page is reserved for garbage collection and the Wi-Fi
+        // stack's own keys take about 160 of the rest, cal_data alone being 62.
+        // That leaves barely enough for ONE copy of this config, and
+        // nvs_set_blob writes the new copy BEFORE releasing the old one, so it
+        // needs room for two and fails.
+        //
+        // Releasing the old copy first turns a two-copy peak into a one-copy
+        // peak, which fits. It is only done as a RETRY, never on the normal
+        // path, because between the erase and the write there is a window in
+        // which a power cut loses the config. Taking that small risk on the
+        // path that is otherwise guaranteed to fail is the right trade; taking
+        // it on every save would not be.
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "save failed (%d), releasing the old copy and retrying", err);
+            esp_err_t e2 = nvs_erase_key(h, CFG_KEY);
+            if (e2 == ESP_OK || e2 == ESP_ERR_NVS_NOT_FOUND) {
+                nvs_commit(h);
+                err = nvs_set_blob(h, CFG_KEY, &g_cfg, sizeof(g_cfg));
+            }
+        }
+        if (err == ESP_OK) err = nvs_commit(h);
+        nvs_close(h);
+    } else {
+        ESP_LOGE(TAG, "nvs_open: %d", err);
+    }
+
+    // A failed save used to be one log line and nothing else. The device went
+    // on working from RAM, looked healthy, and lost every setting at the next
+    // reboot. Now it is remembered and reported in the state document, so the
+    // UI can say so while there is still time to do something about it.
+    g_live.cfg_save_failed = (err != ESP_OK);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "CONFIG SAVE FAILED (%d): settings are live but NOT stored "
+                      "and will be lost on reboot", err);
+        pv_ws_push_state();
+    }
 }
 
 void pv_factory_reset_and_reboot(void)

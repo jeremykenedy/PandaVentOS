@@ -287,6 +287,23 @@ static float s_bounce_dir = 1.0f;
 static float s_cylon_pos;
 static float s_cylon_dir  = 1.0f;
 
+// The centre-referenced family, added 2026-08-30. Each pair (out/in) shares
+// one phase global, because only one of a pair can be on screen at a time and
+// sharing means switching between them in the UI does not jump.
+//
+// Every one of them works in HALF-STRIP coordinates: h = n/2 rounded up, and
+// the position runs 0..h-1 from the centre outward. The inward variants are
+// the same number read from the other end. Doing it this way rather than with
+// two independent counters is what guarantees the two halves stay symmetric
+// on an odd pixel count, which 16 is not but a future strip might be.
+static float s_split_pos;          // Center marquee pair, 0..h-1
+static float s_fill_pos;           // Center fill pair, 0..h
+static float s_sbounce_pos;        // Center bounce pair
+static float s_sbounce_dir = 1.0f;
+static float s_sfill_pos;          // Center bounce-fill pair
+static float s_sfill_dir  = 1.0f;
+static float s_progress_shown;     // Progress bar, eased toward the real value
+
 // Color_Cycle 0x400ddb00 and Rainbow 0x400ddc34 each keep a hue phase in a
 // global, exactly as stock does (uint16 at 0x3ffb690c and int at 0x3ffb6908).
 static uint16_t s_cycle_hue;
@@ -586,6 +603,180 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         return ms < 10 ? 10 : (uint32_t)ms;
     }
 
+    // -----------------------------------------------------------------
+    // ADDITIONS 2026-08-30. Nine effects, none of them stock.
+    //
+    // Shared vocabulary for the eight centre-referenced ones:
+    //   h        half the strip, rounded up: pixel h-1 is the last one on the
+    //            first half, pixel n-h the first one on the second
+    //   depth    how far from the ORIGIN a pixel sits, in pixels
+    //   origin   the middle for the *_OUT effects, the two ends for *_IN
+    //
+    // depth_of() converts a pixel index into that distance once, so every
+    // effect below is written as a function of depth alone and an out/in pair
+    // differs by one subtraction. Anything else drifts: writing the inward
+    // variant as its own loop is how you end up with the two halves a pixel
+    // out of step at one speed and not another.
+    // -----------------------------------------------------------------
+    case PV_FX_PROGRESS: {
+        // The strip as a fuel gauge. pixels_lit = percent * n / 100, and the
+        // pixel straddling the boundary is lit PARTIALLY, so a 16 pixel strip
+        // still resolves single percent steps instead of stepping in chunks
+        // of 6.25%.
+        //
+        // The shown value chases the reported one instead of snapping to it.
+        // mc_percent arrives once a second at best and jumps whole points at
+        // a time on a fast print; easing turns that into a crawl. The rate is
+        // per frame, and the frame period is speed-dependent, so a slower
+        // speed setting also means a lazier catch-up, which is what someone
+        // reaching for the speed slider on a progress bar is asking for.
+        float target = (float)g_live.print_percent;
+        float delta  = target - s_progress_shown;
+        // Snap on a big jump. A new print starting at 0 after the last one
+        // finished at 100 should not spend five seconds draining.
+        if (delta > 25.0f || delta < -25.0f) s_progress_shown = target;
+        else                                 s_progress_shown += delta * 0.15f;
+
+        float lit = s_progress_shown * (float)n / 100.0f;
+        for (int i = 0; i < n; ++i) {
+            // Reverse fills from the far end, which is the only sensible
+            // mirror for a bar: the same amount of light, other side.
+            int   idx  = reverse ? (n - 1 - i) : i;
+            float head = lit - (float)i;              // >=1 full, <=0 dark
+            float f    = head >= 1.0f ? 1.0f : (head <= 0.0f ? 0.0f : head);
+            px[idx].r = chan_f(color.r, bright100, f);
+            px[idx].g = chan_f(color.g, bright100, f);
+            px[idx].b = chan_f(color.b, bright100, f);
+        }
+        // Nothing here is animated by the frame rate itself, only the easing,
+        // so this borrows Breathing's period rather than Marquee's.
+        int ms = (int)(50.0 - (double)speed * 0.4);
+        return ms < 10 ? 10 : (uint32_t)ms;
+    }
+
+    case PV_FX_MARQUEE_OUT:
+    case PV_FX_MARQUEE_IN: {
+        // Marquee's travelling Gaussian, mirrored about the centre so there
+        // are two of them. Same sigma and same five pixel cutoff as Marquee
+        // and Bounce, so all three read as the same light at the same speed.
+        //
+        // The blob wraps rather than turning around: it leaves one end and
+        // reappears at the origin, which is what "marquee" means here and is
+        // what separates this pair from the BOUNCE_* pair below.
+        int   h   = (n + 1) / 2;
+        bool  out = (fx == PV_FX_MARQUEE_OUT);
+        float p   = s_split_pos;                     // 0..h-1 from the origin
+        for (int i = 0; i < n; ++i) {
+            int   half  = i < h ? (h - 1 - i) : (i - (n - h));
+            float depth = out ? (float)half : (float)(h - 1 - half);
+            float d     = fabsf(depth - p);
+            if (d > 5.0f) { px[i] = (rgb_t){0, 0, 0}; continue; }
+            float f = expf(-(d * d) / 4.5f);
+            px[i].r = chan_f(color.r, bright100, f);
+            px[i].g = chan_f(color.g, bright100, f);
+            px[i].b = chan_f(color.b, bright100, f);
+        }
+        s_split_pos += reverse ? -0.3f : 0.3f;
+        if (s_split_pos >= (float)h)   s_split_pos = 0.0f;
+        else if (s_split_pos < 0.0f)   s_split_pos = (float)h - 1e-6f;
+        int ms = (int)(70.0 - (double)speed * 0.6);
+        return ms < 10 ? 10 : (uint32_t)ms;
+    }
+
+    case PV_FX_FILL_OUT:
+    case PV_FX_FILL_IN: {
+        // Solid, not a blob: every pixel from the origin out to the head is
+        // fully lit and stays lit until the bar completes and restarts.
+        //
+        // The head pixel is fractional for the same reason the progress bar's
+        // is. Without it a 16 pixel strip fills in 8 visible steps per half
+        // and the motion looks like a stutter rather than a sweep.
+        int  h   = (n + 1) / 2;
+        bool out = (fx == PV_FX_FILL_OUT);
+        for (int i = 0; i < n; ++i) {
+            int   half  = i < h ? (h - 1 - i) : (i - (n - h));
+            float depth = out ? (float)half : (float)(h - 1 - half);
+            float head  = s_fill_pos - depth;
+            float f     = head >= 1.0f ? 1.0f : (head <= 0.0f ? 0.0f : head);
+            px[i].r = chan_f(color.r, bright100, f);
+            px[i].g = chan_f(color.g, bright100, f);
+            px[i].b = chan_f(color.b, bright100, f);
+        }
+        s_fill_pos += reverse ? -0.3f : 0.3f;
+        // Overshoot by one so the strip is seen FULL for a moment before it
+        // resets. Wrapping exactly at h blanks it the instant it completes,
+        // and the eye reads that as a dropped frame.
+        if (s_fill_pos >= (float)h + 1.0f) s_fill_pos = 0.0f;
+        else if (s_fill_pos < 0.0f)        s_fill_pos = (float)h + 1.0f;
+        int ms = (int)(70.0 - (double)speed * 0.6);
+        return ms < 10 ? 10 : (uint32_t)ms;
+    }
+
+    case PV_FX_BOUNCE_OUT:
+    case PV_FX_BOUNCE_IN: {
+        // The MARQUEE_* pair with a reflection instead of a wrap. Out starts
+        // at the middle and turns at the ends; In starts at the ends and
+        // turns at the middle. Reverse mirrors the strip rather than negating
+        // the step, for the reason spelled out on PV_FX_BOUNCE: negating it
+        // fights the turnaround and parks the blob at a limit.
+        int   h   = (n + 1) / 2;
+        bool  out = (fx == PV_FX_BOUNCE_OUT);
+        float p   = reverse ? (float)(h - 1) - s_sbounce_pos : s_sbounce_pos;
+        for (int i = 0; i < n; ++i) {
+            int   half  = i < h ? (h - 1 - i) : (i - (n - h));
+            float depth = out ? (float)half : (float)(h - 1 - half);
+            float d     = fabsf(depth - p);
+            if (d > 5.0f) { px[i] = (rgb_t){0, 0, 0}; continue; }
+            float f = expf(-(d * d) / 4.5f);
+            px[i].r = chan_f(color.r, bright100, f);
+            px[i].g = chan_f(color.g, bright100, f);
+            px[i].b = chan_f(color.b, bright100, f);
+        }
+        s_sbounce_pos += s_sbounce_dir * 0.3f;
+        if (s_sbounce_pos >= (float)(h - 1)) {
+            s_sbounce_pos = (float)(h - 1);
+            s_sbounce_dir = -1.0f;
+        } else if (s_sbounce_pos <= 0.0f) {
+            s_sbounce_pos = 0.0f;
+            s_sbounce_dir = 1.0f;
+        }
+        int ms = (int)(70.0 - (double)speed * 0.6);
+        return ms < 10 ? 10 : (uint32_t)ms;
+    }
+
+    case PV_FX_BOUNCE_FILL_OUT:
+    case PV_FX_BOUNCE_FILL_IN: {
+        // The FILL_* pair that unfills instead of resetting. Filling to full
+        // and then dropping to black is a hard cut; retreating the way it came
+        // is continuous, and it is the difference the name is asking for.
+        //
+        // The limits are 0 and h, not h-1: the bar has to reach COMPLETELY
+        // full before it turns, and full means the head is past the last
+        // pixel, not on it.
+        int  h   = (n + 1) / 2;
+        bool out = (fx == PV_FX_BOUNCE_FILL_OUT);
+        float base = reverse ? (float)h - s_sfill_pos : s_sfill_pos;
+        for (int i = 0; i < n; ++i) {
+            int   half  = i < h ? (h - 1 - i) : (i - (n - h));
+            float depth = out ? (float)half : (float)(h - 1 - half);
+            float head  = base - depth;
+            float f     = head >= 1.0f ? 1.0f : (head <= 0.0f ? 0.0f : head);
+            px[i].r = chan_f(color.r, bright100, f);
+            px[i].g = chan_f(color.g, bright100, f);
+            px[i].b = chan_f(color.b, bright100, f);
+        }
+        s_sfill_pos += s_sfill_dir * 0.3f;
+        if (s_sfill_pos >= (float)h) {
+            s_sfill_pos = (float)h;
+            s_sfill_dir = -1.0f;
+        } else if (s_sfill_pos <= 0.0f) {
+            s_sfill_pos = 0.0f;
+            s_sfill_dir = 1.0f;
+        }
+        int ms = (int)(70.0 - (double)speed * 0.6);
+        return ms < 10 ? 10 : (uint32_t)ms;
+    }
+
     case PV_FX_RAINBOW:                      // 0x400ddc34
     default: {
         // hue = (i * 360 / n + phase) mod 360, so a FULL spectrum is spread
@@ -733,6 +924,17 @@ static void link_indicator_update(void)
     s_link_ind = (ps == 2 || (ps >= 4 && ps <= 7)) ? 1 : 0;
 }
 
+// NOT STOCK. Every effect carries an open colour and a closed colour; this is
+// the one place that decides between them. Reading g_live.vent_open rather
+// than the configured target means the strip follows the vent's ACTUAL
+// position, so it changes when the flap finishes moving, not when the command
+// is issued.
+static rgb_t fx_colour(const pv_fx_param_t *p)
+{
+    const uint8_t *c = g_live.vent_open ? p->rgb : p->rgb_closed;
+    return (rgb_t){ c[0], c[1], c[2] };
+}
+
 static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
 {
     const pv_rgb_cfg_t *r = &g_cfg.rgb;
@@ -848,7 +1050,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
         int e = r->h2d_active[st];
         if (e < 0 || e >= PV_FX_COUNT) e = PV_FX_STATIC;
         const pv_fx_param_t *p = &r->h2d[st][e];
-        *fx = e; *color = hex_to_rgb(p->color);
+        *fx = e; *color = fx_colour(p);
         *bright = p->brightness; *speed = p->speed;
         return true;
     }
@@ -879,7 +1081,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
         int e = r->simple_current;
         if (e < 0 || e >= PV_FX_COUNT) e = PV_FX_STATIC;
         const pv_fx_param_t *p = &r->simple[e];
-        *fx = e; *color = hex_to_rgb(p->color);
+        *fx = e; *color = fx_colour(p);
         *bright = p->brightness; *speed = p->speed;
         return true;
     }

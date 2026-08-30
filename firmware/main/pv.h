@@ -10,6 +10,22 @@
 #include "esp_err.h"
 
 // ---------------------------------------------------------------------------
+// Version. ONE definition, used by the state document, the UI badge and the
+// release tag, so those three can never disagree.
+//
+// PV_FW_VERSION is what the FACTORY protocol's fw_version field carries. It
+// stays "V1.0.0" because the factory web app and anything else speaking that
+// protocol treat it as the Panda Vent firmware revision, and this project is a
+// clone of that firmware: reporting something else there would be lying about
+// which protocol revision is on the wire.
+//
+// PV_OS_VERSION is THIS project's own version, semantic, and is what a user
+// reads in the corner of the page and matches against a GitHub release.
+#define PV_FW_VERSION  "V1.0.0"
+#define PV_OS_NAME     "PandaVent OS"
+#define PV_OS_VERSION  "0.1.0"
+
+// ---------------------------------------------------------------------------
 // Hardware map (recovered from the stock binary and BTT docs; proven on this
 // exact device by the previous firmware generation).
 // ---------------------------------------------------------------------------
@@ -54,7 +70,20 @@
 // layout rather than throwing the settings away. See PV_CFG_MAGIC_V1 there.
 #define PV_FX_CYLON       7
 #define PV_FX_BOUNCE      8
-#define PV_FX_COUNT       9
+// The centre-referenced family, added 2026-08-30. Everything from 10 up comes
+// in an outward/inward pair that share one renderer body and differ only in
+// which end of the strip is the origin, so the two of a pair always move at
+// the same rate and stop at the same place.
+#define PV_FX_PROGRESS         9    // print percentage as a filled bar
+#define PV_FX_MARQUEE_OUT      10   // two blobs, middle -> ends, repeat
+#define PV_FX_MARQUEE_IN       11   // two blobs, ends -> middle, repeat
+#define PV_FX_FILL_OUT         12   // solid grows middle -> ends, repeat
+#define PV_FX_FILL_IN          13   // solid grows ends -> middle, repeat
+#define PV_FX_BOUNCE_OUT       14   // blobs out, then back in, forever
+#define PV_FX_BOUNCE_IN        15   // blobs in, then back out, forever
+#define PV_FX_BOUNCE_FILL_OUT  16   // fill out, then unfill back in, forever
+#define PV_FX_BOUNCE_FILL_IN   17   // fill in, then unfill back out, forever
+#define PV_FX_COUNT       18
 #define PV_FX_STOCK_COUNT 7
 
 // Not user selectable and not part of the config arrays. Stock's warning
@@ -105,11 +134,31 @@
 #define PV_ST_ERROR       5
 #define PV_ST_COUNT       6
 
+// Colours are stored as three RAW BYTES, not as the seven byte "RRGGBB" text
+// the wire protocol uses. That is a deliberate 2026-08-30 change and it is not
+// cosmetic: the NVS partition is 12 KB of which roughly 8 KB is usable, NVS
+// needs room for the old AND the new copy while it rewrites a blob, and this
+// struct is multiplied by 18 effects and again by 6 device states. At 16 bytes
+// the config reached 2320 bytes, the rewrite stopped fitting, saves began
+// failing silently, and a reboot lost every setting. At 8 bytes the whole
+// config is about 1300, smaller than it was before the second colour existed.
+// Text is a wire format; it does not belong in storage.
 typedef struct {
     uint8_t brightness;      // 0..100
     uint8_t speed;           // 0..100
-    char    color[7];        // "RRGGBB"
+    uint8_t rgb[3];          // shown while the vent is OPEN
+    // ADDITION 2026-08-30, not stock. Every effect carries two colours and the
+    // renderer picks between them on the live vent position, so the strip can
+    // tell you at a glance whether the vent is open without the effect itself
+    // having to change. Migrated from a single-colour config by copying colour
+    // into both, which is why an existing device looks identical until someone
+    // actually sets a different closed colour.
+    uint8_t rgb_closed[3];   // shown while the vent is CLOSED
 } pv_fx_param_t;
+
+// The two conversions between the stored bytes and the wire's "RRGGBB".
+void pv_hex_to_rgb3(const char *hex, uint8_t out[3]);
+void pv_rgb3_to_hex(const uint8_t rgb[3], char out[7]);
 
 typedef struct {
     // rgb_switch / rgb_mode toggles
@@ -159,6 +208,10 @@ typedef struct {
     // letting this field take its default. What is shown on the Control
     // Panel's Device row; empty means use PV_DEVICE_NAME_DEFAULT.
     char device_name[32];
+    // ADDITIONS 2026-08-30, appended so every offset above is unchanged and a
+    // v5 blob migrates by copying its prefix. See PV_RING_* below.
+    uint8_t ring_mode;           // PV_RING_*
+    bool    ring_blink;          // blink the ring while in MANUAL
 } pv_cfg_t;
 
 // Stock hard-codes this string into the web app, where it is a translation
@@ -260,6 +313,14 @@ typedef struct {
     // "PETG"...). Empty until a report carries one. NOT a stock field: stock
     // never reads the AMS. Feeds the material-aware vent policy only.
     char  material[24];
+    // print.mc_percent, 0..100. NOT a stock field: stock never reads it.
+    // Drives the Progress Bar effect only, and stays 0 when nothing is
+    // printing, which is what an empty bar should show anyway.
+    int   print_percent;
+    // NOT STOCK. True when the last attempt to persist the config failed, which
+    // in practice means NVS is full. The settings are live in RAM and will be
+    // lost on the next reboot, so this has to be visible somewhere.
+    bool  cfg_save_failed;
 } pv_live_t;
 
 // ---------------------------------------------------------------------------
@@ -324,6 +385,31 @@ void pv_rgb_test_cycle(void);
 // pv_motor.c
 void pv_motor_start(void);
 void pv_motor_set_auto(bool auto_mode);
+// NOT STOCK. Three-way vent control for the Control Panel.
+#define PV_VENT_AUTO   0
+#define PV_VENT_OPEN   1
+#define PV_VENT_CLOSED 2
+void pv_motor_set_mode(int mode);
+int  pv_motor_get_mode(void);
+
+// NOT STOCK. What the button's ring LED does.
+//
+// AUTO is stock exactly: dark in AUTO, blinking in MANUAL. The other four are
+// additions. ON_OPEN and OFF_CLOSED are deliberately NOT the same rule: each
+// takes over one side of the vent's travel and leaves the other side to the
+// stock behaviour, which is what makes them worth having as separate choices.
+//
+//   AUTO        stock: dark in AUTO mode, blinking in MANUAL mode
+//   ALWAYS_ON   lit, always
+//   ALWAYS_OFF  dark, always
+//   ON_OPEN     lit whenever the vent is open; stock behaviour when closed
+//   OFF_CLOSED  dark whenever the vent is closed; stock behaviour when open
+#define PV_RING_AUTO       0
+#define PV_RING_ALWAYS_ON  1
+#define PV_RING_ALWAYS_OFF 2
+#define PV_RING_ON_OPEN    3
+#define PV_RING_OFF_CLOSED 4
+#define PV_RING_COUNT      5
 void pv_motor_manual_toggle(void);
 void pv_motor_update(void);                         // printer state changed
 // Any group latched in fault. Stock keeps four per-group bytes at 0x3ffb6958
