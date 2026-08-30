@@ -2,6 +2,11 @@
 CONFIG_IDF_TARGET="esp32"
 
 # 4 MB flash matches stock (esptool image-info on the factory bin).
+# Stock runs the part at 80 MHz: the app headers of both BIQU's published
+# panda_vent_v1.0.0.bin and the image on the device read freq=80m. Without this
+# line the build falls through to the ESP-IDF default of 40m, which is a silent
+# divergence from stock on every image we have ever produced.
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 

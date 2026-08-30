@@ -809,12 +809,6 @@ static void render_task(void *arg)
     // 0x400dcabd, the task's first act: arm the link indicator to 2 so the
     // strip is blue from power-on until the link settles.
     s_link_ind = 2;
-    // ---- TEMPORARY INSTRUMENTATION, remove once the dark-strip fault is found
-    ESP_LOGI(TAG, "DIAG render_task entered, s_strips=%d", s_strips);
-    uint32_t diag_frame = 0;
-    int64_t  diag_last = 0;
-    esp_err_t diag_err = ESP_OK;
-    // ----
     for (;;) {
         // ---- Level 0: 0x400dcae2, a NON-BLOCKING poll (xTicksToWait 0) ----
         uint32_t note = 0;
@@ -846,38 +840,9 @@ static void render_task(void *arg)
         // path and costs a transfer per frame, so skip it outright.
         if (fx != PV_FX_HOLD) {
             for (int s = 0; s < s_strips; ++s) {
-                esp_err_t e = strip_push(s, px, PV_LEDS_PER_STRIP);
-                if (e != ESP_OK) diag_err = e;
+                strip_push(s, px, PV_LEDS_PER_STRIP);
             }
         }
-        // ---- TEMPORARY INSTRUMENTATION ----
-        ++diag_frame;
-        static bool diag_dumped;
-        if (!diag_dumped && (px[0].r | px[0].g | px[0].b)) {
-            diag_dumped = true;
-            char line[PV_LEDS_PER_STRIP * 7 + 1];
-            int o = 0;
-            for (int i = 0; i < PV_LEDS_PER_STRIP; ++i)
-                o += snprintf(line + o, sizeof(line) - o, "%02X%02X%02X ",
-                              px[i].r, px[i].g, px[i].b);
-            ESP_LOGI(TAG, "DIAG buffer all %d px (RGB): %s", PV_LEDS_PER_STRIP, line);
-            ESP_LOGI(TAG, "DIAG wire buf0 (GRB): %02X%02X%02X %02X%02X%02X ... %02X%02X%02X",
-                     s_buf[0][0], s_buf[0][1], s_buf[0][2],
-                     s_buf[0][3], s_buf[0][4], s_buf[0][5],
-                     s_buf[0][45], s_buf[0][46], s_buf[0][47]);
-        }
-        if (diag_frame <= 3)
-            ESP_LOGI(TAG, "DIAG frame %u fx=%d px0=%02X%02X%02X refresh=%s",
-                     (unsigned)diag_frame, fx, px[0].r, px[0].g, px[0].b,
-                     esp_err_to_name(diag_err));
-        int64_t now_us = esp_timer_get_time();
-        if (now_us - diag_last >= 2000000) {
-            diag_last = now_us;
-            ESP_LOGI(TAG, "DIAG alive frame=%u fx=%d strips=%d px0=%02X%02X%02X refresh=%s",
-                     (unsigned)diag_frame, fx, s_strips,
-                     px[0].r, px[0].g, px[0].b, esp_err_to_name(diag_err));
-        }
-        // ----
         xSemaphoreGive(s_lock);
         vTaskDelay(pdMS_TO_TICKS(wait_ms));   // stock: the effect owns its frame period
     }
@@ -909,14 +874,6 @@ void pv_rgb_start(void)
         esp_err_t e3 = e2 == ESP_OK ? rmt_enable(s_chan[i])     : e2;
         if (e3 == ESP_OK) {
             ++s_strips;
-            // DIAG: init success does not prove the right pin. Stock drives
-            // GPIO 14 and GPIO 4 (per-strip table at DRAM 0x3ffb031c, field
-            // +16, read out of the shipping image), at 10 MHz resolution.
-            ESP_LOGI(TAG, "DIAG strip %d on GPIO %d, %d leds, res %lu Hz, "
-                          "bit0=%u/%u bit1=%u/%u reset=%u",
-                     i, pins[i], PV_LEDS_PER_STRIP, (unsigned long)RMT_RES_HZ,
-                     WS_T_SHORT_TICKS, WS_T_LONG_TICKS,
-                     WS_T_LONG_TICKS, WS_T_SHORT_TICKS, WS_RESET_TICKS);
         } else {
             ESP_LOGW(TAG, "strip %d init failed: chan=%s enc=%s enable=%s", i,
                      esp_err_to_name(e1), esp_err_to_name(e2), esp_err_to_name(e3));
