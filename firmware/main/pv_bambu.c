@@ -278,6 +278,11 @@ static void handle_report(const char *data, int len)
     cJSON *root = cJSON_ParseWithLength(data, len);
     if (!root) return;
     cJSON *print = cJSON_GetObjectItemCaseSensitive(root, "print");
+#if PV_POLICY_TEST_HOOK
+    // TEST BUILD ONLY, compiled out of every shipping image. Holds the live
+    // values a test injected so the next report does not wipe them.
+    if (g_test_live_lock) print = NULL;
+#endif
     if (print) {
         // Report key index 1. Parsed before gcode_state because the ERROR
         // decision below depends on it.

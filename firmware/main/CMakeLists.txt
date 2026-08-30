@@ -25,3 +25,18 @@ idf_component_register(
         mqtt
         json
 )
+
+# Test-only instrumentation for the vent policy. OFF unless the environment
+# variable is set at configure time, which nothing in the tree does:
+#
+#   PV_POLICY_TEST_HOOK=1 idf.py fullclean build     # instrumented
+#   idf.py fullclean build                           # shipping
+#
+# It exists because the sealing branch of the policy cannot be driven on a
+# machine that only has PLA loaded. Verify a shipping image with:
+#
+#   strings build/panda_vent.bin | grep -c "TEST: material"    -> 0
+if(DEFINED ENV{PV_POLICY_TEST_HOOK})
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE PV_POLICY_TEST_HOOK=1)
+    message(WARNING "PV_POLICY_TEST_HOOK is ON: this is a TEST image, do not ship it")
+endif()

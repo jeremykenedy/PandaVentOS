@@ -346,6 +346,12 @@ static void drive_task(void *arg)
     g_live.vent_open = open_dir;
     s_moving = false;
 
+    // The vent's position is part of the state document now (vent_policy
+    // reports it), and this is the only place it changes. Without this push
+    // the UI, and anything testing the policy from outside, reads the position
+    // the vent had BEFORE this travel and stays one move behind forever.
+    pv_ws_push_state();
+
     vTaskDelete(NULL);
 }
 
@@ -359,7 +365,10 @@ static void vent_go(bool open_dir)
         if (!s_moving) return;
     }
     if (s_moving) return;   // let the current travel finish
-    xTaskCreate(drive_task, "pv_drive", 3072, (void *)(uintptr_t)open_dir, 5, NULL);
+    // 4096, not 3072: the task now builds and pushes the state document on
+    // arrival, and the sys_evt overflow earlier in this project is a standing
+    // reminder of what a tight stack costs.
+    xTaskCreate(drive_task, "pv_drive", 4096, (void *)(uintptr_t)open_dir, 5, NULL);
 }
 
 void pv_motor_update(void)

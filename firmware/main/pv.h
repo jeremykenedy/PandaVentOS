@@ -174,6 +174,19 @@ typedef struct {
 
 extern pv_policy_cfg_t g_pol;
 
+// TEST BUILD ONLY, and off unless the environment variable PV_POLICY_TEST_HOOK
+// is set at configure time (see main/CMakeLists.txt). It lets a test drive
+// g_live.material, device_state and bed_temp directly and freezes the printer
+// report so the injected values stand, which is the only way to exercise the
+// sealing branch on a machine that has nothing but PLA in it. Nothing in the
+// tree turns it on; a shipping image contains none of this code.
+#ifndef PV_POLICY_TEST_HOOK
+#define PV_POLICY_TEST_HOOK 0
+#endif
+#if PV_POLICY_TEST_HOOK
+extern bool g_test_live_lock;
+#endif
+
 void pv_policy_defaults(pv_policy_cfg_t *p);
 void pv_policy_load(void);
 void pv_policy_save(void);

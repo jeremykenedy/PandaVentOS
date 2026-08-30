@@ -109,6 +109,12 @@ char *pv_json_state(void)
     // hits. Lets the UI show why the vent is doing what it is doing.
     cJSON_AddStringToObject(vp, "material", g_live.material);
     cJSON_AddNumberToObject(vp, "matched", pv_policy_match(g_live.material));
+    // Where the vent actually is, and what the printer is doing. Read-only.
+    // Makes the card's behaviour checkable from outside instead of only from
+    // the serial log.
+    cJSON_AddNumberToObject(vp, "vent_open", g_live.vent_open ? 1 : 0);
+    cJSON_AddNumberToObject(vp, "device_state", g_live.device_state);
+    cJSON_AddNumberToObject(vp, "bed_temp", g_live.bed_temp);
     cJSON *mats = cJSON_AddArrayToObject(vp, "materials");
     for (int i = 0; i < PV_MAT_COUNT; ++i) {
         cJSON *m = cJSON_CreateObject();

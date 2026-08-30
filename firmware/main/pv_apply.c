@@ -234,10 +234,41 @@ static void apply_rgb_mode(cJSON *o)
 //   {"vent_policy":{"heat_hold":0|1}}
 //   {"vent_policy":{"material":{"index":0..8,"on":0|1}}}
 //   {"vent_policy":{"bed_open_c":45,"bed_close_c":35}}
+#if PV_POLICY_TEST_HOOK
+bool g_test_live_lock = false;
+#endif
+
 static void apply_vent_policy(cJSON *o)
 {
     cJSON *e;
     bool touched = false;
+
+#if PV_POLICY_TEST_HOOK
+    // TEST BUILD ONLY. Compiled out of every shipping image. Lets a test set
+    // the live inputs the policy reads, and freeze the printer report so they
+    // are not overwritten a second later, which is the only way to drive the
+    // sealing branch on a machine with nothing but PLA loaded.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "__test_lock")) && cJSON_IsNumber(e)) {
+        g_test_live_lock = e->valueint != 0;
+        ESP_LOGW(TAG, "TEST: live lock %s", g_test_live_lock ? "on" : "off");
+        touched = true;
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "__test_material")) && cJSON_IsString(e)) {
+        snprintf(g_live.material, sizeof(g_live.material), "%s", e->valuestring);
+        ESP_LOGW(TAG, "TEST: material := %s", g_live.material);
+        touched = true;
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "__test_state")) && cJSON_IsNumber(e)) {
+        g_live.device_state = e->valueint;
+        ESP_LOGW(TAG, "TEST: device_state := %d", g_live.device_state);
+        touched = true;
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "__test_bed")) && cJSON_IsNumber(e)) {
+        g_live.bed_temp = e->valueint;
+        ESP_LOGW(TAG, "TEST: bed_temp := %d", g_live.bed_temp);
+        touched = true;
+    }
+#endif
 
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "enable")) && cJSON_IsNumber(e)) {
         g_pol.enable = e->valueint != 0;
