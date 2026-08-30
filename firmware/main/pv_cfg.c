@@ -659,12 +659,22 @@ void pv_cfg_save(void)
     // on working from RAM, looked healthy, and lost every setting at the next
     // reboot. Now it is remembered and reported in the state document, so the
     // UI can say so while there is still time to do something about it.
-    g_live.cfg_save_failed = (err != ESP_OK);
-    if (err != ESP_OK) {
+    //
+    // The push happens on any CHANGE, not just on failure. Announcing only the
+    // failure is how the warning banner outlived the problem: the flag cleared
+    // on the next good save and nothing told the page, so it kept warning about
+    // a condition that had already passed. A warning that does not withdraw
+    // itself is worse than no warning, because the next real one is ignored.
+    bool failed = (err != ESP_OK);
+    bool changed = (failed != g_live.cfg_save_failed);
+    g_live.cfg_save_failed = failed;
+    if (failed) {
         ESP_LOGE(TAG, "CONFIG SAVE FAILED (%d): settings are live but NOT stored "
                       "and will be lost on reboot", err);
-        pv_ws_push_state();
+    } else if (changed) {
+        ESP_LOGW(TAG, "config save recovered; settings are stored again");
     }
+    if (changed) pv_ws_push_state();
 }
 
 void pv_factory_reset_and_reboot(void)
