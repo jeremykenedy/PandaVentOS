@@ -279,6 +279,14 @@ static float s_marquee_pos;
 // indicator comes up over a running Marquee.
 static float s_link_pos;
 
+// ADDITIONS, not stock. Cylon and Bounce both travel end to end and turn
+// around, so each needs a direction alongside its position. Stock's effects
+// all wrap instead, which is why none of them carry one.
+static float s_bounce_pos;
+static float s_bounce_dir = 1.0f;
+static float s_cylon_pos;
+static float s_cylon_dir  = 1.0f;
+
 // Color_Cycle 0x400ddb00 and Rainbow 0x400ddc34 each keep a hue phase in a
 // global, exactly as stock does (uint16 at 0x3ffb690c and int at 0x3ffb6908).
 static uint16_t s_cycle_hue;
@@ -483,6 +491,99 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         if (s_cycle_hue > 359) s_cycle_hue = 0;
         uint32_t ms = 150u - (speed > 150 ? 150 : speed);
         return ms < 10 ? 10 : ms;
+    }
+
+    // -----------------------------------------------------------------
+    // ADDITIONS. Everything above reproduces a routine in the stock binary
+    // and cites its address. These two have no address to cite: they are
+    // ours. They are written to sit alongside the stock seven rather than
+    // to look like them, and they reuse the stock timing so that a given
+    // speed setting means the same thing across every effect.
+    // -----------------------------------------------------------------
+
+    case PV_FX_BOUNCE: {
+        // Marquee's travelling Gaussian, reflecting at the ends instead of
+        // wrapping. Same sigma, same five pixel cutoff, same frame period, so
+        // at any speed the blob crosses the strip at exactly the marquee's
+        // pace and only the turn at each end is different.
+        //
+        // Distance is LINEAR here, not circular. Marquee measures
+        // min(|i-p|, n-|i-p|) because it wraps; a bouncing blob that did that
+        // would bleed off one end and glow faintly at the other just before
+        // it turns, which reads as a bug.
+        //
+        // The reverse switch mirrors the strip rather than negating the step.
+        // Negating it would fight the turnaround logic and stick the blob at
+        // an end. Mirroring is also the more useful behaviour on a two strip
+        // kit, where it decides which end the blob starts from.
+        float p = reverse ? (float)(n - 1) - s_bounce_pos : s_bounce_pos;
+        for (int i = 0; i < n; ++i) {
+            float d = fabsf((float)i - p);
+            if (d > 5.0f) {
+                px[i] = (rgb_t){0, 0, 0};
+                continue;
+            }
+            float f = expf(-(d * d) / 4.5f);
+            px[i].r = chan_f(color.r, bright100, f);
+            px[i].g = chan_f(color.g, bright100, f);
+            px[i].b = chan_f(color.b, bright100, f);
+        }
+        s_bounce_pos += s_bounce_dir * 0.3f;
+        // Turn ON the last pixel, not past it, so the blob visibly reaches
+        // both ends and dwells there for one frame rather than several.
+        if (s_bounce_pos >= (float)(n - 1)) {
+            s_bounce_pos = (float)(n - 1);
+            s_bounce_dir = -1.0f;
+        } else if (s_bounce_pos <= 0.0f) {
+            s_bounce_pos = 0.0f;
+            s_bounce_dir = 1.0f;
+        }
+        int ms = (int)(70.0 - (double)speed * 0.6);
+        return ms < 10 ? 10 : (uint32_t)ms;
+    }
+
+    case PV_FX_CYLON: {
+        // A bright head sweeping end to end with a tail fading out behind it.
+        //
+        // The tail is the whole point, and it is what separates this from
+        // Bounce. Bounce's blob is symmetric, so a still photograph of it
+        // cannot tell you which way it is going. This one is asymmetric, so
+        // it reads as motion even frozen, and the asymmetry flips when the
+        // head turns around, which is the effect people picture when they say
+        // Cylon.
+        //
+        // Ahead of the head: a short Gaussian, so the leading edge stays
+        // crisp. Behind it: a linear fade over TAIL pixels, squared, because
+        // a linear ramp in duty cycle looks top heavy to the eye.
+        const float TAIL = 5.0f;
+        float head = reverse ? (float)(n - 1) - s_cylon_pos : s_cylon_pos;
+        float dir  = reverse ? -s_cylon_dir : s_cylon_dir;
+        for (int i = 0; i < n; ++i) {
+            float rel = ((float)i - head) * dir;      // >0 ahead, <0 behind
+            float f;
+            if (rel >= 0.0f) {
+                f = rel > 1.5f ? 0.0f : expf(-(rel * rel) / 0.9f);
+            } else {
+                float back = -rel;
+                f = back > TAIL ? 0.0f : 1.0f - back / TAIL;
+                f = f * f;
+            }
+            px[i].r = chan_f(color.r, bright100, f);
+            px[i].g = chan_f(color.g, bright100, f);
+            px[i].b = chan_f(color.b, bright100, f);
+        }
+        // Slightly faster than Bounce at the same speed. The tail already
+        // conveys motion, so the head can move without smearing.
+        s_cylon_pos += s_cylon_dir * 0.35f;
+        if (s_cylon_pos >= (float)(n - 1)) {
+            s_cylon_pos = (float)(n - 1);
+            s_cylon_dir = -1.0f;
+        } else if (s_cylon_pos <= 0.0f) {
+            s_cylon_pos = 0.0f;
+            s_cylon_dir = 1.0f;
+        }
+        int ms = (int)(70.0 - (double)speed * 0.6);
+        return ms < 10 ? 10 : (uint32_t)ms;
     }
 
     case PV_FX_RAINBOW:                      // 0x400ddc34

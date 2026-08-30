@@ -13,7 +13,45 @@ static const char *TAG = "pv_cfg";
 
 #define CFG_NS    "pv"
 #define CFG_KEY   "cfg"
-#define CFG_MAGIC 0x50564331   // "PVC1"
+#define CFG_MAGIC 0x50564332   // "PVC2": seven effects became nine
+#define CFG_MAGIC_V1 0x50564331   // "PVC1": the seven effect layout
+
+// The v1 layout, kept verbatim so a device that has been running since before
+// Cylon and Bounce existed keeps its settings.
+//
+// PV_FX_COUNT is an array dimension in the middle of the config struct, so
+// growing it did not append to the blob, it moved everything after
+// rgb.simple. A size check alone would have thrown away all 65 settings on
+// the first boot after the update, silently, and the only clue would have
+// been one line in a serial log nobody was watching.
+#define PV_FX_COUNT_V1 7
+
+typedef struct {
+    bool    light_on;
+    bool    warning_sw;
+    bool    follow_printer;
+    bool    follow_vent;
+    bool    reverse;
+    uint8_t light_mode;
+    uint8_t simple_current;
+    pv_fx_param_t simple[PV_FX_COUNT_V1];
+    uint8_t h2d_active[PV_ST_COUNT];
+    pv_fx_param_t h2d[PV_ST_COUNT][PV_FX_COUNT_V1];
+    uint8_t warnhot_current[2];
+    uint8_t warnhot_bg[2][2];
+    uint8_t warnhot_speed[2][2];
+} pv_rgb_cfg_v1_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v1_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+} pv_cfg_v1_t;
 
 pv_cfg_t  g_cfg;
 pv_live_t g_live = {
@@ -145,18 +183,66 @@ void pv_cfg_load(void)
         ESP_LOGI(TAG, "no saved config, factory defaults");
         return;
     }
-    pv_cfg_t stored;
+    // Big enough for either layout. nvs_get_blob fills in the stored length,
+    // and the magic says which shape those bytes are.
+    union { pv_cfg_t v2; pv_cfg_v1_t v1; } stored;
     size_t size = sizeof(stored);
     esp_err_t err = nvs_get_blob(h, CFG_KEY, &stored, &size);
     nvs_close(h);
-    if (err == ESP_OK && size == sizeof(stored) && stored.magic == CFG_MAGIC) {
-        g_cfg = stored;
+
+    if (err == ESP_OK && size == sizeof(pv_cfg_t) &&
+        stored.v2.magic == CFG_MAGIC) {
+        g_cfg = stored.v2;
         cfg_clamp_loaded();
         ESP_LOGI(TAG, "config loaded (%u B)", (unsigned)size);
-    } else {
-        ESP_LOGW(TAG, "stored config unusable (err=%d size=%u), defaults kept",
-                 err, (unsigned)size);
+        return;
     }
+
+    if (err == ESP_OK && size == sizeof(pv_cfg_v1_t) &&
+        stored.v1.magic == CFG_MAGIC_V1) {
+        // Seven effects becoming nine moved everything after rgb.simple, so
+        // this copies field by field. g_cfg already holds factory defaults,
+        // which means the two new effect slots arrive correctly filled and
+        // only the seven that existed get overwritten.
+        const pv_rgb_cfg_v1_t *o = &stored.v1.rgb;
+        g_cfg.rgb.light_on       = o->light_on;
+        g_cfg.rgb.warning_sw     = o->warning_sw;
+        g_cfg.rgb.follow_printer = o->follow_printer;
+        g_cfg.rgb.follow_vent    = o->follow_vent;
+        g_cfg.rgb.reverse        = o->reverse;
+        g_cfg.rgb.light_mode     = o->light_mode;
+        g_cfg.rgb.simple_current = o->simple_current;
+        for (int i = 0; i < PV_FX_COUNT_V1; ++i)
+            g_cfg.rgb.simple[i] = o->simple[i];
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
+            for (int f = 0; f < PV_FX_COUNT_V1; ++f)
+                g_cfg.rgb.h2d[st][f] = o->h2d[st][f];
+        }
+        memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
+               sizeof(g_cfg.rgb.warnhot_current));
+        memcpy(g_cfg.rgb.warnhot_bg, o->warnhot_bg, sizeof(g_cfg.rgb.warnhot_bg));
+        memcpy(g_cfg.rgb.warnhot_speed, o->warnhot_speed,
+               sizeof(g_cfg.rgb.warnhot_speed));
+
+        g_cfg.printer           = stored.v1.printer;
+        g_cfg.ap                = stored.v1.ap;
+        memcpy(g_cfg.hostname, stored.v1.hostname, sizeof(g_cfg.hostname));
+        memcpy(g_cfg.language, stored.v1.language, sizeof(g_cfg.language));
+        g_cfg.motor_manual      = stored.v1.motor_manual;
+        g_cfg.motor_manual_open = stored.v1.motor_manual_open;
+        g_cfg.magic             = CFG_MAGIC;
+
+        cfg_clamp_loaded();
+        ESP_LOGW(TAG, "migrated config v1 -> v2 (%u B -> %u B), %d effects -> %d",
+                 (unsigned)size, (unsigned)sizeof(pv_cfg_t),
+                 PV_FX_COUNT_V1, PV_FX_COUNT);
+        pv_cfg_save();      // write it back in the new shape straight away
+        return;
+    }
+
+    ESP_LOGW(TAG, "stored config unusable (err=%d size=%u), defaults kept",
+             err, (unsigned)size);
 }
 
 void pv_cfg_save(void)

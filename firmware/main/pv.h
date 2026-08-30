@@ -40,6 +40,8 @@
 // settings). Brightness and speed are 0..100 in steps of 5, colors are
 // "RRGGBB" uppercase hex, exactly as the factory UI sends and expects.
 // ---------------------------------------------------------------------------
+// 0..6 are stock's seven, in stock's order, and their ids are part of the
+// factory wire protocol. Never renumber them.
 #define PV_FX_STATIC      0
 #define PV_FX_BREATHING   1
 #define PV_FX_STROBING    2
@@ -47,7 +49,13 @@
 #define PV_FX_MARQUEE     4
 #define PV_FX_COLOR_CYCLE 5
 #define PV_FX_RAINBOW     6
-#define PV_FX_COUNT       7
+// ADDITIONS, appended so every stock id keeps its meaning. Growing this count
+// grows pv_cfg_t, which the loader size-checks, so pv_cfg.c migrates the older
+// layout rather than throwing the settings away. See PV_CFG_MAGIC_V1 there.
+#define PV_FX_CYLON       7
+#define PV_FX_BOUNCE      8
+#define PV_FX_COUNT       9
+#define PV_FX_STOCK_COUNT 7
 
 // Not user selectable and not part of the config arrays. Stock's warning
 // override renderer at 0x400ddeac is a separate function, not one of the
