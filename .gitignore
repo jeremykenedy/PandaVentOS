@@ -10,3 +10,10 @@ reference-timeline.json
 seed_live.h
 shots-*/
 ui-comparison.png
+
+# Anything specific to one device: full-flash backups, settings snapshots,
+# notes carrying Wi-Fi credentials or the printer's access code. The folder
+# and its README ship, the contents never do.
+private/*
+!private/.gitkeep
+!private/README.md
