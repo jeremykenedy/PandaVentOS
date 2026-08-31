@@ -235,7 +235,8 @@ void pv_ws_push_state(void)
     pv_ws_broadcast(pv_json_state());
 }
 
-typedef struct { int fd; char *json; } onepush_t;
+#define ONEPUSH_TRIES 3
+typedef struct { int fd; char *json; int tries; } onepush_t;
 
 static void onepush_work(void *arg)
 {
@@ -245,8 +246,18 @@ static void onepush_work(void *arg)
         .payload = (uint8_t *)p->json,
         .len = strlen(p->json),
     };
-    if (httpd_ws_send_frame_async(s_server, p->fd, &f) != ESP_OK) {
-        ESP_LOGW(TAG, "connect push failed for fd=%d", p->fd);
+    esp_err_t err = httpd_ws_send_frame_async(s_server, p->fd, &f);
+    if (err != ESP_OK && p->tries < ONEPUSH_TRIES) {
+        // Re-queue rather than give up. This is the one document the client is
+        // waiting for, and dropping it leaves that browser on placeholders
+        // with no way back: measured at roughly one connect in eight before
+        // this, with the socket confirmed open the whole time. Re-queued work
+        // runs after whatever else is pending, which is usually enough.
+        p->tries++;
+        if (httpd_queue_work(s_server, onepush_work, p) == ESP_OK) return;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "connect push failed for fd=%d after %d tries", p->fd, p->tries + 1);
         ws_untrack(p->fd);
     }
     free(p->json);
@@ -257,14 +268,30 @@ static void onepush_work(void *arg)
 // has returned. See the comment at the handshake for why it is not sent inline.
 void pv_ws_push_state_to(int fd)
 {
+    // Every early return here used to be silent, and each one leaves that
+    // client waiting forever. They are logged now, because "the page never
+    // filled in" and "the device could not allocate 14 KB" are the same
+    // symptom and only one of them is a UI problem. The page also asks for the
+    // state itself if it does not arrive, so a failure here is recoverable
+    // rather than terminal.
+    if (!s_server) return;
     char *json = pv_json_state();
-    if (!json) return;
-    if (!s_server) { free(json); return; }
+    if (!json) {
+        ESP_LOGW(TAG, "connect push: no state document for fd=%d (heap %u)",
+                 fd, (unsigned)esp_get_free_heap_size());
+        return;
+    }
     onepush_t *p = malloc(sizeof(*p));
-    if (!p) { free(json); return; }
+    if (!p) {
+        ESP_LOGW(TAG, "connect push: out of memory for fd=%d", fd);
+        free(json);
+        return;
+    }
     p->fd = fd;
     p->json = json;
+    p->tries = 0;
     if (httpd_queue_work(s_server, onepush_work, p) != ESP_OK) {
+        ESP_LOGW(TAG, "connect push: work queue full for fd=%d", fd);
         free(p->json);
         free(p);
     }
