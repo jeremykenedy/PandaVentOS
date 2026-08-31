@@ -9,6 +9,10 @@
 #include <string.h>
 #include "cJSON.h"
 #include "esp_app_desc.h"
+#include "esp_wifi.h"
+#include "esp_system.h"
+#include "esp_heap_caps.h"
+#include "esp_timer.h"
 
 static cJSON *fx_param(int id_key_is_effect, int id, const pv_fx_param_t *p)
 {
@@ -181,6 +185,49 @@ char *pv_json_state(void)
     // Exposed as read-only telemetry beside the other live values so the
     // effect can be checked from outside instead of only by looking at it.
     cJSON_AddNumberToObject(vp, "print_percent", g_live.print_percent);
+    // NOT STOCK. Everything the Status page shows and nothing the vent acts
+    // on. A value the printer has never reported is sent as null rather than
+    // as a number, so the page can say "not reported" instead of inventing a
+    // chamber at 0 C or a fan at 0%.
+    {
+        cJSON *st = cJSON_AddObjectToObject(vp, "status");
+        #define NUM_OR_NULL(k, v)  do { \
+            if ((v) >= 0) cJSON_AddNumberToObject(st, k, (v)); \
+            else          cJSON_AddNullToObject(st, k); } while (0)
+        cJSON_AddNumberToObject(st, "nozzle_temp", g_live.nozzle_temp);
+        NUM_OR_NULL("chamber_temp", g_live.chamber_temp);
+        NUM_OR_NULL("fan_part",     g_live.fan_part);
+        NUM_OR_NULL("fan_aux",      g_live.fan_aux);
+        NUM_OR_NULL("fan_chamber",  g_live.fan_chamber);
+        NUM_OR_NULL("layer_total",  g_live.layer_total);
+        NUM_OR_NULL("remain_min",   g_live.remain_min);
+        NUM_OR_NULL("spd_lvl",      g_live.spd_lvl);
+        #undef NUM_OR_NULL
+        cJSON_AddNumberToObject(st, "layer_num", g_live.layer_num);
+        cJSON_AddNumberToObject(st, "gcode_state", g_live.gcode_state);
+        cJSON_AddNumberToObject(st, "stg_cur", g_live.stg_cur);
+        cJSON_AddNumberToObject(st, "print_error", g_live.print_error);
+        cJSON_AddNumberToObject(st, "hms_fault", g_live.hms_fault ? 1 : 0);
+        cJSON_AddNumberToObject(st, "printer_light", g_live.printer_light ? 1 : 0);
+        cJSON_AddStringToObject(st, "job_name", g_live.job_name);
+        cJSON_AddStringToObject(st, "printer_rssi", g_live.printer_rssi);
+        // The VENT's own signal, read at the moment of the push rather than
+        // cached, because it is the one number here that is about this device
+        // and it moves.
+        {
+            wifi_ap_record_t ap;
+            if (esp_wifi_sta_get_ap_info(&ap) == ESP_OK)
+                cJSON_AddNumberToObject(st, "wifi_rssi", ap.rssi);
+            else
+                cJSON_AddNullToObject(st, "wifi_rssi");
+        }
+        // Seconds since boot. Cheap, and the first thing worth knowing when a
+        // device is misbehaving is whether it has been restarting.
+        cJSON_AddNumberToObject(st, "uptime_s", (int)(esp_timer_get_time() / 1000000));
+        cJSON_AddNumberToObject(st, "heap_free", (int)esp_get_free_heap_size());
+        cJSON_AddNumberToObject(st, "heap_min", (int)esp_get_minimum_free_heap_size());
+    }
+
     cJSON *mats = cJSON_AddArrayToObject(vp, "materials");
     for (int i = 0; i < PV_MAT_COUNT; ++i) {
         cJSON *m = cJSON_CreateObject();
@@ -192,6 +239,35 @@ char *pv_json_state(void)
     }
 
     char *out = cJSON_Print(root);
+    cJSON_Delete(root);
+    return out;
+}
+
+// NOT STOCK. The device log as a document of its own.
+//
+// Deliberately NOT part of the state push. The state document goes out on
+// every change to every client; 64 lines of log would put 8 KB on the wire
+// each time a slider moved, on a device with 4 MB of flash and a single
+// threaded HTTP server. The page asks for this when it wants it.
+char *pv_json_logs(void)
+{
+    static pv_log_line_t lines[PV_LOG_MAX];
+    int n = pv_log_read(lines, PV_LOG_MAX);
+
+    cJSON *root = cJSON_CreateObject();
+    if (!root) return NULL;
+    cJSON *lg = cJSON_AddObjectToObject(root, "logs");
+    cJSON_AddNumberToObject(lg, "uptime_s", (int)(esp_timer_get_time() / 1000000));
+    cJSON *arr = cJSON_AddArrayToObject(lg, "lines");
+    for (int i = 0; i < n; ++i) {
+        cJSON *o = cJSON_CreateObject();
+        // Seconds since boot with a millisecond, which is what makes two
+        // lines a hundred milliseconds apart tell you something.
+        cJSON_AddNumberToObject(o, "t", (double)lines[i].us / 1000000.0);
+        cJSON_AddStringToObject(o, "s", lines[i].text);
+        cJSON_AddItemToArray(arr, o);
+    }
+    char *out = cJSON_PrintUnformatted(root);
     cJSON_Delete(root);
     return out;
 }

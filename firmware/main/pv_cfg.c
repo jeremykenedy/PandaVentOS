@@ -325,6 +325,11 @@ typedef struct {
 pv_live_t g_live = {
     .sta_state = 1, .printer_state = 0, .device_state = PV_ST_IDLE,
     .bed_temp = -1.0f, .nozzle_temp = -1.0f,
+    // NOT STOCK. Nothing has been reported yet, and "not reported" is not
+    // zero. Everything the Status page shows starts unknown and stays that
+    // way until the printer actually says otherwise.
+    .chamber_temp = -1, .fan_part = -1, .fan_aux = -1, .fan_chamber = -1,
+    .layer_total = -1, .remain_min = -1, .spd_lvl = -1,
 };
 
 // Every layout before v5 carried one colour per effect. Lifting it means

@@ -73,6 +73,12 @@ static void health_task(void *arg)
 
 void app_main(void)
 {
+    // NOT STOCK, and FIRST: the log ring only holds what is written after it
+    // is installed, and the most useful lines in this whole file are the NVS
+    // ones directly below. Nothing here can fail in a way that matters: the
+    // hook chains to the UART logger, so the worst case is no ring at all.
+    pv_log_init();
+
     // NVS first: everything reads config, and a read before nvs_flash_init()
     // silently returns compiled defaults instead of failing loudly.
     esp_err_t err = nvs_flash_init();

@@ -481,6 +481,20 @@ static void apply_ring(cJSON *o)
     pv_ws_broadcast(pv_json_response("ring", 1));
 }
 
+// NOT STOCK. {"logs":{}} asks for the log; {"logs":{"clear":1}} empties it
+// and then answers with the empty log, so the page never has to guess whether
+// the clear landed.
+static void apply_logs(cJSON *o)
+{
+    cJSON *c = cJSON_GetObjectItemCaseSensitive(o, "clear");
+    if (cJSON_IsTrue(c) || (cJSON_IsNumber(c) && c->valueint)) {
+        pv_log_clear();
+        ESP_LOGI(TAG, "log cleared from the page");
+    }
+    char *doc = pv_json_logs();
+    if (doc) pv_ws_broadcast(doc);
+}
+
 void pv_apply_message(const char *json, int len)
 {
     cJSON *root = cJSON_ParseWithLength(json, len);
@@ -497,5 +511,6 @@ void pv_apply_message(const char *json, int len)
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "vent")))       apply_vent(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "ring")))       apply_ring(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "leds")))       apply_leds(o);
+    if ((o = cJSON_GetObjectItemCaseSensitive(root, "logs")))       apply_logs(o);
     cJSON_Delete(root);
 }

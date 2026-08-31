@@ -302,6 +302,25 @@ int  pv_policy_match(const char *material);          // rule index or -1
 bool pv_policy_decide(bool stock_open, bool hold);   // final vent target
 
 // ---------------------------------------------------------------------------
+// NOT STOCK. The device log, kept in RAM so the page can show it.
+// See pv_log.c for why it exists and what it promises.
+// ---------------------------------------------------------------------------
+#define PV_LOG_MAX      64
+#define PV_LOG_TEXT     128
+
+typedef struct {
+    int64_t us;                  // microseconds since boot
+    char    text[PV_LOG_TEXT];
+} pv_log_line_t;
+
+void pv_log_init(void);
+// Fills out[] oldest first and returns how many lines were written.
+int  pv_log_read(pv_log_line_t *out, int max);
+void pv_log_clear(void);
+// The log as a WebSocket document. Caller frees.
+char *pv_json_logs(void);
+
+// ---------------------------------------------------------------------------
 // Live (non-persisted) state pushed to the UI.
 // ---------------------------------------------------------------------------
 typedef struct {
@@ -354,6 +373,25 @@ typedef struct {
     // Drives the Progress Bar effect only, and stays 0 when nothing is
     // printing, which is what an empty bar should show anyway.
     int   print_percent;
+
+    // NOT STOCK. Telemetry the vent does not act on, reported so the Status
+    // page can show what the printer and the controller are doing without
+    // anyone having to open a second app. RAM only: none of it is
+    // configuration, so none of it costs NVS.
+    //
+    // -1 means "the printer has not told us", which has to stay a different
+    // thing from zero: a chamber at 0 C and a printer that reports no chamber
+    // at all are not the same reading.
+    int   chamber_temp;          // C
+    int   fan_part;              // 0..100
+    int   fan_aux;               // 0..100
+    int   fan_chamber;           // 0..100
+    int   layer_total;           // total_layer_num
+    int   remain_min;            // mc_remaining_time, minutes
+    int   spd_lvl;               // 1 silent, 2 standard, 3 sport, 4 ludicrous
+    char  job_name[52];          // subtask_name
+    char  printer_rssi[12];      // wifi_signal, as the printer words it
+    int   wifi_rssi;             // the VENT's own signal, dBm, 0 when unknown
     // NOT STOCK. True when the last attempt to persist the config failed, which
     // in practice means NVS is full. The settings are live in RAM and will be
     // lost on the next reboot, so this has to be visible somewhere.

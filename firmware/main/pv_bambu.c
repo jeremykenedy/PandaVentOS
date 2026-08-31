@@ -273,6 +273,65 @@ static void parse_material(cJSON *print)
     }
 }
 
+// NOT STOCK. Bambu reports its fan speeds as a STRING holding 0..15, one step
+// per 1/15th, not as a percentage. "15" is full, "0" is off, and a report that
+// omits the key is not the same as one that says zero.
+static int fan_pct(cJSON *print, const char *key)
+{
+    cJSON *e = cJSON_GetObjectItemCaseSensitive(print, key);
+    long raw;
+    if (cJSON_IsString(e) && e->valuestring)      raw = strtol(e->valuestring, NULL, 10);
+    else if (cJSON_IsNumber(e))                   raw = e->valueint;
+    else                                          return -2;   // not reported
+    if (raw < 0)  raw = 0;
+    if (raw > 15) raw = 15;
+    return (int)((raw * 100 + 7) / 15);
+}
+
+// NOT STOCK. Everything the Status page shows and nothing the vent acts on.
+static void parse_status(cJSON *print)
+{
+    cJSON *e;
+
+    e = cJSON_GetObjectItemCaseSensitive(print, "chamber_temper");
+    if (cJSON_IsNumber(e)) g_live.chamber_temp = (int)e->valuedouble;
+
+    int f;
+    if ((f = fan_pct(print, "cooling_fan_speed")) != -2) g_live.fan_part    = f;
+    if ((f = fan_pct(print, "big_fan1_speed"))    != -2) g_live.fan_aux     = f;
+    if ((f = fan_pct(print, "big_fan2_speed"))    != -2) g_live.fan_chamber = f;
+
+    e = cJSON_GetObjectItemCaseSensitive(print, "total_layer_num");
+    if (cJSON_IsNumber(e)) g_live.layer_total = e->valueint;
+
+    // Sent as a number on most firmwares and a string on a few, same as
+    // mc_percent.
+    e = cJSON_GetObjectItemCaseSensitive(print, "mc_remaining_time");
+    if (cJSON_IsNumber(e))      g_live.remain_min = e->valueint;
+    else if (cJSON_IsString(e)) g_live.remain_min = (int)strtol(e->valuestring, NULL, 10);
+
+    e = cJSON_GetObjectItemCaseSensitive(print, "spd_lvl");
+    if (cJSON_IsNumber(e)) g_live.spd_lvl = e->valueint;
+
+    // subtask_name is the job as the user named it. gcode_file is the path it
+    // was sliced to, which is the same thing spelled less kindly, so it is
+    // only used when there is no subtask_name at all.
+    e = cJSON_GetObjectItemCaseSensitive(print, "subtask_name");
+    if (!cJSON_IsString(e) || !e->valuestring[0])
+        e = cJSON_GetObjectItemCaseSensitive(print, "gcode_file");
+    if (cJSON_IsString(e) && e->valuestring[0]) {
+        const char *n = e->valuestring;
+        // Keep the file name, drop the folder it happened to be in.
+        const char *slash = strrchr(n, '/');
+        if (slash) n = slash + 1;
+        strlcpy(g_live.job_name, n, sizeof g_live.job_name);
+    }
+
+    e = cJSON_GetObjectItemCaseSensitive(print, "wifi_signal");
+    if (cJSON_IsString(e) && e->valuestring[0])
+        strlcpy(g_live.printer_rssi, e->valuestring, sizeof g_live.printer_rssi);
+}
+
 static void handle_report(const char *data, int len)
 {
     cJSON *root = cJSON_ParseWithLength(data, len);
@@ -356,6 +415,12 @@ static void handle_report(const char *data, int len)
         if (cJSON_IsNumber(bed)) g_live.bed_temp = (int)bed->valuedouble;
         cJSON *noz = cJSON_GetObjectItemCaseSensitive(print, "nozzle_temper");
         if (cJSON_IsNumber(noz)) g_live.nozzle_temp = (int)noz->valuedouble;
+
+        // NOT STOCK. Telemetry the vent does not act on. It changes nothing
+        // about what the flap or the strip do; it exists so the Status page
+        // can show what the printer is doing. A field the printer omits is
+        // left exactly as it was, so a partial report cannot blank the page.
+        parse_status(print);
 
         // NOT STOCK. Stock never looks at the AMS; this is here only to feed
         // the material-aware vent policy.
