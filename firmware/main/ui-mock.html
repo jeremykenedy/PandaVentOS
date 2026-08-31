@@ -1420,22 +1420,31 @@ select {
 }
 
 .c_password_box input {
-  padding-right: 30px;
+  padding-right: 44px;
 }
 
 .c_password_btn {
   position: absolute;
-  right: 5px;
+  right: 8px;
   top: 50%;
   transform: translateY(-50%);
   cursor: pointer;
-  width: 20px;
-  height: 20px;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--md-on-surface-variant);
+  transition: color 0.15s ease, background-color 0.15s ease;
 }
 
-.c_password_btn.red {
-  filter: invert(27%) sepia(100%) saturate(9090%) hue-rotate(356deg) brightness(91%) contrast(114%) !important;
-  color: red !important;
+.c_password_btn:hover {
+  color: var(--md-on-surface);
+  background-color: color-mix(in srgb, var(--md-on-surface) 10%, transparent);
 }
 
 @keyframes rotate {
@@ -4488,7 +4497,9 @@ Finished
       <div class="c_item_hor_layout">
        <span data-translate="printer_select">Printer Select</span>
        <button class="c_btn_scan">
-        <img id="id_img_scan_printer" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjUiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNSAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48bWFzayBpZD0ibWFzazBfMjIxMV8xNjI1IiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSIwIiB5PSIwIiB3aWR0aD0iMjUiIGhlaWdodD0iMjQiPjxyZWN0IHg9IjAuODc4OTA2IiB5PSIwLjYyMjMxNCIgd2lkdGg9IjIzIiBoZWlnaHQ9IjIzIiB0cmFuc2Zvcm09InJvdGF0ZSgtMC42MDY1NDQgMC44Nzg5MDYgMC42MjIzMTQpIiBmaWxsPSIjRDlEOUQ5Ii8+PC9tYXNrPjxnIG1hc2s9InVybCgjbWFzazBfMjIxMV8xNjI1KSI+PHBhdGggZD0iTTIxLjQ0NCA4Ljk0OTE3QzIxLjQ3ODQgOS4zMzQzNyAyMS4wODcyIDkuNjE0MzQgMjAuNzM5NyA5LjQ1MzEzTDE3LjYyODEgOC4wMDk0MkMxNy4yODA2IDcuODQ4MiAxNy4yMzc1IDcuMzY2NyAxNy41NTA1IDcuMTQyNzJMMjAuMzUzNiA1LjEzNjk3QzIwLjY2NjYgNC45MTI5OSAyMS4xMDEgNS4xMTQ1MSAyMS4xMzU0IDUuNDk5NzFMMjEuNDQ0IDguOTQ5MTdaIiBmaWxsPSJ3aGl0ZSIvPjxwYXRoIGQ9Ik0yMC4xMTQ5IDE2LjI4OTZDMTkuMTcwNiAxNy45NjU5IDE3LjY5OTYgMTkuMjgzOCAxNS45Mjk5IDIwLjAzODlDMTQuMTYwMyAyMC43OTM5IDEyLjE5MSAyMC45NDM5IDEwLjMyNzQgMjAuNDY1N0M4LjQ2Mzg0IDE5Ljk4NzQgNi44MTAxNCAxOC45MDc2IDUuNjIyOCAxNy4zOTM3QzQuNDM1NDcgMTUuODc5OCAzLjc4MDg2IDE0LjAxNjQgMy43NjA0OSAxMi4wOTI1QzMuNzQwMTIgMTAuMTY4NyA0LjM1NTE0IDguMjkxODUgNS41MTAxNiA2Ljc1MzE0QzYuNjY1MTcgNS4yMTQ0NCA4LjI5NTY0IDQuMDk5ODUgMTAuMTQ4NyAzLjU4MjI0QzEyLjAwMTcgMy4wNjQ2NCAxMy45NzM4IDMuMTcyOTQgMTUuNzU5IDMuODkwMzVDMTcuNTQ0MiA0LjYwNzc3IDE5LjA0MjggNS44OTQyIDIwLjAyMjQgNy41NTAxMyIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48L2c+PC9zdmc+"/>
+        <svg aria-hidden="true" class="c_icon" id="id_img_scan_printer">
+         <use href="#i-search"></use>
+        </svg>
         <span data-translate="scan" id="id_span_scan_printer">Scan</span>
        </button>
       </div>
@@ -4509,7 +4520,9 @@ Finished
       <input class="c_readonly" disabled="" id="id_printer_ip" maxlength="15" type="text" value="192.0.2.65"/>
      </div>
      <button class="c_btn_submit recovery" id="id_btn_printer_bind">
-      <img id="id_img_printer_bind" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjUiIGhlaWdodD0iMjUiIHZpZXdCb3g9IjAgMCAyNSAyNSIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNMjMuMzAwNyA5Ljk0MjJMMTguODYyOCAxNC40MDA0TDIyLjY3NzYgMTguMjE4QzIyLjc5NDMgMTguMzI4NCAyMi44ODcgMTguNDYxOCAyMi45NSAxOC42MDk2QzIzLjAxMjkgMTguNzU3NCAyMy4wNDQ4IDE4LjkxNjYgMjMuMDQzNyAxOS4wNzczQzIzLjA0NDIgMTkuMjQyMiAyMy4wMTE1IDE5LjQwNTQgMjIuOTQ3NSAxOS41NTczQzIyLjg4MzUgMTkuNzA5MiAyMi43ODk0IDE5Ljg0NjYgMjIuNjcxIDE5Ljk2MTNDMjIuNDQyMSAyMC4xODg2IDIyLjEzMjUgMjAuMzE1OSAyMS44MDk5IDIwLjMxNTJDMjEuNDg3NCAyMC4zMTQ2IDIxLjE3ODIgMjAuMTg2IDIwLjk1MDMgMTkuOTU3OEw1LjQ1MjcxIDQuNDUzMTZDNS4yMTg1NyA0LjIxNzM5IDUuMDgyOTYgMy45MDEzMyA1LjA3MzQyIDMuNTY5MThDNS4wNzQwMyAzLjQwNzE4IDUuMTA2NjMgMy4yNDY5IDUuMTY5MzYgMy4wOTc1NEM1LjIzMjA5IDIuOTQ4MTcgNS4zMjM3IDIuODEyNjcgNS40Mzg5NCAyLjY5ODgxQzUuNTU0MTggMi41ODQ5NSA1LjY5MDc3IDIuNDk0OTggNS44NDA4OCAyLjQzNDA1QzUuOTkwOTkgMi4zNzMxMyA2LjE1MTY1IDIuMzQyNDYgNi4zMTM2NSAyLjM0MzhDNi40NzUyIDIuMzM5NjggNi42MzU3OCAyLjM2OTgyIDYuNzg0ODUgMi40MzIyM0M2LjkzMzkxIDIuNDk0NjQgNy4wNjgwNyAyLjU4NzkxIDcuMTc4NDkgMi43MDU5TDEwLjY1MDMgNi4xODAxMUwxNS4wOTggMS43MTMzM0MxNS42MzQxIDEuMTcxODcgMTYuMjcyMiAwLjc0MTkzNiAxNi45NzU0IDAuNDQ4MzMzQzE3LjY3ODYgMC4xNTQ3MyAxOC40MzI5IDAuMDAzMjY4MjcgMTkuMTk0OSAwLjAwMjY4NzIzQzE5Ljk1NjkgMC4wMDIxMDYxOCAyMC43MTE1IDAuMTUyNDE3IDIxLjQxNTEgMC40NDQ5NDhDMjIuMTE4NyAwLjczNzQ3OCAyMi43NTc0IDEuMTY2NDQgMjMuMjk0NCAxLjcwNzA4QzI0LjM4MzQgMi44MDAzNiAyNC45OTU0IDQuMjgwMjUgMjQuOTk2NSA1LjgyMzM1QzI0Ljk5NzcgNy4zNjY0NSAyNC4zODggOC44NDcyNyAyMy4zMDA3IDkuOTQyMlpNMjEuNTM0NyAzLjQyNTgyQzIxLjIzMTkgMy4xMjQwOCAyMC44NzM4IDIuODgzNSAyMC40OCAyLjcxNzIzQzIwLjA2OTggMi41NTcwMyAxOS42MzMzIDIuNDc0NzYgMTkuMTkyOSAyLjQ3NDY1QzE4Ljc1NDQgMi40NzMzNCAxOC4zMjAxIDIuNTU5MjggMTcuOTE1MSAyLjcyNzQ3QzE3LjUxMDIgMi44OTU2NyAxNy4xNDI4IDMuMTQyNzUgMTYuODM0MyAzLjQ1NDM0TDEyLjM4NTUgNy45MTYwNEwxMy44ODMxIDkuNDE0MDhMMTUuMDc1NyA4LjIxNjQzQzE1LjE4NDkgOC4wOTk5MiAxNS4zMTcxIDguMDA3MjkgMTUuNDYzOCA3Ljk0NDM3QzE1LjYxMDYgNy44ODE0NCAxNS43Njg4IDcuODQ5NTggMTUuOTI4NSA3Ljg1MDhDMTYuMTcwNSA3Ljg1MTEgMTYuNDA3IDcuOTIyOTEgMTYuNjA4MyA4LjA1NzIzQzE2LjgwOTcgOC4xOTE1NCAxNi45NjY4IDguMzgyMzYgMTcuMDYgOC42MDU3MUMxNy4xNTMyIDguODI5MDcgMTcuMTc4MyA5LjA3NDk4IDE3LjEzMjIgOS4zMTI1NkMxNy4wODYxIDkuNTUwMTUgMTYuOTcwNyA5Ljc2ODc5IDE2LjgwMDcgOS45NDEwM0wxNS42MDcgMTEuMTM5OUwxNy4xMjU3IDEyLjY2MDJMMjEuNTcyMiA4LjIwNzA1QzIyLjE5NTggNy41NjUyNSAyMi41NDE2IDYuNzAzNjIgMjIuNTM0NiA1LjgwODc0QzIyLjUyNzYgNC45MTM4NiAyMi4xNjgzIDQuMDU3NzYgMjEuNTM0NyAzLjQyNTgyWk05LjA2MjQ2IDE3LjIxNjRDOC43Mzk3IDE3LjIxNTIgOC40MzA2MiAxNy4wODU5IDguMjAzMDkgMTYuODU3QzguMDg4NTEgMTYuNzQxMyA3Ljk5Nzk2IDE2LjYwNDEgNy45MzY2OCAxNi40NTMzQzcuODc1NCAxNi4zMDI0IDcuODQ0NiAxNi4xNDA5IDcuODQ2MDYgMTUuOTc4MUM3Ljg0MTg5IDE1LjgxNzEgNy44NzE2NiAxNS42NTcgNy45MzM0NSAxNS41MDgzQzcuOTk1MjMgMTUuMzU5NiA4LjA4NzY0IDE1LjIyNTUgOC4yMDQ2NSAxNS4xMTQ4TDEwLjUzNzUgMTIuNzczNEwxMi4yNjM2IDE0LjQ5OTZMOS45MzY2OCAxNi44MzU5QzkuNzA0NjEgMTcuMDY5OCA5LjM5MTc4IDE3LjIwNiA5LjA2MjQ2IDE3LjIxNjRaTTcuMTgxMjIgMTEuMzg1MkM3LjI5NzgyIDExLjQ5NTcgNy4zOTA0NCAxMS42MjkgNy40NTMzNCAxMS43NzY5QzcuNTE2MjQgMTEuOTI0NyA3LjU0ODA2IDEyLjA4MzkgNy41NDY4NCAxMi4yNDQ1QzcuNTQ3NDMgMTIuNDA4NiA3LjUxNDk0IDEyLjU3MTIgNy40NTEzMiAxMi43MjI1QzcuMzg3NyAxMi44NzM3IDcuMjk0MjQgMTMuMDEwNiA3LjE3NjUzIDEzLjEyNUwzLjUzNzg4IDE2Ljg3MjZDMy4yMjQwNiAxNy4xODIxIDIuOTc0OTkgMTcuNTUwOSAyLjgwNTE4IDE3Ljk1NzZDMi42MzUzNyAxOC4zNjQzIDIuNTQ4MjIgMTguODAwNyAyLjU0ODgyIDE5LjI0MTRDMi41NDc1NyAyMC4xMzI0IDIuODk5ODMgMjAuOTg3NSAzLjUyODMgMjEuNjE5MkM0LjE1Njc3IDIyLjI1MDggNS4wMTAxMyAyMi42MDczIDUuOTAxMTUgMjIuNjEwNUM2LjM0MjY3IDIyLjYxMzcgNi43ODAzOSAyMi41Mjg3IDcuMTg4NjIgMjIuMzYwNEM3LjU5Njg2IDIyLjE5MjIgNy45NjczOSAyMS45NDQyIDguMjc4NDggMjEuNjMwOEwxMS45Mzc4IDE3LjkzOThDMTIuMTA3IDE3Ljc3MDIgMTIuMzIyMyAxNy42NTQgMTIuNTU3IDE3LjYwNTlDMTIuNzkxNiAxNy41NTc3IDEzLjAzNTMgMTcuNTc5NiAxMy4yNTc2IDE3LjY2ODlDMTMuNDc5OSAxNy43NTgxIDEzLjY3MSAxNy45MTA4IDEzLjgwNzIgMTguMTA3OUMxMy45NDM0IDE4LjMwNSAxNC4wMTg1IDE4LjUzNzggMTQuMDIzNCAxOC43NzczQzE0LjAyNTggMTguOTQyNCAxMy45OTU1IDE5LjEwNjIgMTMuOTM0MiAxOS4yNTk1QzEzLjg3MjkgMTkuNDEyOCAxMy43ODE5IDE5LjU1MjQgMTMuNjY2NCAxOS42NzAzTDEwLjAxNjggMjMuMzY0OEM4LjkzNjI5IDI0LjQyMDYgNy40ODMyOCAyNS4wMDgxIDUuOTcyNjMgMjVINS44MzA0NUM1LjA3NTk4IDI0Ljk5ODQgNC4zMjk0MSAyNC44NDYzIDMuNjM0NSAyNC41NTI1QzIuOTM5NTkgMjQuMjU4NyAyLjMxMDMyIDIzLjgyOTIgMS43ODM1OSAyMy4yODlDMS4yMjkwMiAyMi43NTYzIDAuNzg1Nzg4IDIyLjExODcgMC40Nzk2MTEgMjEuNDEzMkMwLjE3MzQzNCAyMC43MDc4IDAuMDEwNDA5NyAxOS45NDg2IDAgMTkuMTc5N0MwLjAyNzI4OCAxNy42MjUgMC42Njg2MzQgMTYuMTQ0MyAxLjc4Mzk4IDE1LjA2MDlMNS40NDgwMiAxMS4zODRDNS42ODMyNSAxMS4xNTc0IDUuOTk2MDMgMTEuMDI5IDYuMzIyNjMgMTEuMDI1QzYuNDgyNDggMTEuMDI1MSA2LjY0MDcyIDExLjA1NyA2Ljc4ODEzIDExLjExODhDNi45MzU1MyAxMS4xODA2IDcuMDY5MTYgMTEuMjcxMiA3LjE4MTIyIDExLjM4NTJaIiBmaWxsPSIjRkY5RjA5Ii8+PC9zdmc+"/>
+      <svg aria-hidden="true" class="c_icon" id="id_img_printer_bind">
+       <use href="#i-link-off"></use>
+      </svg>
       <span id="id_timer_printer_bind"></span>
       <span data-translate="unbind" id="id_span_printer_bind">Unbind</span>
      </button>
@@ -4644,7 +4657,11 @@ Finished
        <span data-translate="ap_password">AP Password</span>
        <div class="c_password_box">
         <input data-translate="placeholder_password" id="id_password_ap" maxlength="63" placeholder="Please input password" type="password" value="00000000000000000000"/>
-        <img class="c_password_btn" id="id_img_password_ap" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNNiA5Ljk5OTAyQzYuMDAwMjYgMTIuMjA3OSA3Ljc5MTAyIDEzLjk5OSAxMCAxMy45OTlDMTIuMjA5IDEzLjk5OSAxMy45OTg4IDEyLjIwNzkgMTMuOTk5IDkuOTk5MDJMMjAgMTBDMTcuNDU4MyAxMy43MDE5IDEzLjkxNjUgMTUuOTk5IDkuOTk5MDIgMTUuOTk5QzYuMDgxNDUgMTUuOTk5IDIuNTM5ODIgMTMuNzAxMSAtMC4wMDE5NTMxMiA5Ljk5OTAySDZaTTEwLjAwMSAzLjk5OTAyQzEzLjkxODMgMy45OTkyIDE3LjQ1OTMgNi4yOTcyOCAyMC4wMDEgOS45OTkwMkgxNEMxNCA3Ljc4OTg4IDEyLjIwOTEgNS45OTkwMiAxMCA1Ljk5OTAyQzcuNzkwODYgNS45OTkwMiA2IDcuNzg5ODggNiA5Ljk5OTAySDBDMi41NDE3NyA2LjI5NzEyIDYuMDgzNDcgMy45OTkwMiAxMC4wMDEgMy45OTkwMloiIGZpbGw9ImJsYWNrIi8+PGNpcmNsZSBjeD0iMTAiIGN5PSIxMCIgcj0iMi41IiBmaWxsPSIjMEMwQzBDIi8+PC9zdmc+"/>
+        <button aria-label="AP Password" class="c_password_btn" data-translate-title="ap_password" title="AP Password" type="button">
+         <svg aria-hidden="true" class="c_icon" id="id_img_password_ap">
+          <use href="#i-eye"></use>
+         </svg>
+        </button>
        </div>
       </div>
       <div class="c_card_item">
@@ -4806,7 +4823,7 @@ Finished
      <text dy=".3em" fill="currentColor" font-family="var(--md-font)" font-size="32" id="id_text_hello" text-anchor="middle" x="50%" y="30%">
       Olá
      </text>
-     <g id="group_hello_path" transform="translate(72 51)">
+     <g id="group_hello_path" transform="translate(72 57)">
       <path d="M 0 0 L 8 8 L 16 0" style="fill:none;stroke:var(--md-primary);stroke-width:2"></path>
      </g>
     </svg>
@@ -4862,7 +4879,9 @@ Finished
       <div class="c_item_hor_layout">
        <span data-translate="wifi_select">Wi-Fi Select</span>
        <button class="c_btn_scan">
-        <img id="id_img_scan_wifi" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjUiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNSAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48bWFzayBpZD0ibWFzazBfMjIxMV8xNjI1IiBzdHlsZT0ibWFzay10eXBlOmFscGhhIiBtYXNrVW5pdHM9InVzZXJTcGFjZU9uVXNlIiB4PSIwIiB5PSIwIiB3aWR0aD0iMjUiIGhlaWdodD0iMjQiPjxyZWN0IHg9IjAuODc4OTA2IiB5PSIwLjYyMjMxNCIgd2lkdGg9IjIzIiBoZWlnaHQ9IjIzIiB0cmFuc2Zvcm09InJvdGF0ZSgtMC42MDY1NDQgMC44Nzg5MDYgMC42MjIzMTQpIiBmaWxsPSIjRDlEOUQ5Ii8+PC9tYXNrPjxnIG1hc2s9InVybCgjbWFzazBfMjIxMV8xNjI1KSI+PHBhdGggZD0iTTIxLjQ0NCA4Ljk0OTE3QzIxLjQ3ODQgOS4zMzQzNyAyMS4wODcyIDkuNjE0MzQgMjAuNzM5NyA5LjQ1MzEzTDE3LjYyODEgOC4wMDk0MkMxNy4yODA2IDcuODQ4MiAxNy4yMzc1IDcuMzY2NyAxNy41NTA1IDcuMTQyNzJMMjAuMzUzNiA1LjEzNjk3QzIwLjY2NjYgNC45MTI5OSAyMS4xMDEgNS4xMTQ1MSAyMS4xMzU0IDUuNDk5NzFMMjEuNDQ0IDguOTQ5MTdaIiBmaWxsPSJ3aGl0ZSIvPjxwYXRoIGQ9Ik0yMC4xMTQ5IDE2LjI4OTZDMTkuMTcwNiAxNy45NjU5IDE3LjY5OTYgMTkuMjgzOCAxNS45Mjk5IDIwLjAzODlDMTQuMTYwMyAyMC43OTM5IDEyLjE5MSAyMC45NDM5IDEwLjMyNzQgMjAuNDY1N0M4LjQ2Mzg0IDE5Ljk4NzQgNi44MTAxNCAxOC45MDc2IDUuNjIyOCAxNy4zOTM3QzQuNDM1NDcgMTUuODc5OCAzLjc4MDg2IDE0LjAxNjQgMy43NjA0OSAxMi4wOTI1QzMuNzQwMTIgMTAuMTY4NyA0LjM1NTE0IDguMjkxODUgNS41MTAxNiA2Ljc1MzE0QzYuNjY1MTcgNS4yMTQ0NCA4LjI5NTY0IDQuMDk5ODUgMTAuMTQ4NyAzLjU4MjI0QzEyLjAwMTcgMy4wNjQ2NCAxMy45NzM4IDMuMTcyOTQgMTUuNzU5IDMuODkwMzVDMTcuNTQ0MiA0LjYwNzc3IDE5LjA0MjggNS44OTQyIDIwLjAyMjQgNy41NTAxMyIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiLz48L2c+PC9zdmc+"/>
+        <svg aria-hidden="true" class="c_icon" id="id_img_scan_wifi">
+         <use href="#i-search"></use>
+        </svg>
         <span data-translate="scan" id="id_span_scan_wifi">Scan</span>
        </button>
       </div>
@@ -4874,7 +4893,11 @@ Finished
       <span data-translate="wifi_password">Wi-Fi Password</span>
       <div class="c_password_box">
        <input data-translate="placeholder_password" id="id_password_wifi" maxlength="63" placeholder="Please input password" type="password" value="00000000000000000000"/>
-       <img class="c_password_btn" id="id_img_password_wifi" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHZpZXdCb3g9IjAgMCAyMCAyMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJNNiA5Ljk5OTAyQzYuMDAwMjYgMTIuMjA3OSA3Ljc5MTAyIDEzLjk5OSAxMCAxMy45OTlDMTIuMjA5IDEzLjk5OSAxMy45OTg4IDEyLjIwNzkgMTMuOTk5IDkuOTk5MDJMMjAgMTBDMTcuNDU4MyAxMy43MDE5IDEzLjkxNjUgMTUuOTk5IDkuOTk5MDIgMTUuOTk5QzYuMDgxNDUgMTUuOTk5IDIuNTM5ODIgMTMuNzAxMSAtMC4wMDE5NTMxMiA5Ljk5OTAySDZaTTEwLjAwMSAzLjk5OTAyQzEzLjkxODMgMy45OTkyIDE3LjQ1OTMgNi4yOTcyOCAyMC4wMDEgOS45OTkwMkgxNEMxNCA3Ljc4OTg4IDEyLjIwOTEgNS45OTkwMiAxMCA1Ljk5OTAyQzcuNzkwODYgNS45OTkwMiA2IDcuNzg5ODggNiA5Ljk5OTAySDBDMi41NDE3NyA2LjI5NzEyIDYuMDgzNDcgMy45OTkwMiAxMC4wMDEgMy45OTkwMloiIGZpbGw9ImJsYWNrIi8+PGNpcmNsZSBjeD0iMTAiIGN5PSIxMCIgcj0iMi41IiBmaWxsPSIjMEMwQzBDIi8+PC9zdmc+"/>
+       <button aria-label="Wi-Fi Password" class="c_password_btn" data-translate-title="wifi_password" title="Wi-Fi Password" type="button">
+        <svg aria-hidden="true" class="c_icon" id="id_img_password_wifi">
+         <use href="#i-eye"></use>
+        </svg>
+       </button>
       </div>
      </div>
      <div class="c_card_item">
@@ -4952,6 +4975,19 @@ Finished
    </symbol>
    <symbol id="i-restart" stroke-width="1.5" viewbox="0 0 24 24">
     <path d="M5.636 5.636a9 9 0 1 0 12.728 0M12 3v9"></path>
+   </symbol>
+   <symbol id="i-eye" stroke-width="1.5" viewbox="0 0 24 24">
+    <path d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z"></path>
+    <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"></path>
+   </symbol>
+   <symbol id="i-eye-off" stroke-width="1.5" viewbox="0 0 24 24">
+    <path d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88"></path>
+   </symbol>
+   <symbol id="i-link" stroke-width="1.5" viewbox="0 0 24 24">
+    <path d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"></path>
+   </symbol>
+   <symbol id="i-link-off" stroke-width="1.5" viewbox="0 0 24 24">
+    <path d="M13.181 8.68a4.503 4.503 0 0 1 1.903 6.405m-9.768-2.782L3.56 14.06a4.5 4.5 0 0 0 6.364 6.365l3.129-3.129m5.614-5.615 1.757-1.757a4.5 4.5 0 0 0-6.364-6.365l-4.5 4.5c-.258.26-.479.541-.661.84m1.903 6.405a4.495 4.495 0 0 1-1.242-.88 4.483 4.483 0 0 1-1.062-1.683m6.587 2.345 5.907 5.907m-5.907-5.907L8.898 8.898M2.991 2.99 8.898 8.9"></path>
    </symbol>
    <symbol id="i-search" stroke-width="1.5" viewbox="0 0 24 24">
     <path d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"></path>
