@@ -416,6 +416,12 @@ void pv_rgb_notify(void);                           // config/state changed
 // 0x400dcae5, all-off through 0x400ddf98, then the task returns. Used before
 // an OTA so the strip goes dark and RMT is released.
 void pv_rgb_stop(void);
+
+// NOT STOCK. One rendered frame, the SHIPPING one: render_task calls it and
+// does nothing else, and tools/fxdump calls it with a buffer and push = false
+// so a host test exercises resolve, the brightness ramp, the per-strip lengths
+// and the phase rewind between strips rather than just render_effect.
+// Declared in pv_rgb.c, where rgb_t lives; nothing else in the firmware calls it.
 // Advances stock's test mode, 0x400dc980. Registered as the SHORT click
 // handler for GPIO 0 at 0x400de965, so it ships on every unit.
 void pv_rgb_test_cycle(void);

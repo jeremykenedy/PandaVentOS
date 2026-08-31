@@ -512,7 +512,12 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
     }
 
     case PV_FX_STROBING: {                   // 0x400dd1b0
-        rgb_t c = s_strobe_on ? base : (rgb_t){0, 0, 0};
+        // The off beat goes through mix3 at f = 0 rather than writing black
+        // outright, so the INACTIVE colour appears here like it does in every
+        // other effect. With no inactive colour mix3 returns exactly black, so
+        // this is bit-identical to stock; it was the one effect where setting
+        // an inactive colour silently did nothing.
+        rgb_t c = s_strobe_on ? base : mix3(color, bright100, 0.0f);
         for (int i = 0; i < n; ++i) px[i] = c;
         s_strobe_on = !s_strobe_on;
         return 200u - (speed > 200 ? 200 : speed);
@@ -1218,10 +1223,78 @@ void pv_rgb_stop(void)
     if (t) xTaskNotify(t, 255, eSetValueWithOverwrite);
 }
 
+// NOT STOCK. One frame, lifted out of the task so it can be driven from a
+// host test.
+//
+// The renderer had been verified by calling render_effect directly, which is
+// only part of what a frame is: it skipped resolve, the brightness ramp, the
+// per-strip lengths and the phase rewind between strips. Those are exactly the
+// parts most likely to be wrong, and none of them were covered. This is the
+// SHIPPING body, not a copy of it. render_task calls it and does nothing else;
+// tools/fxdump drives it with push = false and reads the pixels back.
+//
+// out, when given, receives PV_STRIP_COUNT_MAX rows of PV_LEDS_PER_STRIP
+// pixels. Returns the frame period the effect asked for.
+uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
+{
+    static rgb_t px[PV_LEDS_PER_STRIP];
+        int fx = PV_FX_STATIC; rgb_t color, bg; uint8_t bright, speed;
+    int bright_end = -1;
+    uint32_t wait_ms = 50;
+    pv_fx_phase_t phase;
+    bool on = resolve(&fx, &color, &bright, &speed, &bg, &bright_end);
+    // NOT STOCK. Fold the brightness ramp into the value the effect is
+    // given, so every effect inherits it without knowing it exists and an
+    // unset ramp is bit-identical to what it rendered before.
+    bright = ramp_apply(bright, on ? bright_end : -1);
+    if (!on) memset(px, 0, sizeof(px));
+    else     fx_phase_save(&phase);
+    // PV_FX_HOLD is stock's 0x400dcab0: it returns without reaching the
+    // shared refresh at 0x400dce68, so no RMT transaction is queued at
+    // all and the WS2812s simply hold their latched frame. Re-pushing an
+    // identical buffer would look the same but is a different instruction
+    // path and costs a transfer per frame, so skip it outright.
+    if (fx != PV_FX_HOLD) {
+        for (int s = 0; s < s_strips; ++s) {
+            int n = g_cfg.leds[s];
+            if (n < 1 || n > PV_LEDS_PER_STRIP) n = PV_LEDS_PER_STRIP;
+            if (on) {
+                // Same instant for every strip: rewind the phase, then let
+                // this strip's pass advance it. The last pass leaves the
+                // phase advanced exactly once for the frame.
+                fx_phase_restore(&phase);
+                wait_ms = render_effect(fx, color, bg, bright, speed,
+                                        g_cfg.rgb.reverse, px, n);
+                // Anything past the configured length is explicitly dark.
+                for (int i = n; i < PV_LEDS_PER_STRIP; ++i)
+                    px[i] = (rgb_t){0, 0, 0};
+            }
+            // ALWAYS push the full sixteen, whatever the configured count.
+            //
+            // Pushing only n was a real fault, found on the hardware: a
+            // WS2812 latches its last frame and holds it, so a run that is
+            // physically longer than the configured count keeps its final
+            // LEDs lit at whatever colour they happened to be showing when
+            // the count changed, forever. On Jeremy's vent that froze a
+            // whole light bar while the others followed the effect.
+            //
+            // The count cannot be measured (WS2812 is write-only), so it
+            // is a number a person types, and a wrong number must not be
+            // able to strand pixels. Sending sixteen always costs nothing:
+            // on a shorter run the surplus bytes are simply not received.
+            // Now a count that is too small only darkens the tail, which
+            // is visible, obviously wrong, and instantly reversible.
+            if (out) memcpy(out[s], px, sizeof(rgb_t) * PV_LEDS_PER_STRIP);
+                if (push) strip_push(s, px, PV_LEDS_PER_STRIP);
+        }
+    }
+    return wait_ms;
+}
+
 static void render_task(void *arg)
 {
-    rgb_t px[PV_LEDS_PER_STRIP];
-    memset(px, 0, sizeof(px));
+    // The pixel buffer moved into pv_rgb_render_frame with the rest of the
+    // frame body; the task holds no state of its own now.
     // 0x400dcabd, the task's first act: arm the link indicator to 2 so the
     // strip is blue from power-on until the link settles.
     s_link_ind = 2;
@@ -1241,55 +1314,7 @@ static void render_task(void *arg)
             return;
         }
         xSemaphoreTake(s_lock, portMAX_DELAY);
-        int fx = PV_FX_STATIC; rgb_t color, bg; uint8_t bright, speed;
-        int bright_end = -1;
-        uint32_t wait_ms = 50;
-        pv_fx_phase_t phase;
-        bool on = resolve(&fx, &color, &bright, &speed, &bg, &bright_end);
-        // NOT STOCK. Fold the brightness ramp into the value the effect is
-        // given, so every effect inherits it without knowing it exists and an
-        // unset ramp is bit-identical to what it rendered before.
-        bright = ramp_apply(bright, on ? bright_end : -1);
-        if (!on) memset(px, 0, sizeof(px));
-        else     fx_phase_save(&phase);
-        // PV_FX_HOLD is stock's 0x400dcab0: it returns without reaching the
-        // shared refresh at 0x400dce68, so no RMT transaction is queued at
-        // all and the WS2812s simply hold their latched frame. Re-pushing an
-        // identical buffer would look the same but is a different instruction
-        // path and costs a transfer per frame, so skip it outright.
-        if (fx != PV_FX_HOLD) {
-            for (int s = 0; s < s_strips; ++s) {
-                int n = g_cfg.leds[s];
-                if (n < 1 || n > PV_LEDS_PER_STRIP) n = PV_LEDS_PER_STRIP;
-                if (on) {
-                    // Same instant for every strip: rewind the phase, then let
-                    // this strip's pass advance it. The last pass leaves the
-                    // phase advanced exactly once for the frame.
-                    fx_phase_restore(&phase);
-                    wait_ms = render_effect(fx, color, bg, bright, speed,
-                                            g_cfg.rgb.reverse, px, n);
-                    // Anything past the configured length is explicitly dark.
-                    for (int i = n; i < PV_LEDS_PER_STRIP; ++i)
-                        px[i] = (rgb_t){0, 0, 0};
-                }
-                // ALWAYS push the full sixteen, whatever the configured count.
-                //
-                // Pushing only n was a real fault, found on the hardware: a
-                // WS2812 latches its last frame and holds it, so a run that is
-                // physically longer than the configured count keeps its final
-                // LEDs lit at whatever colour they happened to be showing when
-                // the count changed, forever. On Jeremy's vent that froze a
-                // whole light bar while the others followed the effect.
-                //
-                // The count cannot be measured (WS2812 is write-only), so it
-                // is a number a person types, and a wrong number must not be
-                // able to strand pixels. Sending sixteen always costs nothing:
-                // on a shorter run the surplus bytes are simply not received.
-                // Now a count that is too small only darkens the tail, which
-                // is visible, obviously wrong, and instantly reversible.
-                strip_push(s, px, PV_LEDS_PER_STRIP);
-            }
-        }
+        uint32_t wait_ms = pv_rgb_render_frame(NULL, true);
         xSemaphoreGive(s_lock);
         vTaskDelay(pdMS_TO_TICKS(wait_ms));   // stock: the effect owns its frame period
     }

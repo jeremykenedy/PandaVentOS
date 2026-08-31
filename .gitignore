@@ -20,6 +20,7 @@ private/*
 
 # compiled host harnesses
 tools/fxdump/fxdump
+tools/fxdump/framecheck
 tools/uicmp/harness
 tools/uicmp/harness_live
 
