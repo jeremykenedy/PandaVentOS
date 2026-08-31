@@ -34,12 +34,43 @@ static int s_ws_count;
 
 // ---------- pages ----------
 
+// DEPARTURE FROM STOCK, 2026-08-31. Send the page in chunks, and let a slow
+// client take its time.
+//
+// This was one httpd_resp_send of the whole gzip. That call loops internally
+// over httpd_send, and if ANY single socket write blocks longer than
+// send_wait_timeout the whole response is abandoned part-sent, with no error
+// the client can see: it just gets a short body. Measured on the device with
+// the page at 273 KB: one fetch returned 217414 bytes, the next 5734, the next
+// 11494, all of them "200 OK". A browser handed a page cut mid-script parses
+// what arrived and silently loses every function after the cut, which looks
+// exactly like the device having forgotten its settings.
+//
+// Chunking does not make the link faster; it makes the timeout mean the right
+// thing. Each chunk restarts it, so the limit becomes "no progress for N
+// seconds" instead of "the entire 273 KB inside N seconds", and a stall is
+// reported rather than silently truncating. 8 KB is comfortably more than one
+// TCP window and small enough that a chunk is one or two writes.
+#define ROOT_CHUNK 8192
+
 static esp_err_t root_get(httpd_req_t *req)
 {
+    const char *p = (const char *)index_gz_start;
+    size_t left = (size_t)(index_gz_end - index_gz_start);
     httpd_resp_set_type(req, "text/html");
     httpd_resp_set_hdr(req, "Content-Encoding", "gzip");
-    return httpd_resp_send(req, (const char *)index_gz_start,
-                           index_gz_end - index_gz_start);
+    while (left) {
+        size_t n = left > ROOT_CHUNK ? ROOT_CHUNK : left;
+        esp_err_t err = httpd_resp_send_chunk(req, p, n);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "page send stalled with %u of %u bytes left",
+                     (unsigned)left, (unsigned)(index_gz_end - index_gz_start));
+            return err;          // httpd closes the socket; no half-page is claimed complete
+        }
+        p += n;
+        left -= n;
+    }
+    return httpd_resp_send_chunk(req, NULL, 0);   // terminates the chunked body
 }
 
 // ---------- full-flash backup over the network ----------
@@ -288,6 +319,10 @@ static esp_err_t ws_handler(httpd_req_t *req)
 
 // ---------- OTA ----------
 
+// Consecutive empty reads tolerated before an upload is called dead. At the
+// twenty second socket timeout that is two minutes of silence.
+#define OTA_MAX_TIMEOUTS 6
+
 static void ota_reboot_task(void *arg) { vTaskDelay(pdMS_TO_TICKS(800)); esp_restart(); }
 
 static esp_err_t ota_post(httpd_req_t *req)
@@ -321,9 +356,38 @@ static esp_err_t ota_post(httpd_req_t *req)
     char *buf = err == ESP_OK ? malloc(4096) : NULL;
     if (err == ESP_OK && !buf) { esp_ota_abort(h); err = ESP_ERR_NO_MEM; }
     size_t remaining = req->content_len;
+    // DEPARTURE FROM STOCK, 2026-08-31. A read TIMEOUT is not a failed upload.
+    //
+    // This treated every non-positive return as fatal, and httpd_req_recv
+    // returns HTTPD_SOCK_ERR_TIMEOUT when the socket simply has nothing ready
+    // yet. One five-second pause anywhere in a 1.4 MB upload therefore aborted
+    // the whole thing. Worse, the abort is invisible from the uploading end:
+    // the handler still answers 200 with the stock empty body, so curl reports
+    // success and the device quietly keeps running the old image. Three
+    // consecutive flashes were lost that way before anyone checked what the
+    // device was actually serving.
+    //
+    // A timeout now just means "wait and read again", and only a real socket
+    // error, or a long run of nothing at all, gives up. ESP-IDF's own OTA
+    // example does the same.
+    int timeouts = 0;
     while (err == ESP_OK && remaining > 0) {
         int r = httpd_req_recv(req, buf, remaining > 4096 ? 4096 : remaining);
-        if (r <= 0) { err = ESP_FAIL; break; }
+        if (r == HTTPD_SOCK_ERR_TIMEOUT) {
+            if (++timeouts > OTA_MAX_TIMEOUTS) {
+                ESP_LOGE(TAG, "ota: no data for too long, %u bytes short",
+                         (unsigned)remaining);
+                err = ESP_FAIL;
+            }
+            continue;
+        }
+        if (r <= 0) {
+            ESP_LOGE(TAG, "ota: socket error %d with %u bytes to go",
+                     r, (unsigned)remaining);
+            err = ESP_FAIL;
+            break;
+        }
+        timeouts = 0;
         err = esp_ota_write(h, buf, r);
         remaining -= r;
     }
@@ -352,6 +416,13 @@ esp_err_t pv_http_start(void)
     cfg.max_open_sockets = 8;
     cfg.stack_size = 8192;
     cfg.close_fn = ws_close_fn;      // see ws_close_fn: stops the table filling with ghosts
+    // The page is a quarter of a megabyte off an ESP32 over Wi-Fi. The default
+    // five seconds is a plausible amount of time for one write to a phone on a
+    // weak signal to take, and hitting it truncated the page. Per CHUNK now,
+    // so this is "no progress at all for twenty seconds", not a deadline for
+    // the whole transfer.
+    cfg.send_wait_timeout = 20;
+    cfg.recv_wait_timeout = 20;
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) return err;
 

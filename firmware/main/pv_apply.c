@@ -211,22 +211,34 @@ static void apply_fx_fields(pv_fx_param_t *p, cJSON *o)
     // UI's X button, and clearing puts the unlit pixels back to black.
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "inactive"))) {
         if (cJSON_IsNull(e) || (cJSON_IsString(e) && e->valuestring[0] == '\0')) {
-            p->bg_set &= (uint8_t)~PV_BG_OPEN;
+            p->opt_set &= (uint8_t)~PV_BG_OPEN;
         } else {
             pv_rgb3_to_hex(p->bg, hex);
             color_from_json(e, hex);
             pv_hex_to_rgb3(hex, p->bg);
-            p->bg_set |= PV_BG_OPEN;
+            p->opt_set |= PV_BG_OPEN;
+        }
+    }
+    // The optional END brightness. A number sets the ramp; JSON null, or the
+    // string "", clears it and the effect goes back to one brightness. Same
+    // shape as the inactive colours and the same X button drives it.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "bright_end"))) {
+        if (cJSON_IsNull(e) || (cJSON_IsString(e) && e->valuestring[0] == '\0')) {
+            p->opt_set &= (uint8_t)~PV_BRIGHT_END;
+            p->bright_end = p->brightness;
+        } else if (cJSON_IsNumber(e)) {
+            p->bright_end = clamp100(e->valuedouble);
+            p->opt_set |= PV_BRIGHT_END;
         }
     }
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "inactive_closed"))) {
         if (cJSON_IsNull(e) || (cJSON_IsString(e) && e->valuestring[0] == '\0')) {
-            p->bg_set &= (uint8_t)~PV_BG_CLOSED;
+            p->opt_set &= (uint8_t)~PV_BG_CLOSED;
         } else {
             pv_rgb3_to_hex(p->bg_closed, hex);
             color_from_json(e, hex);
             pv_hex_to_rgb3(hex, p->bg_closed);
-            p->bg_set |= PV_BG_CLOSED;
+            p->opt_set |= PV_BG_CLOSED;
         }
     }
 }

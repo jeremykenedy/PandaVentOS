@@ -348,6 +348,7 @@ typedef struct {
     float split_pos, fill_pos;
     float sbounce_pos, sbounce_dir, sfill_pos, sfill_dir;
     float progress_shown, wave_pos;
+    int   ramp_step;
     uint16_t cycle_hue;
     int      rainbow_phase;
 } pv_fx_phase_t;
@@ -355,6 +356,39 @@ typedef struct {
 static uint16_t s_cycle_hue;
 static int      s_rainbow_phase;
 static float    s_wave_pos;         // Wave peak position, 0..n
+
+// NOT STOCK. The optional brightness ramp.
+//
+// An effect can hold a second brightness. When it does, the brightness sweeps
+// from the first to the second across a cycle and starts over, instead of
+// sitting at one value. The sweep is one sawtooth, 0 -> 1, advanced once per
+// rendered frame by 1/PV_RAMP_STEPS; the frame period is whatever the effect
+// asked for, so the sweep speeds up and slows down with the speed slider along
+// with everything else on the strip. Static has no cycle of its own and gets
+// the same sweep, which is the point: it is how you get a slow fade out of an
+// effect that does not move.
+#define PV_RAMP_STEPS 100
+static int s_ramp_step;          // 0 .. PV_RAMP_STEPS-1, an exact position
+
+// One step of the ramp, and the brightness to render this frame with.
+// bright_end < 0 means no ramp: the brightness is returned untouched and the
+// sweep is parked at its start, so switching a ramp on begins at `bright`
+// rather than wherever a previous effect happened to leave it.
+//
+// A function rather than inline code in the frame loop so tools/fxdump can
+// drive the SHIPPING implementation instead of a copy of it.
+static uint8_t ramp_apply(uint8_t bright, int bright_end)
+{
+    if (bright_end < 0) { s_ramp_step = 0; return bright; }
+    // An integer step, not an accumulated float. Adding 0.01f a hundred times
+    // lands at 0.99999997, so the sweep missed its wrap by a frame and the
+    // error grew with every cycle.
+    float f = (float)s_ramp_step / (float)PV_RAMP_STEPS;
+    float b = (float)bright + ((float)bright_end - (float)bright) * f;
+    if (b < 0.0f) b = 0.0f; else if (b > 100.0f) b = 100.0f;
+    if (++s_ramp_step >= PV_RAMP_STEPS) s_ramp_step = 0;
+    return (uint8_t)(b + 0.5f);
+}
 
 static void fx_phase_save(pv_fx_phase_t *o)
 {
@@ -367,6 +401,7 @@ static void fx_phase_save(pv_fx_phase_t *o)
     o->sbounce_pos = s_sbounce_pos;   o->sbounce_dir = s_sbounce_dir;
     o->sfill_pos = s_sfill_pos;       o->sfill_dir = s_sfill_dir;
     o->progress_shown = s_progress_shown; o->wave_pos = s_wave_pos;
+    o->ramp_step = s_ramp_step;
     o->cycle_hue = s_cycle_hue;       o->rainbow_phase = s_rainbow_phase;
 }
 
@@ -381,6 +416,7 @@ static void fx_phase_restore(const pv_fx_phase_t *o)
     s_sbounce_pos = o->sbounce_pos;   s_sbounce_dir = o->sbounce_dir;
     s_sfill_pos = o->sfill_pos;       s_sfill_dir = o->sfill_dir;
     s_progress_shown = o->progress_shown; s_wave_pos = o->wave_pos;
+    s_ramp_step = o->ramp_step;
     s_cycle_hue = o->cycle_hue;       s_rainbow_phase = o->rainbow_phase;
 }
 
@@ -993,14 +1029,22 @@ static rgb_t fx_colour(const pv_fx_param_t *p)
 static rgb_t fx_bg(const pv_fx_param_t *p)
 {
     uint8_t bit = g_live.vent_open ? PV_BG_OPEN : PV_BG_CLOSED;
-    if (!(p->bg_set & bit)) return (rgb_t){0, 0, 0};
+    if (!(p->opt_set & bit)) return (rgb_t){0, 0, 0};
     const uint8_t *c = g_live.vent_open ? p->bg : p->bg_closed;
     return (rgb_t){ c[0], c[1], c[2] };
 }
 
-static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
-                    rgb_t *bg)
+// -1 means "no ramp": one brightness for the whole cycle, as before.
+static int fx_bright_end(const pv_fx_param_t *p)
 {
+    return (p->opt_set & PV_BRIGHT_END) ? (int)p->bright_end : -1;
+}
+
+static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
+                    rgb_t *bg, int *bright_end)
+{
+    // Every path that is not a configured effect runs at one brightness.
+    *bright_end = -1;
     const pv_rgb_cfg_t *r = &g_cfg.rgb;
     // Every path that does not come from a configured effect keeps the stock
     // behaviour of going dark where it is not lit.
@@ -1119,6 +1163,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
         const pv_fx_param_t *p = &g_h2d[st][e];
         *fx = e; *color = fx_colour(p); *bg = fx_bg(p);
         *bright = p->brightness; *speed = p->speed;
+        *bright_end = fx_bright_end(p);
         return true;
     }
     case PV_MODE_WARNING: {
@@ -1150,6 +1195,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
         const pv_fx_param_t *p = &r->simple[e];
         *fx = e; *color = fx_colour(p); *bg = fx_bg(p);
         *bright = p->brightness; *speed = p->speed;
+        *bright_end = fx_bright_end(p);
         return true;
     }
     }
@@ -1196,9 +1242,14 @@ static void render_task(void *arg)
         }
         xSemaphoreTake(s_lock, portMAX_DELAY);
         int fx = PV_FX_STATIC; rgb_t color, bg; uint8_t bright, speed;
+        int bright_end = -1;
         uint32_t wait_ms = 50;
         pv_fx_phase_t phase;
-        bool on = resolve(&fx, &color, &bright, &speed, &bg);
+        bool on = resolve(&fx, &color, &bright, &speed, &bg, &bright_end);
+        // NOT STOCK. Fold the brightness ramp into the value the effect is
+        // given, so every effect inherits it without knowing it exists and an
+        // unset ramp is bit-identical to what it rendered before.
+        bright = ramp_apply(bright, on ? bright_end : -1);
         if (!on) memset(px, 0, sizeof(px));
         else     fx_phase_save(&phase);
         // PV_FX_HOLD is stock's 0x400dcab0: it returns without reaching the
@@ -1217,8 +1268,26 @@ static void render_task(void *arg)
                     fx_phase_restore(&phase);
                     wait_ms = render_effect(fx, color, bg, bright, speed,
                                             g_cfg.rgb.reverse, px, n);
+                    // Anything past the configured length is explicitly dark.
+                    for (int i = n; i < PV_LEDS_PER_STRIP; ++i)
+                        px[i] = (rgb_t){0, 0, 0};
                 }
-                strip_push(s, px, n);
+                // ALWAYS push the full sixteen, whatever the configured count.
+                //
+                // Pushing only n was a real fault, found on the hardware: a
+                // WS2812 latches its last frame and holds it, so a run that is
+                // physically longer than the configured count keeps its final
+                // LEDs lit at whatever colour they happened to be showing when
+                // the count changed, forever. On Jeremy's vent that froze a
+                // whole light bar while the others followed the effect.
+                //
+                // The count cannot be measured (WS2812 is write-only), so it
+                // is a number a person types, and a wrong number must not be
+                // able to strand pixels. Sending sixteen always costs nothing:
+                // on a shorter run the surplus bytes are simply not received.
+                // Now a count that is too small only darkens the tail, which
+                // is visible, obviously wrong, and instantly reversible.
+                strip_push(s, px, PV_LEDS_PER_STRIP);
             }
         }
         xSemaphoreGive(s_lock);

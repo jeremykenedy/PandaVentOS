@@ -74,7 +74,12 @@ int main(int argc, char **argv)
     if (getenv("PVPCT")) g_live.print_percent = atoi(getenv("PVPCT"));
 
     rgb_t color = { 0xFF, 0x37, 0x00 };   /* the factory default, FF3700 */
-    /* PVN sets the strip length, PVBG the inactive colour as RRGGBB. */
+    /* PVN sets the strip length, PVBG the inactive colour as RRGGBB.
+     * PVB is the starting brightness and PVBE the ramp's end brightness; with
+     * PVBE set every frame goes through the SHIPPING ramp_apply, so what is
+     * printed is the firmware's own answer, not a re-implementation of it. */
+    int bright0 = getenv("PVB") ? atoi(getenv("PVB")) : 100;
+    int bend    = getenv("PVBE") ? atoi(getenv("PVBE")) : -1;
     int NN = getenv("PVN") ? atoi(getenv("PVN")) : N;
     if (NN < 1 || NN > N) NN = N;
     rgb_t bg = {0,0,0};
@@ -91,7 +96,7 @@ int main(int argc, char **argv)
         const int SCALE = 12;
         printf("P6\n%d %d\n255\n", N * SCALE, frames * SCALE);
         for (int f = 0; f < frames; ++f) {
-            render_effect(fx, color, bg, 100, 50, rev, px, NN);
+            render_effect(fx, color, bg, ramp_apply((uint8_t)bright0, bend), 50, rev, px, NN);
             for (int sy = 0; sy < SCALE; ++sy)
                 for (int i = 0; i < N; ++i)
                     for (int sx = 0; sx < SCALE; ++sx)
@@ -100,14 +105,20 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    printf("effect %d (%s), %d frames, brightness 100, speed 50, %d pixels\n",
-           fx, fx >= 0 && fx < PV_FX_COUNT ? NAMES[fx] : "?", frames, NN);
+    if (bend >= 0)
+        printf("effect %d (%s), %d frames, brightness %d -> %d over %g frames, speed 50, %d pixels\n",
+               fx, fx >= 0 && fx < PV_FX_COUNT ? NAMES[fx] : "?", frames,
+               bright0, bend, (double)PV_RAMP_STEPS, NN);
+    else
+        printf("effect %d (%s), %d frames, brightness %d, speed 50, %d pixels\n",
+               fx, fx >= 0 && fx < PV_FX_COUNT ? NAMES[fx] : "?", frames, bright0, NN);
     printf("     +%.*s+\n", NN, "----------------------------------------");
     uint32_t total = 0;
     for (int f = 0; f < frames; ++f) {
-        uint32_t ms = render_effect(fx, color, bg, 100, 50, rev, px, NN);
+        uint8_t bnow = ramp_apply((uint8_t)bright0, bend);
+        uint32_t ms = render_effect(fx, color, bg, bnow, 50, rev, px, NN);
         total += ms;
-        printf("%3d  |", f);
+        printf("%3d %3d%%  |", f, bnow);
         row_ascii(px, NN);
         printf("|  %u ms\n", ms);
     }

@@ -148,20 +148,27 @@
 // Which of each pair is used depends on where the vent actually is, so the
 // strip reports the vent position without the effect having to change.
 //
-// An inactive colour is OPTIONAL. When its bit in `bg_set` is clear the unlit
+// An inactive colour is OPTIONAL. When its bit in `opt_set` is clear the unlit
 // pixels are black, which is exactly what every effect did before this existed;
 // that is why the UI's clear button just clears the bit.
-#define PV_BG_OPEN    0x01   // bg_set: the vent-open inactive colour is set
-#define PV_BG_CLOSED  0x02   // bg_set: the vent-closed inactive colour is set
+//
+// `bright_end` is optional in the same way and for the same reason: when its
+// bit is clear the effect runs at one brightness, exactly as it always did.
+// When it is set the brightness RAMPS from `brightness` at the start of each
+// cycle to `bright_end` at the end of it, then starts over.
+#define PV_BG_OPEN     0x01   // opt_set: the vent-open inactive colour is set
+#define PV_BG_CLOSED   0x02   // opt_set: the vent-closed inactive colour is set
+#define PV_BRIGHT_END  0x04   // opt_set: bright_end is set, so brightness ramps
 
 typedef struct {
-    uint8_t brightness;      // 0..100
+    uint8_t brightness;      // 0..100, and the START of the ramp when one is set
     uint8_t speed;           // 0..100
     uint8_t rgb[3];          // ACTIVE while the vent is OPEN
     uint8_t rgb_closed[3];   // ACTIVE while the vent is CLOSED
     uint8_t bg[3];           // INACTIVE while the vent is OPEN
     uint8_t bg_closed[3];    // INACTIVE while the vent is CLOSED
-    uint8_t bg_set;          // PV_BG_* bits; a clear bit means "stay dark"
+    uint8_t bright_end;      // 0..100, the END of the ramp; only when PV_BRIGHT_END
+    uint8_t opt_set;         // PV_BG_* / PV_BRIGHT_END bits; clear means "as before"
 } pv_fx_param_t;
 
 // The two conversions between the stored bytes and the wire's "RRGGBB".

@@ -26,11 +26,15 @@ static cJSON *fx_param(int id_key_is_effect, int id, const pv_fx_param_t *p)
     // The INACTIVE pair. Absent from the document when unset, which is how the
     // UI knows to show its clear button as already cleared. Named "inactive"
     // and not "bg" on purpose: stock's "bg" is the brightness percent.
-    if (p->bg_set & PV_BG_OPEN) {
+    if (p->opt_set & PV_BG_OPEN) {
         pv_rgb3_to_hex(p->bg, hex);
         cJSON_AddStringToObject(o, "inactive", hex);
     }
-    if (p->bg_set & PV_BG_CLOSED) {
+    // Absent when the ramp is unset, which is how the UI knows to show its
+    // clear button as already cleared.
+    if (p->opt_set & PV_BRIGHT_END)
+        cJSON_AddNumberToObject(o, "bright_end", p->bright_end);
+    if (p->opt_set & PV_BG_CLOSED) {
         pv_rgb3_to_hex(p->bg_closed, hex);
         cJSON_AddStringToObject(o, "inactive_closed", hex);
     }
