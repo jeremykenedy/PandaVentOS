@@ -83,7 +83,11 @@
 #define PV_FX_BOUNCE_IN        15   // blobs in, then back out, forever
 #define PV_FX_BOUNCE_FILL_OUT  16   // fill out, then unfill back in, forever
 #define PV_FX_BOUNCE_FILL_IN   17   // fill in, then unfill back out, forever
-#define PV_FX_COUNT       18
+// NOT STOCK. Two more progress effects, so a print in progress reads as one
+// from across a room rather than as a static bar you have to look twice at.
+#define PV_FX_PROGRESS_ANIM    18   // the fill, with a chase and a live tip
+#define PV_FX_BARBER           19   // two-colour pole crawling through the fill
+#define PV_FX_COUNT       20
 #define PV_FX_STOCK_COUNT 7
 
 // Not user selectable and not part of the config arrays. Stock's warning
@@ -159,6 +163,7 @@
 #define PV_BG_OPEN     0x01   // opt_set: the vent-open inactive colour is set
 #define PV_BG_CLOSED   0x02   // opt_set: the vent-closed inactive colour is set
 #define PV_BRIGHT_END  0x04   // opt_set: bright_end is set, so brightness ramps
+#define PV_AUX         0x08   // opt_set: aux is set, so the effect uses it
 
 typedef struct {
     uint8_t brightness;      // 0..100, and the START of the ramp when one is set
@@ -168,7 +173,17 @@ typedef struct {
     uint8_t bg[3];           // INACTIVE while the vent is OPEN
     uint8_t bg_closed[3];    // INACTIVE while the vent is CLOSED
     uint8_t bright_end;      // 0..100, the END of the ramp; only when PV_BRIGHT_END
-    uint8_t opt_set;         // PV_BG_* / PV_BRIGHT_END bits; clear means "as before"
+    // NOT STOCK. One spare number per effect, whose MEANING belongs to the
+    // effect that reads it. Barber Pole reads it as the band width in pixels.
+    // An effect that does not read it ignores it, and an effect that does
+    // falls back to its own default while PV_AUX is clear, so "never set" and
+    // "set to zero" stay different answers.
+    //
+    // One shared byte rather than one byte per knob: the alternative is a
+    // field per effect-specific setting, on a device whose whole configuration
+    // has to fit in a single NVS blob.
+    uint8_t aux;
+    uint8_t opt_set;         // PV_BG_* / PV_BRIGHT_END / PV_AUX; clear means "as before"
 } pv_fx_param_t;
 
 // The two conversions between the stored bytes and the wire's "RRGGBB".
@@ -410,7 +425,12 @@ void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode); // one mode's defaults
 void pv_factory_reset_and_reboot(void);
 
 // pv_json.c — full state document, factory shape and order.
-char *pv_json_state(void);                          // caller frees
+// NOT STOCK. The state document, in parts. See pv_json.c for why.
+// The returned pointer is a STATIC buffer, valid until the next call, and must
+// not be freed. Every caller is on the HTTP server task, which is single
+// threaded, so the buffer cannot be pulled out from under one of them.
+#define PV_STATE_PARTS (2 + PV_ST_COUNT)
+const char *pv_json_state_part(int part);                          // caller frees
 char *pv_json_response(const char *type, int ok);   // caller frees
 
 // pv_http.c

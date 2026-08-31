@@ -1,36 +1,37 @@
-# cfgmig — run a real stored config through the real migration
+# cfgmig / migcheck
 
-Every time `pv_cfg_t` changes shape, the loader in `pv_cfg.c` has to lift the
-older layout forward without losing a setting. This harness feeds a config
-blob straight into that code and prints what came out, so the question
-"did the migration keep the printer binding" is answered by running it rather
-than by reading it.
+Two tools that drive the REAL migration in `firmware/main/pv_cfg.c`, compiled
+in rather than reimplemented, so what they exercise is what ships.
 
-    cc -Istub -I../../firmware/main -o cfgmig cfgmig.c ../../firmware/main/pv_cfg.c
-    ./cfgmig <blob> [out.bin]
+## Why they exist
 
-`<blob>` is the raw NVS value of the `cfg` key. `tools/nvsgrab.py` pulls one
-out of a full-flash image.
+`PV_FX_COUNT` is an array dimension in the MIDDLE of the config struct. Adding
+an effect does not append to the stored blob, it moves everything after
+`rgb.simple`. A size check alone would throw away every setting on the first
+boot after an update, silently, and the only clue would be one line in a serial
+log nobody is watching. That has to be proven before it ships, not discovered
+after.
 
-## Why it exists
+## migcheck — the automated one
 
-On 2026-08-30 the config reached 2320 bytes. The NVS partition is 12 KB, one
-of its three pages is reserved for garbage collection, the Wi-Fi stack's own
-keys take about 5 KB of what remains, and `nvs_set_blob` writes the new copy
-before releasing the old. Two copies stopped fitting. The write failed, the
-failure was logged and otherwise ignored, and the device ran perfectly from
-RAM until the next reboot threw every setting away.
+    cc -I stub -I ../../firmware/main -o migcheck migcheck.c && ./migcheck
 
-Three things came out of that and all three are in the tree:
+Builds blobs in each stored layout with distinctive values, runs the shipping
+`pv_cfg_load()`, and asserts that every byte came out the far side: switches,
+colours, brightnesses, the H2D tables, the printer, the names, the LED counts.
+Also checks what is NEW arrives new rather than as leftover bytes, that the
+config is rewritten in the current shape so it migrates once, and that an
+unrecognised blob falls back to the factory config instead of being half-read.
 
-- colours are stored as three raw bytes rather than seven bytes of text,
-  which took the config from 2320 to 1312
-- `PV_CFG_MAX_BYTES` in `pv_cfg.c` fails the build if it grows again
-- a failed save sets `g_live.cfg_save_failed`, which reaches the state
-  document and puts a banner on the page
+Run it on every change to `pv_cfg.c` and on every change to `PV_FX_COUNT` or
+`pv_fx_param_t`.
 
-## Blobs are secrets
+## cfgmig — the one for real recovered bytes
 
-A config blob holds the Wi-Fi password, the printer serial and its access
-code in plaintext. Keep them in `private/`, which is gitignored. Never commit
-one.
+    cc -I stub -I ../../firmware/main -o cfgmig cfgmig.c
+    ./cfgmig <blob-from-the-device> [migrated-out.bin]
+
+Feeds the EXACT bytes recovered from a device's flash through the same path and
+prints what came out. No device timing, no capture tool, no guessing.
+
+Neither tool takes a device, a network, or a serial cable.

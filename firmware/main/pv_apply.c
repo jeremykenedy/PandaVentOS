@@ -231,6 +231,21 @@ static void apply_fx_fields(pv_fx_param_t *p, cJSON *o)
             p->opt_set |= PV_BRIGHT_END;
         }
     }
+    // NOT STOCK. The spare per-effect number. A number sets it, JSON null or
+    // "" clears it, and an effect that reads it falls back to its own default
+    // while it is clear. Barber Pole reads it as the band width in pixels.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "aux"))) {
+        if (cJSON_IsNull(e) || (cJSON_IsString(e) && e->valuestring[0] == '\0')) {
+            p->opt_set &= (uint8_t)~PV_AUX;
+            p->aux = 0;
+        } else if (cJSON_IsNumber(e)) {
+            int v = e->valueint;
+            if (v < 0)   v = 0;
+            if (v > 255) v = 255;
+            p->aux = (uint8_t)v;
+            p->opt_set |= PV_AUX;
+        }
+    }
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "inactive_closed"))) {
         if (cJSON_IsNull(e) || (cJSON_IsString(e) && e->valuestring[0] == '\0')) {
             p->opt_set &= (uint8_t)~PV_BG_CLOSED;

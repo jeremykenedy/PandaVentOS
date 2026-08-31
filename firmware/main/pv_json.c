@@ -12,6 +12,9 @@
 #include "esp_wifi.h"
 #include "esp_system.h"
 #include "esp_heap_caps.h"
+#include "esp_log.h"
+
+static const char *TAG = "pv_json";
 #include "esp_timer.h"
 
 static cJSON *fx_param(int id_key_is_effect, int id, const pv_fx_param_t *p)
@@ -42,12 +45,122 @@ static cJSON *fx_param(int id_key_is_effect, int id, const pv_fx_param_t *p)
         pv_rgb3_to_hex(p->bg_closed, hex);
         cJSON_AddStringToObject(o, "inactive_closed", hex);
     }
+    // Absent when unset, for the same reason the ramp is: the page has to be
+    // able to tell "never set" from "set to zero".
+    if (p->opt_set & PV_AUX)
+        cJSON_AddNumberToObject(o, "aux", p->aux);
     return o;
 }
 
-char *pv_json_state(void)
+// NOT STOCK. The state document is built and printed in PARTS, into one
+// static buffer, and never as a single allocation.
+//
+// WHAT WENT WRONG, so it is not repeated:
+//
+// The whole document was one cJSON tree printed with cJSON_Print, which grows
+// its output by doubling: to reach twenty-odd kilobytes it asks the allocator
+// for a 32 KB CONTIGUOUS block, on top of a tree of roughly fourteen hundred
+// nodes. Total free heap said 98 KB and the allocation still failed, because
+// free heap is not one block: the Wi-Fi and TLS buffers leave nothing that
+// large in one piece. pv_json_state() returned NULL, every client got no state
+// document at all, and the page sat on placeholders with no way to recover.
+// The device's own low-water mark had been 2.5 KB for some time before that,
+// which was the warning nobody could see until the Status page reported it.
+//
+// So: one static buffer, printed into with cJSON_PrintPreallocated, and the
+// document split into parts small enough that the tree for any one of them is
+// a few hundred nodes rather than fourteen hundred. Nothing here can fail for
+// want of a big block, because nothing here asks for one.
+//
+// The parts are separate documents on the wire. That is not a new contract:
+// the page has always merged partial documents key by key, and stock's own
+// pushes are partial for everything except the one sent on connect.
+#define STATE_BUF 12288
+static char s_state_buf[STATE_BUF];
+
+// Prints, deletes the tree, and hands back the static buffer. NULL when the
+// document did not fit, which is a bug in the sizing above rather than a
+// runtime condition, so it is logged loudly.
+static const char *state_finish(cJSON *root, int part)
+{
+    if (!root) return NULL;
+    cJSON_bool ok = cJSON_PrintPreallocated(root, s_state_buf, STATE_BUF, 1);
+    cJSON_Delete(root);
+    if (!ok) {
+        ESP_LOGE(TAG, "state part %d did not fit in %d bytes", part, STATE_BUF);
+        return NULL;
+    }
+    return s_state_buf;
+}
+
+const char *pv_json_state_part(int part)
 {
     cJSON *root = cJSON_CreateObject();
+    if (!root) return NULL;
+
+    // Parts 2..7 are one H2D device state each. Twenty effects with four
+    // colours apiece is the largest thing in the document by a wide margin,
+    // and six of them together is what could not be printed.
+    if (part >= 2 && part < 2 + PV_ST_COUNT) {
+        int s = part - 2;
+        cJSON *rm  = cJSON_AddObjectToObject(root, "rgb_mode");
+        cJSON *h2d = cJSON_AddObjectToObject(rm, "h2d_mode");
+        cJSON *ds  = cJSON_AddArrayToObject(h2d, "device_states");
+        cJSON *st  = cJSON_CreateObject();
+        cJSON_AddNumberToObject(st, "device_state_id", s);
+        cJSON_AddNumberToObject(st, "active_effect_id", g_cfg.rgb.h2d_active[s]);
+        cJSON *efs = cJSON_AddArrayToObject(st, "effects");
+        for (int f = 0; f < PV_FX_COUNT; ++f)
+            cJSON_AddItemToArray(efs, fx_param(1, f, &g_h2d[s][f]));
+        cJSON_AddItemToArray(ds, st);
+        return state_finish(root, part);
+    }
+
+    if (part == 1) {
+        cJSON *rm = cJSON_AddObjectToObject(root, "rgb_mode");
+        cJSON_AddNumberToObject(rm, "rgb_light_mode", g_cfg.rgb.light_mode);
+        cJSON_AddBoolToObject(rm, "light_on_off", g_cfg.rgb.light_on);
+        cJSON_AddBoolToObject(rm, "warning_sw", g_cfg.rgb.warning_sw);
+        cJSON_AddBoolToObject(rm, "is_follow_printer", g_cfg.rgb.follow_printer);
+        cJSON_AddBoolToObject(rm, "is_follow_vent", g_cfg.rgb.follow_vent);
+        // NOT STOCK. A live preview is running; the page shows a countdown and
+        // an obvious way out. Absent when nothing is being previewed.
+        if (pv_rgb_preview_left() > 0) {
+            cJSON_AddNumberToObject(rm, "preview_left", pv_rgb_preview_left());
+            // Absent unless the preview pinned one, so "not pinned" and
+            // "pinned to zero" stay different things.
+            if (pv_rgb_preview_state() >= 0)
+                cJSON_AddNumberToObject(rm, "preview_state", pv_rgb_preview_state());
+            if (pv_rgb_preview_percent() >= 0)
+                cJSON_AddNumberToObject(rm, "preview_percent", pv_rgb_preview_percent());
+        }
+        cJSON_AddBoolToObject(rm, "is_reverse", g_cfg.rgb.reverse);
+        cJSON_AddNumberToObject(rm, "current_simple_effect", g_cfg.rgb.simple_current);
+        cJSON *effects = cJSON_AddArrayToObject(rm, "effects");
+        for (int i = 0; i < PV_FX_COUNT; ++i)
+            cJSON_AddItemToArray(effects, fx_param(0, i, &g_cfg.rgb.simple[i]));
+
+        cJSON *wh = cJSON_AddObjectToObject(rm, "warning_hot_mode");
+        static const char *lvl_name[2] = { "safe", "warn" };
+        for (int lvl = 0; lvl < 2; ++lvl) {
+            cJSON *l = cJSON_AddObjectToObject(wh, lvl_name[lvl]);
+            cJSON_AddNumberToObject(l, "current_effect", g_cfg.rgb.warnhot_current[lvl]);
+            cJSON *params = cJSON_AddArrayToObject(l, "params");
+            for (int fx = 0; fx < 2; ++fx) {
+                cJSON *pp = cJSON_CreateObject();
+                cJSON_AddNumberToObject(pp, "index", fx);
+                cJSON_AddNumberToObject(pp, "bg", g_cfg.rgb.warnhot_bg[lvl][fx]);
+                cJSON_AddNumberToObject(pp, "speed", g_cfg.rgb.warnhot_speed[lvl][fx]);
+                cJSON_AddItemToArray(params, pp);
+            }
+        }
+        return state_finish(root, part);
+    }
+
+    // Part 0: everything that is not lighting. Small, and FIRST, because it
+    // carries the two states the page needs before it can decide which screen
+    // to open on.
+    if (part != 0) { cJSON_Delete(root); return NULL; }
 
     // wifi
     cJSON *wifi = cJSON_AddObjectToObject(root, "wifi");
@@ -79,56 +192,6 @@ char *pv_json_state(void)
     cJSON_AddNumberToObject(pr, "scan", g_live.printer_scan);
 
     // rgb_mode
-    cJSON *rm = cJSON_AddObjectToObject(root, "rgb_mode");
-    cJSON_AddNumberToObject(rm, "rgb_light_mode", g_cfg.rgb.light_mode);
-    cJSON_AddBoolToObject(rm, "light_on_off", g_cfg.rgb.light_on);
-    cJSON_AddBoolToObject(rm, "warning_sw", g_cfg.rgb.warning_sw);
-    cJSON_AddBoolToObject(rm, "is_follow_printer", g_cfg.rgb.follow_printer);
-    cJSON_AddBoolToObject(rm, "is_follow_vent", g_cfg.rgb.follow_vent);
-    // NOT STOCK. A live preview is running; the page shows a countdown and an
-    // obvious way out. Absent when nothing is being previewed.
-    if (pv_rgb_preview_left() > 0) {
-        cJSON_AddNumberToObject(rm, "preview_left", pv_rgb_preview_left());
-        // Absent unless the preview pinned one, so "not pinned" and "pinned to
-        // zero" stay different things.
-        if (pv_rgb_preview_state() >= 0)
-            cJSON_AddNumberToObject(rm, "preview_state", pv_rgb_preview_state());
-        if (pv_rgb_preview_percent() >= 0)
-            cJSON_AddNumberToObject(rm, "preview_percent", pv_rgb_preview_percent());
-    }
-    cJSON_AddBoolToObject(rm, "is_reverse", g_cfg.rgb.reverse);
-    cJSON_AddNumberToObject(rm, "current_simple_effect", g_cfg.rgb.simple_current);
-    cJSON *effects = cJSON_AddArrayToObject(rm, "effects");
-    for (int i = 0; i < PV_FX_COUNT; ++i)
-        cJSON_AddItemToArray(effects, fx_param(0, i, &g_cfg.rgb.simple[i]));
-
-    cJSON *h2d = cJSON_AddObjectToObject(rm, "h2d_mode");
-    cJSON *ds = cJSON_AddArrayToObject(h2d, "device_states");
-    for (int s = 0; s < PV_ST_COUNT; ++s) {
-        cJSON *st = cJSON_CreateObject();
-        cJSON_AddNumberToObject(st, "device_state_id", s);
-        cJSON_AddNumberToObject(st, "active_effect_id", g_cfg.rgb.h2d_active[s]);
-        cJSON *efs = cJSON_AddArrayToObject(st, "effects");
-        for (int f = 0; f < PV_FX_COUNT; ++f)
-            cJSON_AddItemToArray(efs, fx_param(1, f, &g_h2d[s][f]));
-        cJSON_AddItemToArray(ds, st);
-    }
-
-    cJSON *wh = cJSON_AddObjectToObject(rm, "warning_hot_mode");
-    static const char *lvl_name[2] = { "safe", "warn" };
-    for (int lvl = 0; lvl < 2; ++lvl) {
-        cJSON *l = cJSON_AddObjectToObject(wh, lvl_name[lvl]);
-        cJSON_AddNumberToObject(l, "current_effect", g_cfg.rgb.warnhot_current[lvl]);
-        cJSON *params = cJSON_AddArrayToObject(l, "params");
-        for (int fx = 0; fx < 2; ++fx) {
-            cJSON *p = cJSON_CreateObject();
-            cJSON_AddNumberToObject(p, "index", fx);
-            cJSON_AddNumberToObject(p, "bg", g_cfg.rgb.warnhot_bg[lvl][fx]);
-            cJSON_AddNumberToObject(p, "speed", g_cfg.rgb.warnhot_speed[lvl][fx]);
-            cJSON_AddItemToArray(params, p);
-        }
-    }
-
     // settings
     cJSON *se = cJSON_AddObjectToObject(root, "settings");
     cJSON_AddStringToObject(se, "fw_version", PV_FW_VERSION);
@@ -144,6 +207,21 @@ char *pv_json_state(void)
     cJSON_AddStringToObject(se, "device_name",
         g_cfg.device_name[0] ? g_cfg.device_name : PV_DEVICE_NAME_DEFAULT);
     cJSON_AddStringToObject(se, "device_name_default", PV_DEVICE_NAME_DEFAULT);
+    // NOT STOCK. The exact image this device is running.
+    //
+    // flash-verify.sh proves a flash landed by re-reading the page the device
+    // serves and comparing its hash. That catches a lost upload, which has
+    // happened three times in this project, but it says NOTHING about a build
+    // where only the firmware changed: the page is byte-identical and the
+    // check reports "already running this exact UI" while the device keeps
+    // running the old code. This is the other half of that check.
+    {
+        const esp_app_desc_t *d = esp_app_get_description();
+        char sha[17];
+        for (int i = 0; i < 8; ++i)
+            snprintf(sha + i * 2, 3, "%02x", d->app_elf_sha256[i]);
+        cJSON_AddStringToObject(se, "build", sha);
+    }
 
     // vent_policy: material-aware venting. NOT a stock key. The factory app
     // ignores objects it does not know, so its presence is harmless there.
@@ -238,9 +316,7 @@ char *pv_json_state(void)
         cJSON_AddItemToArray(mats, m);
     }
 
-    char *out = cJSON_Print(root);
-    cJSON_Delete(root);
-    return out;
+    return state_finish(root, part);
 }
 
 // NOT STOCK. The device log as a document of its own.

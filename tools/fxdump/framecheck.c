@@ -445,6 +445,183 @@ int main(void)
         t("with the preview really gone", pv_rgb_preview_left() == 0, NULL);
     }
 
+    puts("\n13. the two animated progress effects");
+
+    /* All three draw the SAME number. Whatever the animation does on top, the
+     * number of pixels that are lit at all has to agree, or two of them are
+     * telling the user a different percentage from the third. */
+    for (int pct = 10; pct <= 90; pct += 20) {
+        int lit[3];
+        int fxs[3] = { PV_FX_PROGRESS, PV_FX_PROGRESS_ANIM, PV_FX_BARBER };
+        for (int k = 0; k < 3; ++k) {
+            setup(fxs[k], "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+            g_live.print_percent = pct;
+            for (int f = 0; f < 60; ++f) step();
+            lit[k] = 0;
+            for (int i = 0; i < 16; ++i) if (!black(frame[0][i])) lit[k]++;
+        }
+        /* Barber's dark band can land on the last pixel, so it is allowed to
+         * differ by one band's worth rather than exactly. */
+        snprintf(buf, sizeof buf, "pct=%d plain=%d anim=%d barber=%d", pct, lit[0], lit[1], lit[2]);
+        char nm[80];
+        snprintf(nm, sizeof nm, "pct=%d: the animated bar lights the same pixels as the plain one", pct);
+        t(nm, lit[1] == lit[0], buf);
+    }
+
+    /* The animated one must actually MOVE: two frames apart cannot be the
+     * same picture, or it is a plain bar wearing a different name. */
+    {
+        rgb_t a[PV_LEDS_PER_STRIP];
+        setup(PV_FX_PROGRESS_ANIM, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 70;
+        for (int f = 0; f < 60; ++f) step();
+        memcpy(a, frame[0], sizeof a);
+        int moved = 0;
+        for (int f = 0; f < 6; ++f) {
+            step();
+            for (int i = 0; i < 16; ++i) if (!same(a[i], frame[0][i])) moved = 1;
+        }
+        t("it animates rather than sitting still", moved, NULL);
+    }
+
+    /* The head of the bar is the brightest thing in it: that is what makes the
+     * tip read as the tip. */
+    {
+        setup(PV_FX_PROGRESS_ANIM, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 50;   /* eight pixels */
+        int tip_won = 0;
+        for (int f = 0; f < 200; ++f) {
+            step();
+            int tip = frame[0][7].r, best = 1;
+            for (int i = 0; i < 7; ++i) if (frame[0][i].r > tip) best = 0;
+            if (best && tip > 180) tip_won = 1;
+        }
+        t("the head of the bar is the brightest pixel in it at some point", tip_won, NULL);
+    }
+
+    /* Past the fill it is dark, exactly like the plain bar. An effect that
+     * lights the empty part is not a progress bar. */
+    {
+        setup(PV_FX_PROGRESS_ANIM, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 25;   /* four pixels */
+        int leak = 0;
+        for (int f = 0; f < 80; ++f) {
+            step();
+            for (int i = 5; i < 16; ++i) if (!black(frame[0][i])) leak = 1;
+        }
+        t("nothing lights past the fill", !leak, NULL);
+    }
+
+    /* Barber Pole with NO job fills the whole run, because a state that never
+     * has a job would otherwise show an effect that is always off. */
+    {
+        setup(PV_FX_BARBER, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 0;
+        for (int f = 0; f < 40; ++f) step();
+        int anyLit = 0;
+        for (int i = 0; i < 16; ++i) if (!black(frame[0][i])) anyLit = 1;
+        t("with no job at all, the pole still runs the whole strip", anyLit, NULL);
+    }
+
+    /* ...and the other two do NOT, because an empty bar is the honest answer
+     * there and filling it would say a print was running. */
+    {
+        setup(PV_FX_PROGRESS_ANIM, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 0;
+        for (int f = 0; f < 60; ++f) step();
+        int anyLit = 0;
+        for (int i = 0; i < 16; ++i) if (!black(frame[0][i])) anyLit = 1;
+        t("the animated bar with no job stays empty", !anyLit, NULL);
+    }
+
+    /* The pole's second band is the INACTIVE colour, which is the same
+     * per-effect answer every other effect gives to "what goes where I am not
+     * lit". Unset, that band is dark. */
+    {
+        setup(PV_FX_BARBER, "00FF00", "00FF00", "0000FF", NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 100;
+        int sawGreen = 0, sawBlue = 0, sawOther = 0;
+        for (int f = 0; f < 40; ++f) {
+            step();
+            for (int i = 0; i < 16; ++i) {
+                if (is(frame[0][i], 0, 255, 0))      sawGreen = 1;
+                else if (is(frame[0][i], 0, 0, 255)) sawBlue = 1;
+                else                                 sawOther = 1;
+            }
+        }
+        t("the pole draws the active colour", sawGreen, NULL);
+        t("and the inactive colour as its second band", sawBlue, NULL);
+        t("and nothing else at all", !sawOther, NULL);
+    }
+    {
+        setup(PV_FX_BARBER, "00FF00", "00FF00", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 100;
+        int sawBlack = 0;
+        for (int f = 0; f < 40; ++f) {
+            step();
+            for (int i = 0; i < 16; ++i) if (black(frame[0][i])) sawBlack = 1;
+        }
+        t("with no inactive colour set, the second band is dark", sawBlack, NULL);
+    }
+
+    /* The pole moves, and comes back to where it started rather than drifting
+     * by a pixel every cycle. */
+    {
+        rgb_t first[PV_LEDS_PER_STRIP];
+        setup(PV_FX_BARBER, "00FF00", "00FF00", "0000FF", NULL, 100, -1, 15, 15, true);
+        g_live.print_percent = 100;
+        for (int f = 0; f < 40; ++f) step();     /* settle the easing */
+        step();
+        memcpy(first, frame[0], sizeof first);
+        int band = 15 / 5;                        /* the default: a fifth */
+        int moved = 0, returned = 1;
+        for (int f = 0; f < band * 2; ++f) {
+            step();
+            int diff = 0;
+            for (int i = 0; i < 15; ++i) if (!same(first[i], frame[0][i])) diff = 1;
+            if (f < band * 2 - 1 && diff) moved = 1;
+        }
+        for (int i = 0; i < 15; ++i) if (!same(first[i], frame[0][i])) returned = 0;
+        t("the pole moves", moved, NULL);
+        t("and repeats exactly, rather than drifting", returned, NULL);
+    }
+
+    /* The stored spare byte sets the band width, and an unset one falls back
+     * to a fifth of the run. */
+    {
+        setup(PV_FX_BARBER, "00FF00", "00FF00", "0000FF", NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 100;
+        g_cfg.rgb.simple[PV_FX_BARBER].aux = 4;
+        g_cfg.rgb.simple[PV_FX_BARBER].opt_set |= PV_AUX;
+        for (int f = 0; f < 40; ++f) step();
+        /* Count the run length of the first band from pixel 0. */
+        int run = 1;
+        for (int i = 1; i < 16 && same(frame[0][i], frame[0][0]); ++i) run++;
+        snprintf(buf, sizeof buf, "run=%d", run);
+        t("a stored band width of four draws bands no wider than four",
+          run <= 4, buf);
+
+        setup(PV_FX_BARBER, "00FF00", "00FF00", "0000FF", NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 100;
+        for (int f = 0; f < 40; ++f) step();
+        int colours = 0;
+        for (int i = 1; i < 16; ++i) if (!same(frame[0][i], frame[0][i-1])) colours++;
+        snprintf(buf, sizeof buf, "%d changes", colours);
+        t("unset, it still draws more than one band across sixteen pixels",
+          colours >= 2, buf);
+    }
+
+    /* Both are still bound by the master switch and the follow gates, because
+     * they are effects and not exceptions. */
+    {
+        setup(PV_FX_BARBER, "00FF00", "00FF00", "0000FF", NULL, 100, -1, 16, 16, true);
+        g_cfg.rgb.light_on = false;
+        step();
+        int allDark = 1;
+        for (int i = 0; i < 16; ++i) if (!black(frame[0][i])) allDark = 0;
+        t("lights off still means dark, pole or no pole", allDark, NULL);
+    }
+
     printf("\n%d passed, %d failed\n", ok_n, bad_n);
     return bad_n ? 1 : 0;
 }

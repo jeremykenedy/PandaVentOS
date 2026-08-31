@@ -334,6 +334,13 @@ static float s_sbounce_dir = 1.0f;
 static float s_sfill_pos;          // Center bounce-fill pair
 static float s_sfill_dir  = 1.0f;
 static float s_progress_shown;     // Progress bar, eased toward the real value
+// NOT STOCK. The two animated progress effects.
+static int   s_chase_pos;          // the sweeping head, in pixels
+static int   s_anim_breath;        // frames, for the breathing tip
+static int   s_barber_pos;         // the pole's offset, in pixels
+// The band width the pole is currently drawing at. Published the same way
+// s_fx_bg is: resolve() knows the effect's parameters, render_effect does not.
+static int   s_fx_band = 3;
 
 // Color_Cycle 0x400ddb00 and Rainbow 0x400ddc34 each keep a hue phase in a
 // global, exactly as stock does (uint16 at 0x3ffb690c and int at 0x3ffb6908).
@@ -353,6 +360,7 @@ typedef struct {
     float split_pos, fill_pos;
     float sbounce_pos, sbounce_dir, sfill_pos, sfill_dir;
     float progress_shown, wave_pos;
+    int   chase_pos, anim_breath, barber_pos;
     int   ramp_step;
     uint16_t cycle_hue;
     int      rainbow_phase;
@@ -406,6 +414,8 @@ static void fx_phase_save(pv_fx_phase_t *o)
     o->sbounce_pos = s_sbounce_pos;   o->sbounce_dir = s_sbounce_dir;
     o->sfill_pos = s_sfill_pos;       o->sfill_dir = s_sfill_dir;
     o->progress_shown = s_progress_shown; o->wave_pos = s_wave_pos;
+    o->chase_pos = s_chase_pos; o->anim_breath = s_anim_breath;
+    o->barber_pos = s_barber_pos;
     o->ramp_step = s_ramp_step;
     o->cycle_hue = s_cycle_hue;       o->rainbow_phase = s_rainbow_phase;
 }
@@ -421,6 +431,8 @@ static void fx_phase_restore(const pv_fx_phase_t *o)
     s_sbounce_pos = o->sbounce_pos;   s_sbounce_dir = o->sbounce_dir;
     s_sfill_pos = o->sfill_pos;       s_sfill_dir = o->sfill_dir;
     s_progress_shown = o->progress_shown; s_wave_pos = o->wave_pos;
+    s_chase_pos = o->chase_pos; s_anim_breath = o->anim_breath;
+    s_barber_pos = o->barber_pos;
     s_ramp_step = o->ramp_step;
     s_cycle_hue = o->cycle_hue;       s_rainbow_phase = o->rainbow_phase;
 }
@@ -727,6 +739,18 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
     // variant as its own loop is how you end up with the two halves a pixel
     // out of step at one speed and not another.
     // -----------------------------------------------------------------
+    // NOT STOCK. Three ways to draw the same number.
+    //
+    //   PROGRESS       a plain bar. Stock's, and the honest default.
+    //   PROGRESS_ANIM  the bar, plus a chase sweeping it and a breathing tip,
+    //                  so a print in progress reads as one from across a room.
+    //   BARBER         a two-colour pole crawling through the bar.
+    //
+    // They share the fill, the easing and the reversal, because they ARE the
+    // same number: writing them as three loops is how two of them end up
+    // rounding a percentage differently from the third.
+    case PV_FX_PROGRESS_ANIM:
+    case PV_FX_BARBER:
     case PV_FX_PROGRESS: {
         // The strip as a fuel gauge. pixels_lit = percent * n / 100, and the
         // pixel straddling the boundary is lit PARTIALLY, so a 16 pixel strip
@@ -749,17 +773,84 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         else                                 s_progress_shown += delta * 0.15f;
 
         float lit = s_progress_shown * (float)n / 100.0f;
+
+        // Barber Pole with no job at all fills the whole run, so it still
+        // reads as a working light on a state that never has one. The other
+        // two do not: an empty bar IS the answer there, and filling it would
+        // say a print was running when none is.
+        if (fx == PV_FX_BARBER && lit < 0.5f) lit = (float)n;
+
+        int litn = (int)(lit + 0.5f);
+        int w = s_fx_band; if (w < 1) w = 1; if (w > n) w = n;
+
         for (int i = 0; i < n; ++i) {
             // Reverse fills from the far end, which is the only sensible
             // mirror for a bar: the same amount of light, other side.
             int   idx  = reverse ? (n - 1 - i) : i;
             float head = lit - (float)i;              // >=1 full, <=0 dark
             float f    = head >= 1.0f ? 1.0f : (head <= 0.0f ? 0.0f : head);
-            px[idx] = mix3(color, bright100, f);
+
+            if (fx == PV_FX_PROGRESS || f <= 0.0f) {
+                px[idx] = mix3(color, bright100, f);
+                continue;
+            }
+
+            if (fx == PV_FX_BARBER) {
+                // Bands of the ACTIVE colour and the INACTIVE one. The
+                // inactive colour is already this effect's answer to "what
+                // goes where I am not lit", and in a pole that is exactly
+                // what the other band is; unset, the other band is dark and
+                // it reads as a plain moving stripe.
+                int   band = ((i + s_barber_pos) / w) & 1;
+                rgb_t c    = mix3(color, bright100, band ? 0.0f : 1.0f);
+                px[idx] = (f >= 1.0f) ? c
+                        : (rgb_t){ (uint8_t)(c.r * f),
+                                   (uint8_t)(c.g * f),
+                                   (uint8_t)(c.b * f) };
+                continue;
+            }
+
+            // PROGRESS_ANIM. The fill sits at seven tenths so the two things
+            // moving over it have somewhere to go.
+            float lv = 0.70f;
+            if (litn > 1) {
+                int d = i - s_chase_pos; if (d < 0) d = -d;
+                if (d < 3) {
+                    float boost = 0.70f + (float)(3 - d) * 0.10f;
+                    lv = boost > 1.0f ? 1.0f : boost;
+                }
+            }
+            if (i == litn - 1) {
+                // The head of the bar breathes, so the tip reads as alive
+                // rather than as the place the light happened to stop.
+                float ph = (float)(s_anim_breath & 63) / 63.0f;
+                float w2 = ph < 0.5f ? (ph * 2.0f) : ((1.0f - ph) * 2.0f);
+                lv = 0.65f + w2 * 0.35f;
+            }
+            if (lv > f) lv = f;         // never brighter than the fill allows
+            px[idx] = mix3(color, bright100, lv);
         }
-        // Nothing here is animated by the frame rate itself, only the easing,
-        // so this borrows Breathing's period rather than Marquee's.
-        int ms = (int)(50.0 - (double)speed * 0.4);
+
+        // The phases advance once per FRAME, not once per pixel, and not once
+        // per strip: fx_phase_save/restore rewinds them for each strip's pass
+        // so both runs draw the same instant.
+        if (fx == PV_FX_PROGRESS_ANIM) {
+            s_chase_pos = (s_chase_pos + 1) % (litn < 1 ? 1 : litn);
+            ++s_anim_breath;
+        } else if (fx == PV_FX_BARBER) {
+            // Two bands is one full repeat, so the pole returns to where it
+            // started instead of drifting a pixel every cycle.
+            s_barber_pos = (s_barber_pos + 1) % (w * 2);
+        }
+
+        // Nothing in the plain bar is animated by the frame rate itself, only
+        // the easing, so it borrows Breathing's period. The chase and the pole
+        // ARE the frame rate, so they run on Marquee's scale instead: fast
+        // enough to read as movement, slow enough at the bottom of the slider
+        // to count the bands.
+        int ms = (fx == PV_FX_PROGRESS)
+               ? (int)(50.0  - (double)speed * 0.4)
+               : (int)(120.0 - (double)speed * 1.0);
         return ms < 10 ? 10 : (uint32_t)ms;
     }
 
@@ -1134,6 +1225,18 @@ int pv_rgb_preview_left(void)
     return (int)((left + 999999) / 1000000);
 }
 
+// NOT STOCK. The band width a Barber Pole should draw at: the stored aux when
+// one is set, otherwise a fifth of the run, which puts about two and a half
+// bands on a sixteen pixel strip and keeps the same look on a shorter one.
+static int fx_band(const pv_fx_param_t *p, int n)
+{
+    int w = (p && (p->opt_set & PV_AUX)) ? (int)p->aux : 0;
+    if (w <= 0) w = n / 5;
+    if (w < 1)  w = 1;
+    if (w > n)  w = n;
+    return w;
+}
+
 // -1 means "no ramp": one brightness for the whole cycle, as before.
 static int fx_bright_end(const pv_fx_param_t *p)
 {
@@ -1141,7 +1244,7 @@ static int fx_bright_end(const pv_fx_param_t *p)
 }
 
 static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
-                    rgb_t *bg, int *bright_end)
+                    rgb_t *bg, int *bright_end, int *band, int n)
 {
     // Every path that is not a configured effect runs at one brightness.
     *bright_end = -1;
@@ -1287,6 +1390,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
         *fx = e; *color = fx_colour(p); *bg = fx_bg(p);
         *bright = p->brightness; *speed = p->speed;
         *bright_end = fx_bright_end(p);
+        *band = fx_band(p, n);
         return true;
     }
     case PV_MODE_WARNING: {
@@ -1319,6 +1423,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
         *fx = e; *color = fx_colour(p); *bg = fx_bg(p);
         *bright = p->brightness; *speed = p->speed;
         *bright_end = fx_bright_end(p);
+        *band = fx_band(p, n);
         return true;
     }
     }
@@ -1358,9 +1463,16 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
     static rgb_t px[PV_LEDS_PER_STRIP];
         int fx = PV_FX_STATIC; rgb_t color, bg; uint8_t bright, speed;
     int bright_end = -1;
+    // The band width the Barber Pole should use. Resolved once for the whole
+    // frame off the FIRST strip's length, so both runs draw the same pole
+    // rather than two different ones when they are different lengths.
+    int band = 3;
     uint32_t wait_ms = 50;
     pv_fx_phase_t phase;
-    bool on = resolve(&fx, &color, &bright, &speed, &bg, &bright_end);
+    int n0 = g_cfg.leds[0];
+    if (n0 < 1 || n0 > PV_LEDS_PER_STRIP) n0 = PV_LEDS_PER_STRIP;
+    bool on = resolve(&fx, &color, &bright, &speed, &bg, &bright_end, &band, n0);
+    s_fx_band = band;
     // NOT STOCK. Fold the brightness ramp into the value the effect is
     // given, so every effect inherits it without knowing it exists and an
     // unset ramp is bit-identical to what it rendered before.

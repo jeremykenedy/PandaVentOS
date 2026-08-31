@@ -15,10 +15,12 @@ static const char *TAG = "pv_cfg";
 
 #define CFG_NS    "pv"
 #define CFG_KEY   "cfg"
-#define CFG_MAGIC 0x50564339   // "PVC9": optional brightness ramp per effect
+#define CFG_MAGIC 0x50564341   // "PVCA": twenty effects, one spare byte each
+#define CFG_MAGIC_V9 0x50564339   // "PVC9": eighteen effects, brightness ramp
 #define CFG_MAGIC_V8 0x50564338   // "PVC8": four colours, H2D split out
 #define CFG_MAGIC_V7 0x50564337   // "PVC7": one blob, two colours
-#define H2D_MAGIC 0x50564839   // "PVH9": adds bright_end to each effect
+#define H2D_MAGIC 0x50564841   // "PVHA": twenty effects, one spare byte each
+#define H2D_MAGIC_V9 0x50564839   // "PVH9": eighteen effects, brightness ramp
 #define H2D_MAGIC_V8 0x50564838   // "PVH8": one H2D state table, no ramp
 #define CFG_MAGIC_V6 0x50564336   // "PVC6": ring light, colours as text
 #define CFG_MAGIC_V5 0x50564335   // "PVC5": two colours per effect, as text
@@ -49,6 +51,14 @@ typedef struct {
 // The nine effect layout, shared by v2 and v3. Those two differ only by the
 // device_name field at the very end, so one rgb shape covers both.
 #define PV_FX_COUNT_V3 9
+
+// The eighteen effect layout, shared by v4 through v9. Frozen here for the
+// same reason PV_FX_COUNT_V1 is frozen: these structs describe bytes that are
+// ALREADY IN FLASH on somebody's device, and a struct that follows the current
+// PV_FX_COUNT stops describing them the moment an effect is added. Writing
+// PV_FX_COUNT in a v8 struct is not a shorthand, it is a bug waiting for the
+// next effect.
+#define PV_FX_COUNT_V9 18
 
 typedef struct {
     bool    light_on;
@@ -88,9 +98,9 @@ typedef struct {
     bool    reverse;
     uint8_t light_mode;
     uint8_t simple_current;
-    pv_fx_param_v4_t simple[PV_FX_COUNT];
+    pv_fx_param_v4_t simple[PV_FX_COUNT_V9];
     uint8_t h2d_active[PV_ST_COUNT];
-    pv_fx_param_v4_t h2d[PV_ST_COUNT][PV_FX_COUNT];
+    pv_fx_param_v4_t h2d[PV_ST_COUNT][PV_FX_COUNT_V9];
     uint8_t warnhot_current[2];
     uint8_t warnhot_bg[2][2];
     uint8_t warnhot_speed[2][2];
@@ -121,6 +131,21 @@ typedef struct {
     uint8_t opt_set;
 } pv_fx_param_v8_t;
 
+// v9 is the current layout minus the spare per-effect byte, and two effects
+// short. v10 appends `aux` to each effect and gives the flag byte a fourth
+// bit; a v9 effect migrates with aux simply not set, which renders identically
+// to what it did, and the two new effects arrive at their defaults.
+typedef struct {
+    uint8_t brightness;
+    uint8_t speed;
+    uint8_t rgb[3];
+    uint8_t rgb_closed[3];
+    uint8_t bg[3];
+    uint8_t bg_closed[3];
+    uint8_t bright_end;
+    uint8_t opt_set;
+} pv_fx_param_v9_t;
+
 typedef struct {
     bool    light_on;
     bool    warning_sw;
@@ -129,7 +154,37 @@ typedef struct {
     bool    reverse;
     uint8_t light_mode;
     uint8_t simple_current;
-    pv_fx_param_v8_t simple[PV_FX_COUNT];
+    pv_fx_param_v9_t simple[PV_FX_COUNT_V9];
+    uint8_t h2d_active[PV_ST_COUNT];
+    uint8_t warnhot_current[2];
+    uint8_t warnhot_bg[2][2];
+    uint8_t warnhot_speed[2][2];
+} pv_rgb_cfg_v9_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v9_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+    char device_name[32];
+    uint8_t ring_mode;
+    bool    ring_blink;
+    uint8_t leds[PV_STRIP_COUNT_MAX];
+} pv_cfg_v9_t;
+
+typedef struct {
+    bool    light_on;
+    bool    warning_sw;
+    bool    follow_printer;
+    bool    follow_vent;
+    bool    reverse;
+    uint8_t light_mode;
+    uint8_t simple_current;
+    pv_fx_param_v8_t simple[PV_FX_COUNT_V9];
     uint8_t h2d_active[PV_ST_COUNT];
     uint8_t warnhot_current[2];
     uint8_t warnhot_bg[2][2];
@@ -159,9 +214,9 @@ typedef struct {
     bool    reverse;
     uint8_t light_mode;
     uint8_t simple_current;
-    pv_fx_param_v7_t simple[PV_FX_COUNT];
+    pv_fx_param_v7_t simple[PV_FX_COUNT_V9];
     uint8_t h2d_active[PV_ST_COUNT];
-    pv_fx_param_v7_t h2d[PV_ST_COUNT][PV_FX_COUNT];
+    pv_fx_param_v7_t h2d[PV_ST_COUNT][PV_FX_COUNT_V9];
     uint8_t warnhot_current[2];
     uint8_t warnhot_bg[2][2];
     uint8_t warnhot_speed[2][2];
@@ -199,9 +254,9 @@ typedef struct {
     bool    reverse;
     uint8_t light_mode;
     uint8_t simple_current;
-    pv_fx_param_v6_t simple[PV_FX_COUNT];
+    pv_fx_param_v6_t simple[PV_FX_COUNT_V9];
     uint8_t h2d_active[PV_ST_COUNT];
-    pv_fx_param_v6_t h2d[PV_ST_COUNT][PV_FX_COUNT];
+    pv_fx_param_v6_t h2d[PV_ST_COUNT][PV_FX_COUNT_V9];
     uint8_t warnhot_current[2];
     uint8_t warnhot_bg[2][2];
     uint8_t warnhot_speed[2][2];
@@ -319,7 +374,12 @@ typedef struct {
 // device that has been through v8 keeps its H2D colours across the update.
 typedef struct {
     uint32_t magic;
-    pv_fx_param_v8_t fx[PV_FX_COUNT];
+    pv_fx_param_v9_t fx[PV_FX_COUNT_V9];
+} pv_h2d_blob_v9_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_fx_param_v8_t fx[PV_FX_COUNT_V9];
 } pv_h2d_blob_v8_t;
 
 pv_live_t g_live = {
@@ -340,6 +400,23 @@ pv_live_t g_live = {
 // flag byte are new, and they start cleared so nothing looks different.
 // v8 kept all four colours and the flag byte; only the ramp is new, and it
 // starts unset, so bright_end is parked on the one brightness the effect had.
+// v9 kept everything v10 has except the spare byte, and had two fewer effects.
+// aux starts unset, so every effect that reads it falls back to the same
+// default it would have used before the byte existed.
+static void fx_lift_v9(pv_fx_param_t *dst, const pv_fx_param_v9_t *src)
+{
+    dst->brightness = src->brightness;
+    dst->speed = src->speed;
+    memcpy(dst->rgb, src->rgb, 3);
+    memcpy(dst->rgb_closed, src->rgb_closed, 3);
+    memcpy(dst->bg, src->bg, 3);
+    memcpy(dst->bg_closed, src->bg_closed, 3);
+    dst->bright_end = src->bright_end;
+    dst->aux = 0;
+    dst->opt_set = (uint8_t)(src->opt_set &
+                             (PV_BG_OPEN | PV_BG_CLOSED | PV_BRIGHT_END));
+}
+
 static void fx_lift_v8(pv_fx_param_t *dst, const pv_fx_param_v8_t *src)
 {
     dst->brightness = src->brightness;
@@ -349,6 +426,7 @@ static void fx_lift_v8(pv_fx_param_t *dst, const pv_fx_param_v8_t *src)
     memcpy(dst->bg, src->bg, 3);
     memcpy(dst->bg_closed, src->bg_closed, 3);
     dst->bright_end = src->brightness;
+    dst->aux = 0;
     dst->opt_set = (uint8_t)(src->opt_set & (PV_BG_OPEN | PV_BG_CLOSED));
 }
 
@@ -362,6 +440,7 @@ static void fx_lift_v7(pv_fx_param_t *dst, const pv_fx_param_v7_t *src)
     dst->bg_closed[0] = dst->bg_closed[1] = dst->bg_closed[2] = 0;
     // No ramp: one brightness, exactly as this effect always ran.
     dst->bright_end = src->brightness;
+    dst->aux = 0;
     dst->opt_set = 0;
 }
 
@@ -375,6 +454,7 @@ static void fx_lift_v6(pv_fx_param_t *dst, const pv_fx_param_v6_t *src)
     dst->bg_closed[0] = dst->bg_closed[1] = dst->bg_closed[2] = 0;
     // No ramp: one brightness, exactly as this effect always ran.
     dst->bright_end = src->brightness;
+    dst->aux = 0;
     dst->opt_set = 0;
 }
 
@@ -388,6 +468,7 @@ static void fx_lift_v4(pv_fx_param_t *dst, const pv_fx_param_v4_t *src)
     dst->bg_closed[0] = dst->bg_closed[1] = dst->bg_closed[2] = 0;
     // No ramp: one brightness, exactly as this effect always ran.
     dst->bright_end = src->brightness;
+    dst->aux = 0;
     dst->opt_set = 0;
 }
 
@@ -625,18 +706,29 @@ static bool h2d_load_all(void)
     for (int st = 0; st < PV_ST_COUNT; ++st) {
         char key[8]; h2d_key(st, key);
         // Big enough for either shape; the stored length and magic say which.
-        union { pv_h2d_blob_t v9; pv_h2d_blob_v8_t v8; } b;
+        union { pv_h2d_blob_t v10; pv_h2d_blob_v9_t v9; pv_h2d_blob_v8_t v8; } b;
         size_t len = sizeof(b);
         esp_err_t e = nvs_get_blob(h, key, &b, &len);
-        if (e == ESP_OK && len == sizeof(pv_h2d_blob_t) && b.v9.magic == H2D_MAGIC) {
-            memcpy(g_h2d[st], b.v9.fx, sizeof(g_h2d[st]));
+        if (e == ESP_OK && len == sizeof(pv_h2d_blob_t) && b.v10.magic == H2D_MAGIC) {
+            memcpy(g_h2d[st], b.v10.fx, sizeof(g_h2d[st]));
+        } else if (e == ESP_OK && len == sizeof(pv_h2d_blob_v9_t) &&
+                   b.v9.magic == H2D_MAGIC_V9) {
+            // v9 -> v10, per effect. The eighteen that existed keep every
+            // colour and setting they had; the two new ones keep the factory
+            // defaults already sitting in g_h2d, which is why this loop stops
+            // at eighteen rather than clearing the table first.
+            for (int f = 0; f < PV_FX_COUNT_V9; ++f)
+                fx_lift_v9(&g_h2d[st][f], &b.v9.fx[f]);
+            ESP_LOGW(TAG, "migrated h2d[%d] v9 -> v10 (%u B -> %u B)",
+                     st, (unsigned)len, (unsigned)sizeof(pv_h2d_blob_t));
+            migrated = true;
         } else if (e == ESP_OK && len == sizeof(pv_h2d_blob_v8_t) &&
                    b.v8.magic == H2D_MAGIC_V8) {
-            // v8 -> v9, per effect. The ramp comes out unset, so this state's
-            // strip looks exactly as it did before the update.
-            for (int f = 0; f < PV_FX_COUNT; ++f)
+            // v8 -> v10, per effect. The ramp and the spare byte both come out
+            // unset, so this state's strip looks exactly as it did.
+            for (int f = 0; f < PV_FX_COUNT_V9; ++f)
                 fx_lift_v8(&g_h2d[st][f], &b.v8.fx[f]);
-            ESP_LOGW(TAG, "migrated h2d[%d] v8 -> v9 (%u B -> %u B)",
+            ESP_LOGW(TAG, "migrated h2d[%d] v8 -> v10 (%u B -> %u B)",
                      st, (unsigned)len, (unsigned)sizeof(pv_h2d_blob_t));
             migrated = true;
         } else {
@@ -661,19 +753,71 @@ void pv_cfg_load(void)
     }
     // Big enough for either layout. nvs_get_blob fills in the stored length,
     // and the magic says which shape those bytes are.
-    union { pv_cfg_t v9; pv_cfg_v8_t v8; pv_cfg_v7_t v7; pv_cfg_v6_t v6; pv_cfg_v5_t v5; pv_cfg_v4_t v4; pv_cfg_v3_t v3; pv_cfg_v2_t v2;
+    union { pv_cfg_t v10; pv_cfg_v9_t v9; pv_cfg_v8_t v8; pv_cfg_v7_t v7; pv_cfg_v6_t v6; pv_cfg_v5_t v5; pv_cfg_v4_t v4; pv_cfg_v3_t v3; pv_cfg_v2_t v2;
             pv_cfg_v1_t v1; } stored;
     size_t size = sizeof(stored);
     esp_err_t err = nvs_get_blob(h, CFG_KEY, &stored, &size);
     nvs_close(h);
 
     if (err == ESP_OK && size == sizeof(pv_cfg_t) &&
-        stored.v9.magic == CFG_MAGIC) {
-        g_cfg = stored.v9;
+        stored.v10.magic == CFG_MAGIC) {
+        g_cfg = stored.v10;
         if (!h2d_load_all())
             ESP_LOGW(TAG, "some H2D tables missing; defaults kept for those");
         cfg_clamp_loaded();
         ESP_LOGI(TAG, "config loaded (%u B)", (unsigned)size);
+        return;
+    }
+
+    // v9 -> v10. Two more effects and one spare byte per effect. Both are
+    // additions at the end of each effect, but PV_FX_COUNT is an array
+    // dimension in the middle of the config, so this is not an append: the
+    // whole of rgb.simple changes shape and everything after it moves. A size
+    // check alone would have thrown away every setting on the first boot after
+    // the update, which is the exact fault the v1 -> v4 comment below records.
+    //
+    // The two new effects arrive at their defaults; every existing one comes
+    // out with aux unset, which renders exactly as v9 did.
+    if (err == ESP_OK && stored.v9.magic == CFG_MAGIC_V9 &&
+        size == sizeof(pv_cfg_v9_t)) {
+        const pv_rgb_cfg_v9_t *o = &stored.v9.rgb;
+        pv_cfg_factory_defaults(&g_cfg);    // the two new effects start here
+        g_cfg.rgb.light_on       = o->light_on;
+        g_cfg.rgb.warning_sw     = o->warning_sw;
+        g_cfg.rgb.follow_printer = o->follow_printer;
+        g_cfg.rgb.follow_vent    = o->follow_vent;
+        g_cfg.rgb.reverse        = o->reverse;
+        g_cfg.rgb.light_mode     = o->light_mode;
+        g_cfg.rgb.simple_current = o->simple_current;
+        for (int i = 0; i < PV_FX_COUNT_V9; ++i)
+            fx_lift_v9(&g_cfg.rgb.simple[i], &o->simple[i]);
+        memcpy(g_cfg.rgb.h2d_active, o->h2d_active, sizeof(g_cfg.rgb.h2d_active));
+        memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
+               sizeof(g_cfg.rgb.warnhot_current));
+        memcpy(g_cfg.rgb.warnhot_bg, o->warnhot_bg, sizeof(g_cfg.rgb.warnhot_bg));
+        memcpy(g_cfg.rgb.warnhot_speed, o->warnhot_speed,
+               sizeof(g_cfg.rgb.warnhot_speed));
+
+        g_cfg.printer           = stored.v9.printer;
+        g_cfg.ap                = stored.v9.ap;
+        memcpy(g_cfg.hostname, stored.v9.hostname, sizeof(g_cfg.hostname));
+        memcpy(g_cfg.language, stored.v9.language, sizeof(g_cfg.language));
+        g_cfg.motor_manual      = stored.v9.motor_manual;
+        g_cfg.motor_manual_open = stored.v9.motor_manual_open;
+        memcpy(g_cfg.device_name, stored.v9.device_name, sizeof(g_cfg.device_name));
+        g_cfg.ring_mode         = stored.v9.ring_mode;
+        g_cfg.ring_blink        = stored.v9.ring_blink;
+        memcpy(g_cfg.leds, stored.v9.leds, sizeof(g_cfg.leds));
+        g_cfg.magic             = CFG_MAGIC;
+
+        if (!h2d_load_all())
+            ESP_LOGW(TAG, "some H2D tables missing; defaults kept for those");
+        cfg_clamp_loaded();
+        ESP_LOGW(TAG, "migrated config v9 -> v10 (%u B -> %u B), %d effects -> %d",
+                 (unsigned)size, (unsigned)sizeof(pv_cfg_t),
+                 PV_FX_COUNT_V9, PV_FX_COUNT);
+        pv_cfg_save();
+        h2d_save_all();
         return;
     }
 
@@ -692,7 +836,8 @@ void pv_cfg_load(void)
         g_cfg.rgb.reverse        = o->reverse;
         g_cfg.rgb.light_mode     = o->light_mode;
         g_cfg.rgb.simple_current = o->simple_current;
-        for (int i = 0; i < PV_FX_COUNT; ++i)
+        pv_cfg_factory_defaults(&g_cfg);    // the two new effects start here
+        for (int i = 0; i < PV_FX_COUNT_V9; ++i)
             fx_lift_v8(&g_cfg.rgb.simple[i], &o->simple[i]);
         memcpy(g_cfg.rgb.h2d_active, o->h2d_active, sizeof(g_cfg.rgb.h2d_active));
         memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
@@ -716,7 +861,7 @@ void pv_cfg_load(void)
         if (!h2d_load_all())
             ESP_LOGW(TAG, "some H2D tables missing; defaults kept for those");
         cfg_clamp_loaded();
-        ESP_LOGW(TAG, "migrated config v8 -> v9 (%u B -> %u B), brightness ramp added unset",
+        ESP_LOGW(TAG, "migrated config v8 -> v10 (%u B -> %u B), ramp and spare byte unset",
                  (unsigned)size, (unsigned)sizeof(pv_cfg_t));
         pv_cfg_save();
         h2d_save_all();

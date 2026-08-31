@@ -230,71 +230,67 @@ void pv_ws_broadcast(char *json_take_ownership)
     }
 }
 
+// NOT STOCK. The state goes out in parts, built one at a time INSIDE the
+// server task, so only one part exists at once and none of it is copied.
+//
+// One queued work item sends all of them. Queuing eight would multiply the
+// server's work queue by eight on every slider move, and the queue is not
+// deep. Building inside the send is free: this runs on the HTTP task, which is
+// where the frames go out anyway, and that task is single threaded, so the
+// static buffer cannot be overwritten between building a part and sending it.
+static void state_send(int only_fd)
+{
+    for (int part = 0; part < PV_STATE_PARTS; ++part) {
+        const char *json = pv_json_state_part(part);
+        if (!json) continue;
+        httpd_ws_frame_t f = {
+            .type = HTTPD_WS_TYPE_TEXT,
+            .payload = (uint8_t *)json,
+            .len = strlen(json),
+        };
+        if (only_fd >= 0) {
+            if (httpd_ws_send_frame_async(s_server, only_fd, &f) != ESP_OK) {
+                ESP_LOGW(TAG, "state part %d failed for fd=%d", part, only_fd);
+                ws_untrack(only_fd);
+                return;
+            }
+        } else {
+            // ws_untrack compacts the table, so the index only advances on a
+            // socket that survived. Walking it with a plain for-loop skipped
+            // the client that was moved into the slot just vacated.
+            for (int i = 0; i < s_ws_count; ) {
+                if (httpd_ws_send_frame_async(s_server, s_ws_fd[i], &f) != ESP_OK)
+                    ws_untrack(s_ws_fd[i]);
+                else
+                    ++i;
+            }
+        }
+    }
+}
+
+static void state_work(void *arg)
+{
+    state_send((int)(intptr_t)arg);
+}
+
 void pv_ws_push_state(void)
 {
-    pv_ws_broadcast(pv_json_state());
+    if (!s_server || s_ws_count == 0) return;
+    httpd_queue_work(s_server, state_work, (void *)(intptr_t)-1);
 }
 
-#define ONEPUSH_TRIES 3
-typedef struct { int fd; char *json; int tries; } onepush_t;
-
-static void onepush_work(void *arg)
-{
-    onepush_t *p = arg;
-    httpd_ws_frame_t f = {
-        .type = HTTPD_WS_TYPE_TEXT,
-        .payload = (uint8_t *)p->json,
-        .len = strlen(p->json),
-    };
-    esp_err_t err = httpd_ws_send_frame_async(s_server, p->fd, &f);
-    if (err != ESP_OK && p->tries < ONEPUSH_TRIES) {
-        // Re-queue rather than give up. This is the one document the client is
-        // waiting for, and dropping it leaves that browser on placeholders
-        // with no way back: measured at roughly one connect in eight before
-        // this, with the socket confirmed open the whole time. Re-queued work
-        // runs after whatever else is pending, which is usually enough.
-        p->tries++;
-        if (httpd_queue_work(s_server, onepush_work, p) == ESP_OK) return;
-    }
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "connect push failed for fd=%d after %d tries", p->fd, p->tries + 1);
-        ws_untrack(p->fd);
-    }
-    free(p->json);
-    free(p);
-}
+// NOT STOCK. The retry machinery that used to sit here is gone with the single
+// document it retried. A part that fails to send now drops that client from
+// the table, and the page asks for the state itself when it does not arrive,
+// which is the same recovery by a shorter road.
 
 // The state document for ONE client, sent after the handler that asked for it
 // has returned. See the comment at the handshake for why it is not sent inline.
 void pv_ws_push_state_to(int fd)
 {
-    // Every early return here used to be silent, and each one leaves that
-    // client waiting forever. They are logged now, because "the page never
-    // filled in" and "the device could not allocate 14 KB" are the same
-    // symptom and only one of them is a UI problem. The page also asks for the
-    // state itself if it does not arrive, so a failure here is recoverable
-    // rather than terminal.
     if (!s_server) return;
-    char *json = pv_json_state();
-    if (!json) {
-        ESP_LOGW(TAG, "connect push: no state document for fd=%d (heap %u)",
-                 fd, (unsigned)esp_get_free_heap_size());
-        return;
-    }
-    onepush_t *p = malloc(sizeof(*p));
-    if (!p) {
-        ESP_LOGW(TAG, "connect push: out of memory for fd=%d", fd);
-        free(json);
-        return;
-    }
-    p->fd = fd;
-    p->json = json;
-    p->tries = 0;
-    if (httpd_queue_work(s_server, onepush_work, p) != ESP_OK) {
+    if (httpd_queue_work(s_server, state_work, (void *)(intptr_t)fd) != ESP_OK)
         ESP_LOGW(TAG, "connect push: work queue full for fd=%d", fd);
-        free(p->json);
-        free(p);
-    }
 }
 
 

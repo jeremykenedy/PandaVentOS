@@ -26,8 +26,15 @@ esp_err_t nvs_set_blob(nvs_handle_t h, const char *k, const void *v, size_t len)
 esp_err_t nvs_commit(nvs_handle_t h){ (void)h; return ESP_OK; }
 void nvs_close(nvs_handle_t h){ (void)h; }
 esp_err_t nvs_flash_erase(void){ return ESP_OK; }
+esp_err_t nvs_erase_key(nvs_handle_t h, const char *k){ (void)h;(void)k; return ESP_OK; }
 void esp_restart(void){ }
 void pv_ws_push_state(void){ }
+void pv_rgb_notify(void){ }
+void pv_motor_update(void){ }
+
+/* pv_cfg.c is compiled in, so this drives the shipping migration rather than
+ * a copy of it. */
+#include "pv_cfg.c"
 
 static char HB1[7], HB2[7];
 static const char *hexof(const uint8_t *c){ pv_rgb3_to_hex(c, HB1); return HB1; }
@@ -44,7 +51,7 @@ int main(int argc, char **argv)
     pv_cfg_load();
 
     printf("\n--- after the real migration ---\n");
-    printf("magic          0x%08x (PVC5 = 0x50564335)\n", g_cfg.magic);
+    printf("magic          0x%08x\n", g_cfg.magic);
     printf("light_on=%d warning_sw=%d follow_printer=%d follow_vent=%d reverse=%d\n",
         g_cfg.rgb.light_on, g_cfg.rgb.warning_sw, g_cfg.rgb.follow_printer,
         g_cfg.rgb.follow_vent, g_cfg.rgb.reverse);
@@ -52,9 +59,10 @@ int main(int argc, char **argv)
     printf("h2d_active     [%d %d %d %d %d %d]\n",
         g_cfg.rgb.h2d_active[0], g_cfg.rgb.h2d_active[1], g_cfg.rgb.h2d_active[2],
         g_cfg.rgb.h2d_active[3], g_cfg.rgb.h2d_active[4], g_cfg.rgb.h2d_active[5]);
+    /* The H2D tables live in their own NVS keys since v8, not in this blob. */
     printf("h2d[2][4]      bri=%d spd=%d open=%s closed=%s\n",
-        g_cfg.rgb.h2d[2][4].brightness, g_cfg.rgb.h2d[2][4].speed,
-        hexof(g_cfg.rgb.h2d[2][4].rgb), hexof2(g_cfg.rgb.h2d[2][4].rgb_closed));
+        g_h2d[2][4].brightness, g_h2d[2][4].speed,
+        hexof(g_h2d[2][4].rgb), hexof2(g_h2d[2][4].rgb_closed));
     printf("simple[0]      bri=%d spd=%d open=%s closed=%s\n",
         g_cfg.rgb.simple[0].brightness, g_cfg.rgb.simple[0].speed,
         hexof(g_cfg.rgb.simple[0].rgb), hexof2(g_cfg.rgb.simple[0].rgb_closed));

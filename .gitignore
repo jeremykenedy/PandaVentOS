@@ -29,3 +29,4 @@ tools/cfgmig/cfgmig
 
 # local pre-overwrite backups, never committed
 *.prev
+tools/cfgmig/migcheck
