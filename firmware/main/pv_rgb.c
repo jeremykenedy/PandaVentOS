@@ -248,6 +248,32 @@ static inline uint8_t chan_f(uint8_t colour, uint8_t bright100, float f)
                      / 100.0f);
 }
 
+// NOT STOCK. The INACTIVE colour.
+//
+// Every effect used to paint black where it was not lit. Now it paints this,
+// and black is simply the value it holds when no inactive colour is set. That
+// is why one formula gives every one of the eighteen effects the feature.
+//
+// The active term is chan_f UNCHANGED, so with an unset (black) inactive
+// colour the output is bit-identical to stock: the second term is zero and the
+// first is the exact expression stock uses, in stock's order. See the note
+// above chan_f about why that order matters.
+//
+//   out = chan_f(active, bright, f) + chan_f(inactive, bright, 1 - f)
+//
+// The two factors sum to one, so the result cannot exceed a full-brightness
+// channel and needs no clamp.
+static rgb_t s_fx_bg;            // set once per frame by render_effect
+
+static inline rgb_t mix3(rgb_t active, uint8_t bright100, float f)
+{
+    rgb_t o;
+    o.r = (uint8_t)(chan_f(active.r, bright100, f) + chan_f(s_fx_bg.r, bright100, 1.0f - f));
+    o.g = (uint8_t)(chan_f(active.g, bright100, f) + chan_f(s_fx_bg.g, bright100, 1.0f - f));
+    o.b = (uint8_t)(chan_f(active.b, bright100, f) + chan_f(s_fx_bg.b, bright100, 1.0f - f));
+    return o;
+}
+
 // Breathing, 0x400dd008.
 //   phase += step;  step is +1.5 rising, -1.5 falling
 //   if (phase >= 60) { phase = 60; step = -1.5; }
@@ -306,9 +332,57 @@ static float s_progress_shown;     // Progress bar, eased toward the real value
 
 // Color_Cycle 0x400ddb00 and Rainbow 0x400ddc34 each keep a hue phase in a
 // global, exactly as stock does (uint16 at 0x3ffb690c and int at 0x3ffb6908).
+// NOT STOCK. Rendering the SAME frame for two strips of different lengths.
+//
+// The strips can have different LED counts, so each needs its own render pass
+// with its own n. Every effect advances its phase as a side effect of
+// rendering, so a naive second pass would step the animation twice per frame
+// and run it at double speed. These two functions snapshot the phase before
+// the first strip and restore it before each subsequent one, so every strip
+// sees the same instant and the phase advances once per frame.
+typedef struct {
+    float breath_phase, breath_step;
+    bool  strobe_on;
+    float marquee_pos, link_pos;
+    float bounce_pos, bounce_dir, cylon_pos, cylon_dir;
+    float split_pos, fill_pos;
+    float sbounce_pos, sbounce_dir, sfill_pos, sfill_dir;
+    float progress_shown, wave_pos;
+    uint16_t cycle_hue;
+    int      rainbow_phase;
+} pv_fx_phase_t;
+
 static uint16_t s_cycle_hue;
 static int      s_rainbow_phase;
 static float    s_wave_pos;         // Wave peak position, 0..n
+
+static void fx_phase_save(pv_fx_phase_t *o)
+{
+    o->breath_phase = s_breath_phase; o->breath_step = s_breath_step;
+    o->strobe_on = s_strobe_on;
+    o->marquee_pos = s_marquee_pos;   o->link_pos = s_link_pos;
+    o->bounce_pos = s_bounce_pos;     o->bounce_dir = s_bounce_dir;
+    o->cylon_pos = s_cylon_pos;       o->cylon_dir = s_cylon_dir;
+    o->split_pos = s_split_pos;       o->fill_pos = s_fill_pos;
+    o->sbounce_pos = s_sbounce_pos;   o->sbounce_dir = s_sbounce_dir;
+    o->sfill_pos = s_sfill_pos;       o->sfill_dir = s_sfill_dir;
+    o->progress_shown = s_progress_shown; o->wave_pos = s_wave_pos;
+    o->cycle_hue = s_cycle_hue;       o->rainbow_phase = s_rainbow_phase;
+}
+
+static void fx_phase_restore(const pv_fx_phase_t *o)
+{
+    s_breath_phase = o->breath_phase; s_breath_step = o->breath_step;
+    s_strobe_on = o->strobe_on;
+    s_marquee_pos = o->marquee_pos;   s_link_pos = o->link_pos;
+    s_bounce_pos = o->bounce_pos;     s_bounce_dir = o->bounce_dir;
+    s_cylon_pos = o->cylon_pos;       s_cylon_dir = o->cylon_dir;
+    s_split_pos = o->split_pos;       s_fill_pos = o->fill_pos;
+    s_sbounce_pos = o->sbounce_pos;   s_sbounce_dir = o->sbounce_dir;
+    s_sfill_pos = o->sfill_pos;       s_sfill_dir = o->sfill_dir;
+    s_progress_shown = o->progress_shown; s_wave_pos = o->wave_pos;
+    s_cycle_hue = o->cycle_hue;       s_rainbow_phase = o->rainbow_phase;
+}
 
 // Stock converts with saturation = 100 and value = 100 (the call at
 // 0x400dcd68 is always passed 100, 100), so this is the plain six sector
@@ -330,9 +404,12 @@ static rgb_t hsv_full(uint16_t h)
 
 // Fills px and returns the number of MILLISECONDS to wait before the next
 // frame, matching the stock per-effect delay.
-static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
+static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
                               uint8_t speed, bool reverse, rgb_t *px, int n)
 {
+    // Published for mix3, which every effect below goes through. Black here
+    // reproduces stock exactly.
+    s_fx_bg = bg;
     rgb_t base = { chan(color.r, bright100),
                    chan(color.g, bright100),
                    chan(color.b, bright100) };
@@ -356,7 +433,7 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         // and tail calls Strobing, so the behaviour IS Strobing; only the
         // parameters are fixed. Expressed that way here so there is one
         // strobe implementation, not two that can drift.
-        return render_effect(PV_FX_STROBING, color, 100, 150, reverse, px, n);
+        return render_effect(PV_FX_STROBING, color, bg, 100, 150, reverse, px, n);
 
     case PV_FX_LINK_MARQUEE: {               // 0x400dd840
         // Marquee's Gaussian with no speed input and a fixed frame. The
@@ -366,13 +443,11 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
             float dist = fabsf((float)i - s_link_pos);
             float d = dist < (n - dist) ? dist : (n - dist);   // fminf
             if (d > 5.0f) {
-                px[i] = (rgb_t){0, 0, 0};
+                px[i] = mix3(color, bright100, 0.0f);
                 continue;
             }
             float f = expf(-(d * d) / 4.5f);
-            px[i].r = chan_f(color.r, bright100, f);
-            px[i].g = chan_f(color.g, bright100, f);
-            px[i].b = chan_f(color.b, bright100, f);
+            px[i] = mix3(color, bright100, f);
         }
         // 0x400dd9c9: dir (+/-1.0f at 0x400d0cd0 / 0x400d0cd4) times 0.3f,
         // then the same wrap as Marquee at 0x400dd9db.
@@ -394,9 +469,7 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         // differed in 22.84 percent of cases, the worst of the three float
         // effects.
         float f = breath_factor();
-        rgb_t c = { chan_f(color.r, bright100, f),
-                    chan_f(color.g, bright100, f),
-                    chan_f(color.b, bright100, f) };
+        rgb_t c = mix3(color, bright100, f);
         for (int i = 0; i < n; ++i) px[i] = c;
         uint32_t ms = 150u - (speed > 150 ? 150 : speed);
         return ms < 10 ? 10 : ms;
@@ -429,13 +502,11 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
             float dist = fabsf((float)i - s_marquee_pos);
             float d = dist < (n - dist) ? dist : (n - dist);   // fminf
             if (d > 5.0f) {
-                px[i] = (rgb_t){0, 0, 0};
+                px[i] = mix3(color, bright100, 0.0f);
                 continue;
             }
             float f = expf(-(d * d) / 4.5f);
-            px[i].r = chan_f(color.r, bright100, f);
-            px[i].g = chan_f(color.g, bright100, f);
-            px[i].b = chan_f(color.b, bright100, f);
+            px[i] = mix3(color, bright100, f);
         }
         s_marquee_pos += reverse ? -0.3f : 0.3f;
         if (s_marquee_pos >= (float)n)      s_marquee_pos = 0.0f;
@@ -466,12 +537,8 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         // brightness, converted to float ONCE, then the 0.3 factor for the
         // background, then the divide by 100. Scaling an already-divided
         // byte by 3/10 is not the same number.
-        rgb_t full = { chan_f(color.r, bright100, 1.0f),
-                       chan_f(color.g, bright100, 1.0f),
-                       chan_f(color.b, bright100, 1.0f) };
-        rgb_t bg   = { chan_f(color.r, bright100, 0.3f),
-                       chan_f(color.g, bright100, 0.3f),
-                       chan_f(color.b, bright100, 0.3f) };
+        rgb_t full = mix3(color, bright100, 1.0f);
+        rgb_t bg   = mix3(color, bright100, 0.3f);
 
         for (int i = 0; i < n; ++i) {
             float dist = s_wave_pos - (float)i;
@@ -537,13 +604,11 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
         for (int i = 0; i < n; ++i) {
             float d = fabsf((float)i - p);
             if (d > 5.0f) {
-                px[i] = (rgb_t){0, 0, 0};
+                px[i] = mix3(color, bright100, 0.0f);
                 continue;
             }
             float f = expf(-(d * d) / 4.5f);
-            px[i].r = chan_f(color.r, bright100, f);
-            px[i].g = chan_f(color.g, bright100, f);
-            px[i].b = chan_f(color.b, bright100, f);
+            px[i] = mix3(color, bright100, f);
         }
         s_bounce_pos += s_bounce_dir * 0.3f;
         // Turn ON the last pixel, not past it, so the blob visibly reaches
@@ -585,9 +650,7 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
                 f = back > TAIL ? 0.0f : 1.0f - back / TAIL;
                 f = f * f;
             }
-            px[i].r = chan_f(color.r, bright100, f);
-            px[i].g = chan_f(color.g, bright100, f);
-            px[i].b = chan_f(color.b, bright100, f);
+            px[i] = mix3(color, bright100, f);
         }
         // Slightly faster than Bounce at the same speed. The tail already
         // conveys motion, so the head can move without smearing.
@@ -644,9 +707,7 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
             int   idx  = reverse ? (n - 1 - i) : i;
             float head = lit - (float)i;              // >=1 full, <=0 dark
             float f    = head >= 1.0f ? 1.0f : (head <= 0.0f ? 0.0f : head);
-            px[idx].r = chan_f(color.r, bright100, f);
-            px[idx].g = chan_f(color.g, bright100, f);
-            px[idx].b = chan_f(color.b, bright100, f);
+            px[idx] = mix3(color, bright100, f);
         }
         // Nothing here is animated by the frame rate itself, only the easing,
         // so this borrows Breathing's period rather than Marquee's.
@@ -670,11 +731,9 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
             int   half  = i < h ? (h - 1 - i) : (i - (n - h));
             float depth = out ? (float)half : (float)(h - 1 - half);
             float d     = fabsf(depth - p);
-            if (d > 5.0f) { px[i] = (rgb_t){0, 0, 0}; continue; }
+            if (d > 5.0f) { px[i] = mix3(color, bright100, 0.0f); continue; }
             float f = expf(-(d * d) / 4.5f);
-            px[i].r = chan_f(color.r, bright100, f);
-            px[i].g = chan_f(color.g, bright100, f);
-            px[i].b = chan_f(color.b, bright100, f);
+            px[i] = mix3(color, bright100, f);
         }
         s_split_pos += reverse ? -0.3f : 0.3f;
         if (s_split_pos >= (float)h)   s_split_pos = 0.0f;
@@ -698,9 +757,7 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
             float depth = out ? (float)half : (float)(h - 1 - half);
             float head  = s_fill_pos - depth;
             float f     = head >= 1.0f ? 1.0f : (head <= 0.0f ? 0.0f : head);
-            px[i].r = chan_f(color.r, bright100, f);
-            px[i].g = chan_f(color.g, bright100, f);
-            px[i].b = chan_f(color.b, bright100, f);
+            px[i] = mix3(color, bright100, f);
         }
         s_fill_pos += reverse ? -0.3f : 0.3f;
         // Overshoot by one so the strip is seen FULL for a moment before it
@@ -726,11 +783,9 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
             int   half  = i < h ? (h - 1 - i) : (i - (n - h));
             float depth = out ? (float)half : (float)(h - 1 - half);
             float d     = fabsf(depth - p);
-            if (d > 5.0f) { px[i] = (rgb_t){0, 0, 0}; continue; }
+            if (d > 5.0f) { px[i] = mix3(color, bright100, 0.0f); continue; }
             float f = expf(-(d * d) / 4.5f);
-            px[i].r = chan_f(color.r, bright100, f);
-            px[i].g = chan_f(color.g, bright100, f);
-            px[i].b = chan_f(color.b, bright100, f);
+            px[i] = mix3(color, bright100, f);
         }
         s_sbounce_pos += s_sbounce_dir * 0.3f;
         if (s_sbounce_pos >= (float)(h - 1)) {
@@ -761,9 +816,7 @@ static uint32_t render_effect(int fx, rgb_t color, uint8_t bright100,
             float depth = out ? (float)half : (float)(h - 1 - half);
             float head  = base - depth;
             float f     = head >= 1.0f ? 1.0f : (head <= 0.0f ? 0.0f : head);
-            px[i].r = chan_f(color.r, bright100, f);
-            px[i].g = chan_f(color.g, bright100, f);
-            px[i].b = chan_f(color.b, bright100, f);
+            px[i] = mix3(color, bright100, f);
         }
         s_sfill_pos += s_sfill_dir * 0.3f;
         if (s_sfill_pos >= (float)h) {
@@ -935,9 +988,23 @@ static rgb_t fx_colour(const pv_fx_param_t *p)
     return (rgb_t){ c[0], c[1], c[2] };
 }
 
-static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
+// The INACTIVE colour for the vent's current position, or black when the user
+// has not set one, which is what every effect painted before this existed.
+static rgb_t fx_bg(const pv_fx_param_t *p)
+{
+    uint8_t bit = g_live.vent_open ? PV_BG_OPEN : PV_BG_CLOSED;
+    if (!(p->bg_set & bit)) return (rgb_t){0, 0, 0};
+    const uint8_t *c = g_live.vent_open ? p->bg : p->bg_closed;
+    return (rgb_t){ c[0], c[1], c[2] };
+}
+
+static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
+                    rgb_t *bg)
 {
     const pv_rgb_cfg_t *r = &g_cfg.rgb;
+    // Every path that does not come from a configured effect keeps the stock
+    // behaviour of going dark where it is not lit.
+    *bg = (rgb_t){0, 0, 0};
 
     // ---- Level 1: factory test mode, gate at 0x400dcb2d ----
     if (s_test_entered) {
@@ -1049,8 +1116,8 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
         if (st < 0 || st >= PV_ST_COUNT) st = PV_ST_IDLE;
         int e = r->h2d_active[st];
         if (e < 0 || e >= PV_FX_COUNT) e = PV_FX_STATIC;
-        const pv_fx_param_t *p = &r->h2d[st][e];
-        *fx = e; *color = fx_colour(p);
+        const pv_fx_param_t *p = &g_h2d[st][e];
+        *fx = e; *color = fx_colour(p); *bg = fx_bg(p);
         *bright = p->brightness; *speed = p->speed;
         return true;
     }
@@ -1081,7 +1148,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed)
         int e = r->simple_current;
         if (e < 0 || e >= PV_FX_COUNT) e = PV_FX_STATIC;
         const pv_fx_param_t *p = &r->simple[e];
-        *fx = e; *color = fx_colour(p);
+        *fx = e; *color = fx_colour(p); *bg = fx_bg(p);
         *bright = p->brightness; *speed = p->speed;
         return true;
     }
@@ -1128,14 +1195,12 @@ static void render_task(void *arg)
             return;
         }
         xSemaphoreTake(s_lock, portMAX_DELAY);
-        int fx = PV_FX_STATIC; rgb_t color; uint8_t bright, speed;
+        int fx = PV_FX_STATIC; rgb_t color, bg; uint8_t bright, speed;
         uint32_t wait_ms = 50;
-        if (resolve(&fx, &color, &bright, &speed)) {
-            wait_ms = render_effect(fx, color, bright, speed,
-                                    g_cfg.rgb.reverse, px, PV_LEDS_PER_STRIP);
-        } else {
-            memset(px, 0, sizeof(px));
-        }
+        pv_fx_phase_t phase;
+        bool on = resolve(&fx, &color, &bright, &speed, &bg);
+        if (!on) memset(px, 0, sizeof(px));
+        else     fx_phase_save(&phase);
         // PV_FX_HOLD is stock's 0x400dcab0: it returns without reaching the
         // shared refresh at 0x400dce68, so no RMT transaction is queued at
         // all and the WS2812s simply hold their latched frame. Re-pushing an
@@ -1143,7 +1208,17 @@ static void render_task(void *arg)
         // path and costs a transfer per frame, so skip it outright.
         if (fx != PV_FX_HOLD) {
             for (int s = 0; s < s_strips; ++s) {
-                strip_push(s, px, PV_LEDS_PER_STRIP);
+                int n = g_cfg.leds[s];
+                if (n < 1 || n > PV_LEDS_PER_STRIP) n = PV_LEDS_PER_STRIP;
+                if (on) {
+                    // Same instant for every strip: rewind the phase, then let
+                    // this strip's pass advance it. The last pass leaves the
+                    // phase advanced exactly once for the frame.
+                    fx_phase_restore(&phase);
+                    wait_ms = render_effect(fx, color, bg, bright, speed,
+                                            g_cfg.rgb.reverse, px, n);
+                }
+                strip_push(s, px, n);
             }
         }
         xSemaphoreGive(s_lock);

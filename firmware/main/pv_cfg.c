@@ -15,7 +15,9 @@ static const char *TAG = "pv_cfg";
 
 #define CFG_NS    "pv"
 #define CFG_KEY   "cfg"
-#define CFG_MAGIC 0x50564337   // "PVC7": colours stored as raw bytes
+#define CFG_MAGIC 0x50564338   // "PVC8": four colours, H2D split out
+#define CFG_MAGIC_V7 0x50564337   // "PVC7": one blob, two colours
+#define H2D_MAGIC 0x50564838   // "PVH8": one H2D state table
 #define CFG_MAGIC_V6 0x50564336   // "PVC6": ring light, colours as text
 #define CFG_MAGIC_V5 0x50564335   // "PVC5": two colours per effect, as text
 #define CFG_MAGIC_V4 0x50564334   // "PVC4": eighteen effects, one colour
@@ -91,6 +93,47 @@ typedef struct {
     uint8_t warnhot_bg[2][2];
     uint8_t warnhot_speed[2][2];
 } pv_rgb_cfg_v4_t;
+
+// v7 stored ONE blob with everything in it, and the effect parameter carried
+// two colours as raw bytes. That blob reached 1312 bytes; four colours would
+// have taken it past 2100, which does not fit the NVS partition twice over
+// during a rewrite. v8 splits the H2D tables into their own keys.
+typedef struct {
+    uint8_t brightness;
+    uint8_t speed;
+    uint8_t rgb[3];
+    uint8_t rgb_closed[3];
+} pv_fx_param_v7_t;
+
+typedef struct {
+    bool    light_on;
+    bool    warning_sw;
+    bool    follow_printer;
+    bool    follow_vent;
+    bool    reverse;
+    uint8_t light_mode;
+    uint8_t simple_current;
+    pv_fx_param_v7_t simple[PV_FX_COUNT];
+    uint8_t h2d_active[PV_ST_COUNT];
+    pv_fx_param_v7_t h2d[PV_ST_COUNT][PV_FX_COUNT];
+    uint8_t warnhot_current[2];
+    uint8_t warnhot_bg[2][2];
+    uint8_t warnhot_speed[2][2];
+} pv_rgb_cfg_v7_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v7_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+    char device_name[32];
+    uint8_t ring_mode;
+    bool    ring_blink;
+} pv_cfg_v7_t;
 
 // v5 and v6 stored colours as seven byte text, which is what made the config
 // too big for the NVS partition. They share one parameter and one rgb shape;
@@ -218,6 +261,14 @@ _Static_assert(sizeof(pv_cfg_t) <= PV_CFG_MAX_BYTES,
                "pv_cfg_t has outgrown the NVS budget; see PV_CFG_MAX_BYTES");
 
 pv_cfg_t  g_cfg;
+pv_fx_param_t g_h2d[PV_ST_COUNT][PV_FX_COUNT];
+
+// One NVS key per device state: "h2d0".."h2d5".
+typedef struct {
+    uint32_t magic;
+    pv_fx_param_t fx[PV_FX_COUNT];
+} pv_h2d_blob_t;
+
 pv_live_t g_live = {
     .sta_state = 1, .printer_state = 0, .device_state = PV_ST_IDLE,
     .bed_temp = -1.0f, .nozzle_temp = -1.0f,
@@ -227,12 +278,28 @@ pv_live_t g_live = {
 // giving the closed position the same colour the effect already had, so a
 // migrated device looks exactly as it did before the update.
 // v5 and v6 stored both colours, as text. Only the representation changes.
+// v7 already stored both colours as bytes; only the two inactive ones and the
+// flag byte are new, and they start cleared so nothing looks different.
+static void fx_lift_v7(pv_fx_param_t *dst, const pv_fx_param_v7_t *src)
+{
+    dst->brightness = src->brightness;
+    dst->speed = src->speed;
+    memcpy(dst->rgb, src->rgb, 3);
+    memcpy(dst->rgb_closed, src->rgb_closed, 3);
+    dst->bg[0] = dst->bg[1] = dst->bg[2] = 0;
+    dst->bg_closed[0] = dst->bg_closed[1] = dst->bg_closed[2] = 0;
+    dst->bg_set = 0;
+}
+
 static void fx_lift_v6(pv_fx_param_t *dst, const pv_fx_param_v6_t *src)
 {
     dst->brightness = src->brightness;
     dst->speed = src->speed;
     pv_hex_to_rgb3(src->color, dst->rgb);
     pv_hex_to_rgb3(src->color_closed, dst->rgb_closed);
+    dst->bg[0] = dst->bg[1] = dst->bg[2] = 0;
+    dst->bg_closed[0] = dst->bg_closed[1] = dst->bg_closed[2] = 0;
+    dst->bg_set = 0;
 }
 
 static void fx_lift_v4(pv_fx_param_t *dst, const pv_fx_param_v4_t *src)
@@ -241,6 +308,9 @@ static void fx_lift_v4(pv_fx_param_t *dst, const pv_fx_param_v4_t *src)
     dst->speed = src->speed;
     pv_hex_to_rgb3(src->color, dst->rgb);
     pv_hex_to_rgb3(src->color, dst->rgb_closed);
+    dst->bg[0] = dst->bg[1] = dst->bg[2] = 0;
+    dst->bg_closed[0] = dst->bg_closed[1] = dst->bg_closed[2] = 0;
+    dst->bg_set = 0;
 }
 
 static uint8_t hexnib(char c)
@@ -286,6 +356,11 @@ static void fx_set(pv_fx_param_t *p, const char *color)
     // out of the box behaves exactly as it did before the second colour
     // existed. Anyone who wants the strip to change on the vent sets it.
     pv_hex_to_rgb3(color, p->rgb_closed);
+    // Both INACTIVE colours start unset, which means the unlit pixels stay
+    // black: exactly what every effect did before they existed.
+    p->bg[0] = p->bg[1] = p->bg[2] = 0;
+    p->bg_closed[0] = p->bg_closed[1] = p->bg_closed[2] = 0;
+    p->bg_set = 0;
 }
 
 void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode)
@@ -328,8 +403,8 @@ void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode)
         for (int st = 0; st < PV_ST_COUNT; ++st) {
             r->h2d_active[st] = state_fx[st];
             for (int f = 0; f < PV_FX_COUNT; ++f)
-                fx_set(&r->h2d[st][f], "FFFFFF");
-            fx_set(&r->h2d[st][state_fx[st]], active_color[st]);
+                fx_set(&g_h2d[st][f], "FFFFFF");
+            fx_set(&g_h2d[st][state_fx[st]], active_color[st]);
         }
     } else if (mode == PV_MODE_WARNING) {
         for (int lvl = 0; lvl < 2; ++lvl) {
@@ -372,6 +447,8 @@ void pv_cfg_factory_defaults(pv_cfg_t *c)
     // Stock's ring behaviour: dark in AUTO, blinking in MANUAL.
     c->ring_mode = PV_RING_AUTO;
     c->ring_blink = true;
+    // 16 per strip is what stock drives, so this default reproduces stock.
+    for (int i = 0; i < PV_STRIP_COUNT_MAX; ++i) c->leds[i] = PV_LEDS_PER_STRIP;
 }
 
 // DELIBERATE DEPARTURE, documented rather than silent.
@@ -400,6 +477,82 @@ static void cfg_clamp_loaded(void)
     for (int lvl = 0; lvl < 2; ++lvl)
         if (r->warnhot_current[lvl] > 1) r->warnhot_current[lvl] = 0;
     if (g_cfg.ring_mode >= PV_RING_COUNT) g_cfg.ring_mode = PV_RING_AUTO;
+    // A zero here would divide by zero in the effects; anything above the
+    // buffer would read past it.
+    for (int i = 0; i < PV_STRIP_COUNT_MAX; ++i)
+        if (g_cfg.leds[i] < 1 || g_cfg.leds[i] > PV_LEDS_PER_STRIP)
+            g_cfg.leds[i] = PV_LEDS_PER_STRIP;
+}
+
+// The H2D tables, one NVS key per device state.
+//
+// Splitting them out is the whole point: at 18 effects and four colours the
+// six tables are 1620 bytes. NVS writes the new copy of a blob before
+// releasing the old one, so a single 1620 byte blob needs 3240 bytes free to
+// rewrite, in a partition that has about 4 KB free after the Wi-Fi stack has
+// taken its share. Per state, a rewrite moves 274 bytes and touches nothing
+// else.
+static void h2d_key(int st, char out[8])
+{
+    snprintf(out, 8, "h2d%d", st);
+}
+
+static void h2d_save_state(int st)
+{
+    nvs_handle_t h;
+    if (nvs_open(CFG_NS, NVS_READWRITE, &h) != ESP_OK) return;
+    char key[8]; h2d_key(st, key);
+    pv_h2d_blob_t b;
+    b.magic = H2D_MAGIC;
+    memcpy(b.fx, g_h2d[st], sizeof(b.fx));
+    esp_err_t err = nvs_set_blob(h, key, &b, sizeof(b));
+    if (err != ESP_OK) {
+        // Same recovery as the main config: release the old copy so the new
+        // one only needs room for itself.
+        if (nvs_erase_key(h, key) == ESP_OK) {
+            nvs_commit(h);
+            err = nvs_set_blob(h, key, &b, sizeof(b));
+        }
+    }
+    if (err == ESP_OK) err = nvs_commit(h);
+    nvs_close(h);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "h2d[%d] save failed: %d", st, err);
+        g_live.cfg_save_failed = true;
+    }
+}
+
+void pv_cfg_h2d_save(int st)
+{
+    if (st < 0 || st >= PV_ST_COUNT) return;
+    h2d_save_state(st);
+}
+
+static void h2d_save_all(void)
+{
+    for (int st = 0; st < PV_ST_COUNT; ++st) h2d_save_state(st);
+}
+
+// Returns true when every state was read back. A partial read leaves the
+// missing states on the factory defaults already in g_h2d.
+static bool h2d_load_all(void)
+{
+    nvs_handle_t h;
+    if (nvs_open(CFG_NS, NVS_READONLY, &h) != ESP_OK) return false;
+    bool all = true;
+    for (int st = 0; st < PV_ST_COUNT; ++st) {
+        char key[8]; h2d_key(st, key);
+        pv_h2d_blob_t b;
+        size_t len = sizeof(b);
+        if (nvs_get_blob(h, key, &b, &len) == ESP_OK &&
+            len == sizeof(b) && b.magic == H2D_MAGIC) {
+            memcpy(g_h2d[st], b.fx, sizeof(g_h2d[st]));
+        } else {
+            all = false;
+        }
+    }
+    nvs_close(h);
+    return all;
 }
 
 void pv_cfg_load(void)
@@ -412,17 +565,65 @@ void pv_cfg_load(void)
     }
     // Big enough for either layout. nvs_get_blob fills in the stored length,
     // and the magic says which shape those bytes are.
-    union { pv_cfg_t v7; pv_cfg_v6_t v6; pv_cfg_v5_t v5; pv_cfg_v4_t v4; pv_cfg_v3_t v3; pv_cfg_v2_t v2;
+    union { pv_cfg_t v8; pv_cfg_v7_t v7; pv_cfg_v6_t v6; pv_cfg_v5_t v5; pv_cfg_v4_t v4; pv_cfg_v3_t v3; pv_cfg_v2_t v2;
             pv_cfg_v1_t v1; } stored;
     size_t size = sizeof(stored);
     esp_err_t err = nvs_get_blob(h, CFG_KEY, &stored, &size);
     nvs_close(h);
 
     if (err == ESP_OK && size == sizeof(pv_cfg_t) &&
-        stored.v7.magic == CFG_MAGIC) {
-        g_cfg = stored.v7;
+        stored.v8.magic == CFG_MAGIC) {
+        g_cfg = stored.v8;
+        if (!h2d_load_all())
+            ESP_LOGW(TAG, "some H2D tables missing; defaults kept for those");
         cfg_clamp_loaded();
         ESP_LOGI(TAG, "config loaded (%u B)", (unsigned)size);
+        return;
+    }
+
+    // v7 -> v8. Two changes at once: the effect parameter grew two colours and
+    // a flag byte, and the H2D tables moved out of this blob into one key per
+    // device state. Field by field, and every inactive colour starts unset so
+    // the strip looks exactly as it did.
+    if (err == ESP_OK && stored.v7.magic == CFG_MAGIC_V7 &&
+        size == sizeof(pv_cfg_v7_t)) {
+        const pv_rgb_cfg_v7_t *o = &stored.v7.rgb;
+        g_cfg.rgb.light_on       = o->light_on;
+        g_cfg.rgb.warning_sw     = o->warning_sw;
+        g_cfg.rgb.follow_printer = o->follow_printer;
+        g_cfg.rgb.follow_vent    = o->follow_vent;
+        g_cfg.rgb.reverse        = o->reverse;
+        g_cfg.rgb.light_mode     = o->light_mode;
+        g_cfg.rgb.simple_current = o->simple_current;
+        for (int i = 0; i < PV_FX_COUNT; ++i)
+            fx_lift_v7(&g_cfg.rgb.simple[i], &o->simple[i]);
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
+            for (int f = 0; f < PV_FX_COUNT; ++f)
+                fx_lift_v7(&g_h2d[st][f], &o->h2d[st][f]);
+        }
+        memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
+               sizeof(g_cfg.rgb.warnhot_current));
+        memcpy(g_cfg.rgb.warnhot_bg, o->warnhot_bg, sizeof(g_cfg.rgb.warnhot_bg));
+        memcpy(g_cfg.rgb.warnhot_speed, o->warnhot_speed,
+               sizeof(g_cfg.rgb.warnhot_speed));
+
+        g_cfg.printer           = stored.v7.printer;
+        g_cfg.ap                = stored.v7.ap;
+        memcpy(g_cfg.hostname, stored.v7.hostname, sizeof(g_cfg.hostname));
+        memcpy(g_cfg.language, stored.v7.language, sizeof(g_cfg.language));
+        g_cfg.motor_manual      = stored.v7.motor_manual;
+        g_cfg.motor_manual_open = stored.v7.motor_manual_open;
+        memcpy(g_cfg.device_name, stored.v7.device_name, sizeof(g_cfg.device_name));
+        g_cfg.ring_mode         = stored.v7.ring_mode;
+        g_cfg.ring_blink        = stored.v7.ring_blink;
+        g_cfg.magic             = CFG_MAGIC;
+
+        cfg_clamp_loaded();
+        ESP_LOGW(TAG, "migrated config v7 -> v8 (%u B -> %u B), H2D split into per-state keys",
+                 (unsigned)size, (unsigned)sizeof(pv_cfg_t));
+        pv_cfg_save();
+        h2d_save_all();
         return;
     }
 
@@ -449,7 +650,7 @@ void pv_cfg_load(void)
         for (int st = 0; st < PV_ST_COUNT; ++st) {
             g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
             for (int f = 0; f < PV_FX_COUNT; ++f)
-                fx_lift_v6(&g_cfg.rgb.h2d[st][f], &o->h2d[st][f]);
+                fx_lift_v6(&g_h2d[st][f], &o->h2d[st][f]);
         }
         memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
                sizeof(g_cfg.rgb.warnhot_current));
@@ -474,6 +675,7 @@ void pv_cfg_load(void)
         ESP_LOGW(TAG, "migrated config v%d -> v7 (%u B -> %u B), colours now stored as bytes",
                  has_ring ? 6 : 5, (unsigned)size, (unsigned)sizeof(pv_cfg_t));
         pv_cfg_save();
+        h2d_save_all();
         return;
     }
 
@@ -496,7 +698,7 @@ void pv_cfg_load(void)
         for (int st = 0; st < PV_ST_COUNT; ++st) {
             g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
             for (int f = 0; f < PV_FX_COUNT; ++f)
-                fx_lift_v4(&g_cfg.rgb.h2d[st][f], &o->h2d[st][f]);
+                fx_lift_v4(&g_h2d[st][f], &o->h2d[st][f]);
         }
         memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
                sizeof(g_cfg.rgb.warnhot_current));
@@ -517,6 +719,7 @@ void pv_cfg_load(void)
         ESP_LOGW(TAG, "migrated config v4 -> v7 (%u B -> %u B), closed colour = open colour",
                  (unsigned)size, (unsigned)sizeof(pv_cfg_t));
         pv_cfg_save();
+        h2d_save_all();
         return;
     }
 
@@ -546,7 +749,7 @@ void pv_cfg_load(void)
         for (int st = 0; st < PV_ST_COUNT; ++st) {
             g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
             for (int f = 0; f < PV_FX_COUNT_V3; ++f)
-                fx_lift_v4(&g_cfg.rgb.h2d[st][f], &o->h2d[st][f]);
+                fx_lift_v4(&g_h2d[st][f], &o->h2d[st][f]);
         }
         memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
                sizeof(g_cfg.rgb.warnhot_current));
@@ -570,6 +773,7 @@ void pv_cfg_load(void)
                  has_name ? 3 : 2, (unsigned)size, (unsigned)sizeof(pv_cfg_t),
                  PV_FX_COUNT_V3, PV_FX_COUNT);
         pv_cfg_save();
+        h2d_save_all();
         return;
     }
 
@@ -592,7 +796,7 @@ void pv_cfg_load(void)
         for (int st = 0; st < PV_ST_COUNT; ++st) {
             g_cfg.rgb.h2d_active[st] = o->h2d_active[st];
             for (int f = 0; f < PV_FX_COUNT_V1; ++f)
-                fx_lift_v4(&g_cfg.rgb.h2d[st][f], &o->h2d[st][f]);
+                fx_lift_v4(&g_h2d[st][f], &o->h2d[st][f]);
         }
         memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
                sizeof(g_cfg.rgb.warnhot_current));

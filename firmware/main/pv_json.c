@@ -19,10 +19,21 @@ static cJSON *fx_param(int id_key_is_effect, int id, const pv_fx_param_t *p)
     char hex[7];
     pv_rgb3_to_hex(p->rgb, hex);
     cJSON_AddStringToObject(o, "color", hex);
-    // NOT STOCK. A stock device never sends this key; the factory UI ignores
-    // keys it does not know, so adding it costs nothing there.
+    // NOT STOCK from here down. A stock device never sends these keys, and the
+    // factory UI ignores keys it does not know, so they cost nothing there.
     pv_rgb3_to_hex(p->rgb_closed, hex);
     cJSON_AddStringToObject(o, "color_closed", hex);
+    // The INACTIVE pair. Absent from the document when unset, which is how the
+    // UI knows to show its clear button as already cleared. Named "inactive"
+    // and not "bg" on purpose: stock's "bg" is the brightness percent.
+    if (p->bg_set & PV_BG_OPEN) {
+        pv_rgb3_to_hex(p->bg, hex);
+        cJSON_AddStringToObject(o, "inactive", hex);
+    }
+    if (p->bg_set & PV_BG_CLOSED) {
+        pv_rgb3_to_hex(p->bg_closed, hex);
+        cJSON_AddStringToObject(o, "inactive_closed", hex);
+    }
     return o;
 }
 
@@ -80,7 +91,7 @@ char *pv_json_state(void)
         cJSON_AddNumberToObject(st, "active_effect_id", g_cfg.rgb.h2d_active[s]);
         cJSON *efs = cJSON_AddArrayToObject(st, "effects");
         for (int f = 0; f < PV_FX_COUNT; ++f)
-            cJSON_AddItemToArray(efs, fx_param(1, f, &g_cfg.rgb.h2d[s][f]));
+            cJSON_AddItemToArray(efs, fx_param(1, f, &g_h2d[s][f]));
         cJSON_AddItemToArray(ds, st);
     }
 
@@ -141,6 +152,14 @@ char *pv_json_state(void)
     // NOT STOCK. What the button ring is doing.
     cJSON_AddNumberToObject(vp, "ring_mode", g_cfg.ring_mode);
     cJSON_AddNumberToObject(vp, "ring_blink", g_cfg.ring_blink ? 1 : 0);
+    // NOT STOCK. How many LEDs each strip actually has. Stock assumes 16;
+    // the factory manual says two strip groups total 27, so at least one
+    // run is shorter and every centred or scaled effect needs to know.
+    {
+        cJSON *ls = cJSON_AddArrayToObject(vp, "leds");
+        for (int i = 0; i < PV_STRIP_COUNT_MAX; ++i)
+            cJSON_AddItemToArray(ls, cJSON_CreateNumber(g_cfg.leds[i]));
+    }
     cJSON_AddNumberToObject(vp, "device_state", g_live.device_state);
     cJSON_AddNumberToObject(vp, "bed_temp", g_live.bed_temp);
     // NOT STOCK. print.mc_percent, which drives the Progress Bar effect.

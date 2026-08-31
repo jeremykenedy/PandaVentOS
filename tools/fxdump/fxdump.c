@@ -30,6 +30,8 @@ char *pv_json_response(const char *t, int ok) { (void)t; (void)ok; return NULL; 
 void pv_cfg_save(void) {}
 void pv_motor_update(void) {}
 int  pv_policy_match(const char *m) { (void)m; return -1; }
+pv_fx_param_t g_h2d[PV_ST_COUNT][PV_FX_COUNT];
+void pv_cfg_h2d_save(int st) { (void)st; }
 bool pv_bambu_started(void) { return false; }
 bool pv_motor_fault_any(void) { return false; }
 bool pv_wifi_saw_test_ap(void) { return false; }
@@ -72,6 +74,14 @@ int main(int argc, char **argv)
     if (getenv("PVPCT")) g_live.print_percent = atoi(getenv("PVPCT"));
 
     rgb_t color = { 0xFF, 0x37, 0x00 };   /* the factory default, FF3700 */
+    /* PVN sets the strip length, PVBG the inactive colour as RRGGBB. */
+    int NN = getenv("PVN") ? atoi(getenv("PVN")) : N;
+    if (NN < 1 || NN > N) NN = N;
+    rgb_t bg = {0,0,0};
+    if (getenv("PVBG")) {
+        unsigned v = (unsigned)strtoul(getenv("PVBG"), NULL, 16);
+        bg.r = (v>>16)&255; bg.g = (v>>8)&255; bg.b = v&255;
+    }
     rgb_t px[N];
     memset(px, 0, sizeof(px));
 
@@ -81,7 +91,7 @@ int main(int argc, char **argv)
         const int SCALE = 12;
         printf("P6\n%d %d\n255\n", N * SCALE, frames * SCALE);
         for (int f = 0; f < frames; ++f) {
-            render_effect(fx, color, 100, 50, rev, px, N);
+            render_effect(fx, color, bg, 100, 50, rev, px, NN);
             for (int sy = 0; sy < SCALE; ++sy)
                 for (int i = 0; i < N; ++i)
                     for (int sx = 0; sx < SCALE; ++sx)
@@ -91,17 +101,17 @@ int main(int argc, char **argv)
     }
 
     printf("effect %d (%s), %d frames, brightness 100, speed 50, %d pixels\n",
-           fx, fx >= 0 && fx < PV_FX_COUNT ? NAMES[fx] : "?", frames, N);
-    printf("     +%.*s+\n", N, "----------------------------------------");
+           fx, fx >= 0 && fx < PV_FX_COUNT ? NAMES[fx] : "?", frames, NN);
+    printf("     +%.*s+\n", NN, "----------------------------------------");
     uint32_t total = 0;
     for (int f = 0; f < frames; ++f) {
-        uint32_t ms = render_effect(fx, color, 100, 50, rev, px, N);
+        uint32_t ms = render_effect(fx, color, bg, 100, 50, rev, px, NN);
         total += ms;
         printf("%3d  |", f);
-        row_ascii(px, N);
+        row_ascii(px, NN);
         printf("|  %u ms\n", ms);
     }
-    printf("     +%.*s+\n", N, "----------------------------------------");
+    printf("     +%.*s+\n", NN, "----------------------------------------");
     printf("%d frames in %u ms, %.1f fps\n", frames, total,
            total ? frames * 1000.0 / total : 0.0);
     return 0;

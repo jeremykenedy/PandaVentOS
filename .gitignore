@@ -25,3 +25,6 @@ tools/uicmp/harness_live
 
 # compiled config-migration harness
 tools/cfgmig/cfgmig
+
+# local pre-overwrite backups, never committed
+*.prev

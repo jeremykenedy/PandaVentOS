@@ -198,11 +198,36 @@ static void apply_fx_fields(pv_fx_param_t *p, cJSON *o)
         pv_hex_to_rgb3(hex, p->rgb);
     }
     // NOT STOCK. "rgb" stays the open colour so the factory app's own messages
-    // keep working unchanged; the closed colour needs an explicit key.
+    // keep working unchanged; every other colour needs an explicit key.
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "rgb_closed"))) {
         pv_rgb3_to_hex(p->rgb_closed, hex);
         color_from_json(e, hex);
         pv_hex_to_rgb3(hex, p->rgb_closed);
+    }
+    // The two INACTIVE colours. Deliberately NOT called "bg": stock already
+    // uses "bg" for the brightness percent on this very object, and a key that
+    // means a number to the factory app and a colour to this one is a bug
+    // waiting to happen. JSON null, or the string "", CLEARS one: that is the
+    // UI's X button, and clearing puts the unlit pixels back to black.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "inactive"))) {
+        if (cJSON_IsNull(e) || (cJSON_IsString(e) && e->valuestring[0] == '\0')) {
+            p->bg_set &= (uint8_t)~PV_BG_OPEN;
+        } else {
+            pv_rgb3_to_hex(p->bg, hex);
+            color_from_json(e, hex);
+            pv_hex_to_rgb3(hex, p->bg);
+            p->bg_set |= PV_BG_OPEN;
+        }
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "inactive_closed"))) {
+        if (cJSON_IsNull(e) || (cJSON_IsString(e) && e->valuestring[0] == '\0')) {
+            p->bg_set &= (uint8_t)~PV_BG_CLOSED;
+        } else {
+            pv_rgb3_to_hex(p->bg_closed, hex);
+            color_from_json(e, hex);
+            pv_hex_to_rgb3(hex, p->bg_closed);
+            p->bg_set |= PV_BG_CLOSED;
+        }
     }
 }
 
@@ -234,7 +259,8 @@ static void apply_rgb_mode(cJSON *o)
             mode->valueint >= 0 && mode->valueint < PV_ST_COUNT &&
             fx->valueint >= 0 && fx->valueint < PV_FX_COUNT) {
             g_cfg.rgb.h2d_active[mode->valueint] = fx->valueint;
-            apply_fx_fields(&g_cfg.rgb.h2d[mode->valueint][fx->valueint], e);
+            apply_fx_fields(&g_h2d[mode->valueint][fx->valueint], e);
+            pv_cfg_h2d_save(mode->valueint);
         }
     }
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "warning_hot_mode")) && cJSON_IsObject(e)) {
@@ -361,6 +387,29 @@ static void apply_vent(cJSON *o)
 // ring. NOT a stock message. The button's ring LED.
 //   {"ring":{"mode":0..4}}    PV_RING_*
 //   {"ring":{"blink":0|1}}    blink while in MANUAL, or hold steady
+// leds. NOT a stock message. How many LEDs each strip physically has.
+//   {"leds":{"strip":0,"count":11}}
+static void apply_leds(cJSON *o)
+{
+    cJSON *si = cJSON_GetObjectItemCaseSensitive(o, "strip");
+    cJSON *ct = cJSON_GetObjectItemCaseSensitive(o, "count");
+    if (!cJSON_IsNumber(si) || !cJSON_IsNumber(ct)) return;
+    int i = si->valueint, n = ct->valueint;
+    if (i < 0 || i >= PV_STRIP_COUNT_MAX) return;
+    // Refused, not clamped: a count outside the buffer is a mistake worth
+    // seeing rather than silently rounding into something that looks fine.
+    if (n < 1 || n > PV_LEDS_PER_STRIP) {
+        ESP_LOGW(TAG, "leds: strip %d count %d out of range 1..%d", i, n, PV_LEDS_PER_STRIP);
+        return;
+    }
+    g_cfg.leds[i] = (uint8_t)n;
+    ESP_LOGI(TAG, "strip %d -> %d LEDs", i, n);
+    pv_cfg_save();
+    pv_rgb_notify();
+    pv_ws_push_state();
+    pv_ws_broadcast(pv_json_response("leds", 1));
+}
+
 static void apply_ring(cJSON *o)
 {
     bool touched = false;
@@ -396,5 +445,6 @@ void pv_apply_message(const char *json, int len)
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "vent_policy"))) apply_vent_policy(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "vent")))       apply_vent(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "ring")))       apply_ring(o);
+    if ((o = cJSON_GetObjectItemCaseSensitive(root, "leds")))       apply_leds(o);
     cJSON_Delete(root);
 }

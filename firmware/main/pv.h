@@ -143,17 +143,25 @@
 // failing silently, and a reboot lost every setting. At 8 bytes the whole
 // config is about 1300, smaller than it was before the second colour existed.
 // Text is a wire format; it does not belong in storage.
+// Four colours per effect. The ACTIVE pair is what the effect paints where it
+// is lit; the INACTIVE pair is what it paints where it would otherwise be dark.
+// Which of each pair is used depends on where the vent actually is, so the
+// strip reports the vent position without the effect having to change.
+//
+// An inactive colour is OPTIONAL. When its bit in `bg_set` is clear the unlit
+// pixels are black, which is exactly what every effect did before this existed;
+// that is why the UI's clear button just clears the bit.
+#define PV_BG_OPEN    0x01   // bg_set: the vent-open inactive colour is set
+#define PV_BG_CLOSED  0x02   // bg_set: the vent-closed inactive colour is set
+
 typedef struct {
     uint8_t brightness;      // 0..100
     uint8_t speed;           // 0..100
-    uint8_t rgb[3];          // shown while the vent is OPEN
-    // ADDITION 2026-08-30, not stock. Every effect carries two colours and the
-    // renderer picks between them on the live vent position, so the strip can
-    // tell you at a glance whether the vent is open without the effect itself
-    // having to change. Migrated from a single-colour config by copying colour
-    // into both, which is why an existing device looks identical until someone
-    // actually sets a different closed colour.
-    uint8_t rgb_closed[3];   // shown while the vent is CLOSED
+    uint8_t rgb[3];          // ACTIVE while the vent is OPEN
+    uint8_t rgb_closed[3];   // ACTIVE while the vent is CLOSED
+    uint8_t bg[3];           // INACTIVE while the vent is OPEN
+    uint8_t bg_closed[3];    // INACTIVE while the vent is CLOSED
+    uint8_t bg_set;          // PV_BG_* bits; a clear bit means "stay dark"
 } pv_fx_param_t;
 
 // The two conversions between the stored bytes and the wire's "RRGGBB".
@@ -171,9 +179,12 @@ typedef struct {
     // Simple mode
     uint8_t simple_current;      // current_simple_effect 0..6
     pv_fx_param_t simple[PV_FX_COUNT];
-    // H2D (Advance) mode
+    // H2D (Advance) mode. The per-state EFFECT TABLES are NOT here: at 18
+    // effects and four colours they are 1620 bytes, which does not fit in one
+    // NVS blob beside everything else. They live in g_h2d, one NVS key per
+    // device state, so a change to one state rewrites 270 bytes rather than
+    // relocating the entire configuration. See pv_cfg.c.
     uint8_t h2d_active[PV_ST_COUNT];              // active_effect_id per state
-    pv_fx_param_t h2d[PV_ST_COUNT][PV_FX_COUNT];
     // Warning hot mode: [0]=safe(green) [1]=warn(red); effect 0 Static 1 Strobing
     uint8_t warnhot_current[2];
     uint8_t warnhot_bg[2][2];    // [level][effect]
@@ -212,7 +223,26 @@ typedef struct {
     // v5 blob migrates by copying its prefix. See PV_RING_* below.
     uint8_t ring_mode;           // PV_RING_*
     bool    ring_blink;          // blink the ring while in MANUAL
+    // ADDITION 2026-08-30. How many LEDs each strip ACTUALLY has.
+    //
+    // Stock drives a fixed 16 per strip. The factory manual says the hardware
+    // is 16 LEDs with one strip group connected and 27 with two, so with two
+    // groups at least one run is shorter than the 16 being driven. Every
+    // effect that has a centre or a scale then lands wrong on that run: a
+    // centre computed for 16 shows up around 68% of the way along an 11 LED
+    // strip, and a progress bar scaled to 16 fills a shorter strip early.
+    //
+    // The counts are configurable because the split is a property of the
+    // wiring, not of the firmware, and the strips cannot be interrogated:
+    // WS2812 is write-only. 16/16 reproduces stock exactly.
+    uint8_t leds[PV_STRIP_COUNT_MAX];
 } pv_cfg_t;
+
+// The H2D effect tables, kept out of pv_cfg_t and persisted per device state.
+extern pv_fx_param_t g_h2d[PV_ST_COUNT][PV_FX_COUNT];
+// Persist one device state's effect table. Cheaper than a full save and
+// the only thing a change to one state actually needs.
+void pv_cfg_h2d_save(int st);
 
 // Stock hard-codes this string into the web app, where it is a translation
 // entry rather than a setting. Same text, now editable.
@@ -343,6 +373,7 @@ esp_err_t pv_http_start(void);
 bool pv_http_is_up(void);
 void pv_ws_broadcast(char *json_take_ownership);    // frees the string
 void pv_ws_push_state(void);                        // broadcast full state
+void pv_ws_push_state_to(int fd);                   // NOT STOCK: one client, on connect
 
 // pv_apply.c — inbound WS message dispatch.
 void pv_apply_message(const char *json, int len);

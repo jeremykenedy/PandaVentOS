@@ -8,6 +8,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include "esp_flash.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
@@ -143,6 +144,27 @@ static void ws_untrack(int fd)
     }
 }
 
+// DEPARTURE FROM STOCK. Untrack on EVERY socket close, not only when a send
+// happens to fail.
+//
+// Without this the table only ever shed a client when a broadcast to it
+// errored, so a browser tab closed cleanly, or a script that connects and
+// disconnects in a loop, left its fd behind forever. Eight of those and the
+// table is full of the dead: every new client evicts a ghost instead of being
+// served, the handshake succeeds, and the page sits there with an open socket
+// and no state document. Reproduced by running the probe harnesses back to
+// back; the server kept answering plain HTTP the whole time, which is what
+// makes the symptom so confusing.
+//
+// httpd calls close_fn for every session teardown, whatever the reason. An
+// override owns the close() itself, which the default hook would have done.
+static void ws_close_fn(httpd_handle_t hd, int sockfd)
+{
+    (void)hd;
+    ws_untrack(sockfd);
+    close(sockfd);
+}
+
 typedef struct { char *json; } bcast_t;
 
 static void bcast_work(void *arg)
@@ -182,13 +204,62 @@ void pv_ws_push_state(void)
     pv_ws_broadcast(pv_json_state());
 }
 
+typedef struct { int fd; char *json; } onepush_t;
+
+static void onepush_work(void *arg)
+{
+    onepush_t *p = arg;
+    httpd_ws_frame_t f = {
+        .type = HTTPD_WS_TYPE_TEXT,
+        .payload = (uint8_t *)p->json,
+        .len = strlen(p->json),
+    };
+    if (httpd_ws_send_frame_async(s_server, p->fd, &f) != ESP_OK) {
+        ESP_LOGW(TAG, "connect push failed for fd=%d", p->fd);
+        ws_untrack(p->fd);
+    }
+    free(p->json);
+    free(p);
+}
+
+// The state document for ONE client, sent after the handler that asked for it
+// has returned. See the comment at the handshake for why it is not sent inline.
+void pv_ws_push_state_to(int fd)
+{
+    char *json = pv_json_state();
+    if (!json) return;
+    if (!s_server) { free(json); return; }
+    onepush_t *p = malloc(sizeof(*p));
+    if (!p) { free(json); return; }
+    p->fd = fd;
+    p->json = json;
+    if (httpd_queue_work(s_server, onepush_work, p) != ESP_OK) {
+        free(p->json);
+        free(p);
+    }
+}
+
+
 static esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {   // handshake completed
         int fd = httpd_req_to_sockfd(req);
         ws_track(fd);
         ESP_LOGI(TAG, "ws client fd=%d (%d total)", fd, s_ws_count);
-        pv_ws_push_state();          // factory pushes full state on connect
+        // DEPARTURE FROM STOCK. Push the state document to THIS client only,
+        // and do it from queued work rather than from inside this handler.
+        //
+        // Two separate mistakes were made here and both are worth naming.
+        // Broadcasting on connect made the one thing the new client needs
+        // compete with a send to every other client, and when that queue was
+        // busy the connect push was simply lost: an open socket, an empty
+        // page, no error anywhere. Sending inline from this handler instead
+        // was worse, not better: the handshake response has not been flushed
+        // when the handler runs, so writing a frame here races the 101 and
+        // almost always loses (measured: 2 of 25 connects got their state).
+        // Queued work runs after the handler returns, on a socket that is
+        // fully a websocket by then, and it addresses one fd instead of N.
+        pv_ws_push_state_to(fd);
         return ESP_OK;
     }
     httpd_ws_frame_t f = { .type = HTTPD_WS_TYPE_TEXT };
@@ -280,6 +351,7 @@ esp_err_t pv_http_start(void)
     cfg.lru_purge_enable = true;
     cfg.max_open_sockets = 8;
     cfg.stack_size = 8192;
+    cfg.close_fn = ws_close_fn;      // see ws_close_fn: stops the table filling with ghosts
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) return err;
 
