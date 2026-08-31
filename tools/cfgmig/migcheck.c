@@ -274,8 +274,9 @@ int main(void)
     // bigger again, but the lesson stands and is asserted rather than assumed:
     // every branch has to check the MAGIC, and a layout that happens to match
     // on length must not be read in as the current one.
-    snprintf(B, sizeof B, "v10 %zu, v11 %zu, v12 %zu",
-             sizeof(pv_cfg_v10_t), sizeof(pv_cfg_v11_t), sizeof(pv_cfg_t));
+    snprintf(B, sizeof B, "v10 %zu, v11 %zu, v12 %zu, v13 %zu",
+             sizeof(pv_cfg_v10_t), sizeof(pv_cfg_v11_t),
+             sizeof(pv_cfg_v12_t), sizeof(pv_cfg_t));
     t("v10 and v11 are the same size, so the magic is the only thing separating them",
       sizeof(pv_cfg_v10_t) == sizeof(pv_cfg_v11_t), B);
     // Every layout is at most as big as the one after it. A legacy struct that
@@ -286,7 +287,24 @@ int main(void)
       sizeof(pv_cfg_v8_t)  <= sizeof(pv_cfg_v9_t)  &&
       sizeof(pv_cfg_v9_t)  <= sizeof(pv_cfg_v10_t) &&
       sizeof(pv_cfg_v10_t) <= sizeof(pv_cfg_v11_t) + 0 &&
-      sizeof(pv_cfg_v11_t) <= sizeof(pv_cfg_t), B);
+      sizeof(pv_cfg_v11_t) <= sizeof(pv_cfg_v12_t) &&
+      sizeof(pv_cfg_v12_t) <= sizeof(pv_cfg_t), B);
+    // The same rule for the H2D tables, which are stored under their own keys
+    // and have their own magic, and which is where the effect count actually
+    // bites: every added effect widens them by one parameter block.
+    snprintf(B, sizeof B, "h2d v11 %zu, v12 %zu, v13 %zu",
+             sizeof(pv_h2d_blob_v11_t), sizeof(pv_h2d_blob_v12_t),
+             sizeof(pv_h2d_blob_t));
+    t("and no stored H2D table is larger than the one that replaced it",
+      sizeof(pv_h2d_blob_v11_t) <= sizeof(pv_h2d_blob_v12_t) &&
+      sizeof(pv_h2d_blob_v12_t) <= sizeof(pv_h2d_blob_t), B);
+    // The frozen effect-parameter shape must still describe today's bytes.
+    // The moment it does not, every migration below v13 is reading the wrong
+    // offsets out of somebody's flash, silently.
+    snprintf(B, sizeof B, "frozen %zu, live %zu",
+             sizeof(pv_fx_param_v12_t), sizeof(pv_fx_param_t));
+    t("the frozen effect shape still matches the live one",
+      sizeof(pv_fx_param_v12_t) == sizeof(pv_fx_param_t), B);
     t("and the config still fits the NVS budget", sizeof(pv_cfg_t) <= PV_CFG_MAX_BYTES, B);
 
     puts("\n5. a v11 device, one layout back, keeps everything");
@@ -384,6 +402,119 @@ int main(void)
       g_cfg.magic == CFG_MAGIC && g_cfg.rgb.light_on, NULL);
     t("with sane LED counts rather than zero",
       g_cfg.leds[0] > 0 && g_cfg.leds[1] > 0, NULL);
+
+    puts("\n8. a v12 device, one layout back, keeps every setting it had");
+    wipe();
+    {
+        pv_cfg_v12_t o;
+        memset(&o, 0, sizeof o);
+        o.magic = CFG_MAGIC_V12;
+        o.rgb.light_on = true;
+        o.rgb.reverse = true;
+        o.rgb.reverse_strips = 0x02;
+        o.rgb.light_mode = 1;
+        o.rgb.simple_current = PV_FX_TEMP_GRADIENT;
+        /* The four that arrived with v12, all set to something nobody would
+         * pick by accident, so a migration that quietly reset them shows up. */
+        o.rgb.warn_hot_c = 72;
+        o.rgb.err_rgb[0] = 0x00; o.rgb.err_rgb[1] = 0xFF; o.rgb.err_rgb[2] = 0x80;
+        o.rgb.err_bright = 40;
+        o.rgb.err_strobe = true;
+        o.rgb.err_set = true;
+        o.rgb.contiguous = true;
+        o.rgb.grad_min_c = 30;
+        o.rgb.grad_max_c = 80;
+        for (int i = 0; i < PV_FX_COUNT_V12; ++i) {
+            o.rgb.simple[i].brightness = (uint8_t)(50 + i);
+            o.rgb.simple[i].speed = (uint8_t)(10 + i);
+            o.rgb.simple[i].rgb[0] = (uint8_t)(i * 7);
+            o.rgb.simple[i].rgb[1] = (uint8_t)(i * 5);
+            o.rgb.simple[i].rgb[2] = (uint8_t)(i * 3);
+            o.rgb.simple[i].aux = (uint8_t)(i + 1);
+            o.rgb.simple[i].opt_set = PV_AUX;
+        }
+        snprintf(o.device_name, sizeof o.device_name, "Twelve Unit");
+        snprintf(o.hostname, sizeof o.hostname, "twelve");
+        o.leds[0] = 14; o.leds[1] = 9;
+        o.ring_mode = PV_RING_ON_OPEN;
+        o.ring_blink = true;
+        put(CFG_KEY, &o, sizeof o);
+
+        pv_h2d_blob_v12_t hb;
+        memset(&hb, 0, sizeof hb);
+        hb.magic = H2D_MAGIC_V12;
+        for (int f = 0; f < PV_FX_COUNT_V12; ++f) {
+            hb.fx[f].brightness = (uint8_t)(20 + f);
+            hb.fx[f].rgb[0] = (uint8_t)(200 - f);
+        }
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            char k[8]; snprintf(k, sizeof k, "h2d%d", st);
+            put(k, &hb, sizeof hb);
+        }
+    }
+    pv_cfg_load();
+    /* SNAPSHOT the per-state tables straight after loading.
+     *
+     * pv_cfg_factory_defaults takes a pv_cfg_t* but ALSO rewrites the global
+     * g_h2d, and one of the checks below calls it on a scratch struct to find
+     * out what a factory effect looks like. That quietly reset the very tables
+     * this section exists to check, and the test failed reporting factory
+     * values that the migration had in fact loaded correctly. */
+    pv_fx_param_t loaded_h2d[PV_ST_COUNT][PV_FX_COUNT];
+    memcpy(loaded_h2d, g_h2d, sizeof(loaded_h2d));
+    t("it is now the current layout", g_cfg.magic == CFG_MAGIC, NULL);
+    t("the warning temperature it chose survived", g_cfg.rgb.warn_hot_c == 72, NULL);
+    t("the gradient it chose survived",
+      g_cfg.rgb.grad_min_c == 30 && g_cfg.rgb.grad_max_c == 80, NULL);
+    t("the joined layout survived", g_cfg.rgb.contiguous, NULL);
+    t("the fault colour survived whole",
+      g_cfg.rgb.err_set && g_cfg.rgb.err_bright == 40 && g_cfg.rgb.err_strobe
+      && g_cfg.rgb.err_rgb[1] == 0xFF && g_cfg.rgb.err_rgb[2] == 0x80, NULL);
+    t("its name and LED counts survived",
+      !strcmp(g_cfg.device_name, "Twelve Unit") && g_cfg.leds[0] == 14
+      && g_cfg.leds[1] == 9, g_cfg.device_name);
+    t("the ring settings survived",
+      g_cfg.ring_mode == PV_RING_ON_OPEN && g_cfg.ring_blink, NULL);
+    {
+        int same = 0;
+        for (int i = 0; i < PV_FX_COUNT_V12; ++i)
+            if (g_cfg.rgb.simple[i].brightness == 50 + i
+                && g_cfg.rgb.simple[i].speed == 10 + i
+                && g_cfg.rgb.simple[i].rgb[0] == i * 7
+                && g_cfg.rgb.simple[i].aux == i + 1) ++same;
+        snprintf(B, sizeof B, "%d of %d", same, PV_FX_COUNT_V12);
+        t("all twenty-one effects kept every byte", same == PV_FX_COUNT_V12, B);
+    }
+    t("the selected effect is still the one that was selected",
+      g_cfg.rgb.simple_current == PV_FX_TEMP_GRADIENT, NULL);
+    /* The new effect is the thing that did NOT exist before, so it must come
+     * out of the migration on the factory default rather than on whatever
+     * bytes happened to follow the old array. */
+    {
+        pv_cfg_t fresh;
+        /* See the snapshot above: this call rewrites g_h2d. */
+        pv_cfg_factory_defaults(&fresh);
+        t("and the animation effect arrives on its factory default",
+          !memcmp(&g_cfg.rgb.simple[PV_FX_ANIM], &fresh.rgb.simple[PV_FX_ANIM],
+                  sizeof(pv_fx_param_t)), NULL);
+        t("and so does its per-state entry, in every state",
+          !memcmp(&loaded_h2d[0][PV_FX_ANIM], &g_h2d[0][PV_FX_ANIM],
+                  sizeof(pv_fx_param_t))
+          && !memcmp(&loaded_h2d[5][PV_FX_ANIM], &g_h2d[5][PV_FX_ANIM],
+                     sizeof(pv_fx_param_t)), NULL);
+    }
+    {
+        int same = 0;
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            int per = 0;
+            for (int f = 0; f < PV_FX_COUNT_V12; ++f)
+                if (loaded_h2d[st][f].brightness == 20 + f
+                    && loaded_h2d[st][f].rgb[0] == (uint8_t)(200 - f)) ++per;
+            if (per == PV_FX_COUNT_V12) ++same;
+        }
+        snprintf(B, sizeof B, "%d of %d states", same, PV_ST_COUNT);
+        t("every per-state table came across intact", same == PV_ST_COUNT, B);
+    }
 
     printf("\n%d passed, %d failed\n", ok_n, bad_n);
     return bad_n ? 1 : 0;

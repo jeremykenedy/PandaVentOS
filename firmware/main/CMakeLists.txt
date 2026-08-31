@@ -11,6 +11,7 @@ idf_component_register(
         "pv_policy.c"
         "pv_http.c"
         "pv_log.c"
+        "pv_anim.c"
     INCLUDE_DIRS "."
     EMBED_FILES "factory_index.html.gz"
     PRIV_REQUIRES

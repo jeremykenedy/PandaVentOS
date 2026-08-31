@@ -353,6 +353,10 @@ static float s_progress_shown;     // Progress bar, eased toward the real value
 static int   s_chase_pos;          // the sweeping head, in pixels
 static int   s_anim_breath;        // frames, for the breathing tip
 static int   s_barber_pos;         // the pole's offset, in pixels
+// NOT STOCK. Which row of the uploaded animation is showing. A phase
+// like every other one here, so it advances once per FRAME rather than
+// once per strip, and both runs draw the same row.
+static int   s_anim_frame;
 // The band width the pole is currently drawing at. Published the same way
 // s_fx_bg is: resolve() knows the effect's parameters, render_effect does not.
 static int   s_fx_band = 3;
@@ -376,6 +380,7 @@ typedef struct {
     float sbounce_pos, sbounce_dir, sfill_pos, sfill_dir;
     float progress_shown, wave_pos;
     int   chase_pos, anim_breath, barber_pos;
+    int   anim_frame;
     int   ramp_step;
     uint16_t cycle_hue;
     int      rainbow_phase;
@@ -418,6 +423,8 @@ static uint8_t ramp_apply(uint8_t bright, int bright_end)
     return (uint8_t)(b + 0.5f);
 }
 
+void pv_rgb_anim_rewind(void) { s_anim_frame = 0; }
+
 static void fx_phase_save(pv_fx_phase_t *o)
 {
     o->breath_phase = s_breath_phase; o->breath_step = s_breath_step;
@@ -430,7 +437,7 @@ static void fx_phase_save(pv_fx_phase_t *o)
     o->sfill_pos = s_sfill_pos;       o->sfill_dir = s_sfill_dir;
     o->progress_shown = s_progress_shown; o->wave_pos = s_wave_pos;
     o->chase_pos = s_chase_pos; o->anim_breath = s_anim_breath;
-    o->barber_pos = s_barber_pos;
+    o->barber_pos = s_barber_pos;   o->anim_frame = s_anim_frame;
     o->ramp_step = s_ramp_step;
     o->cycle_hue = s_cycle_hue;       o->rainbow_phase = s_rainbow_phase;
 }
@@ -447,7 +454,7 @@ static void fx_phase_restore(const pv_fx_phase_t *o)
     s_sfill_pos = o->sfill_pos;       s_sfill_dir = o->sfill_dir;
     s_progress_shown = o->progress_shown; s_wave_pos = o->wave_pos;
     s_chase_pos = o->chase_pos; s_anim_breath = o->anim_breath;
-    s_barber_pos = o->barber_pos;
+    s_barber_pos = o->barber_pos;   s_anim_frame = o->anim_frame;
     s_ramp_step = o->ramp_step;
     s_cycle_hue = o->cycle_hue;       s_rainbow_phase = o->rainbow_phase;
 }
@@ -776,6 +783,47 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         // Temperature moves in seconds, not in frames. Sampling it four times
         // a second is more than enough and leaves the CPU alone.
         return 250;
+    }
+
+    // NOT STOCK. Whatever was uploaded.
+    //
+    // One row of the uploaded image per frame, scaled by the effect's own
+    // brightness so it sits under the same control as everything else. The
+    // upload is in RAM and is gone after a reboot, so the common case for
+    // this effect is "nothing loaded": that renders as Static in the effect's
+    // own colour rather than as darkness, because a strip that goes black
+    // when you pick an effect reads as a fault, and this is not one.
+    //
+    // A frame shorter than the strip leaves the tail on the effect's colour
+    // rather than dark, for the same reason.
+    case PV_FX_ANIM: {
+        uint8_t row[PV_ANIM_PIXELS * 3];
+        int got = pv_anim_copy(s_anim_frame, row, n < PV_ANIM_PIXELS ? n : PV_ANIM_PIXELS);
+        for (int i = 0; i < n; ++i) {
+            if (i < got) {
+                // The uploaded pixel, through the effect's own brightness, so
+                // it obeys the same slider as everything else on this strip.
+                px[i].r = chan_f(row[i * 3 + 0], bright100, 1.0f);
+                px[i].g = chan_f(row[i * 3 + 1], bright100, 1.0f);
+                px[i].b = chan_f(row[i * 3 + 2], bright100, 1.0f);
+            } else {
+                // Nothing loaded, or a frame shorter than the strip. Static in
+                // the effect's own colour, not black: a strip that goes dark
+                // when an effect is picked reads as a fault, and this is not
+                // one.
+                px[i] = mix3(color, bright100, 1.0f);
+            }
+        }
+        // pv_anim_copy wraps the index itself, so this can count up forever
+        // without needing to know how many frames are loaded. It is reset when
+        // an animation is replaced, so a new upload starts at its first row
+        // rather than wherever the last one had got to.
+        ++s_anim_frame;
+        // Marquee's scale, which is what the other frame-rate-driven effects
+        // use: fast enough to read as movement at the top, slow enough at the
+        // bottom to see individual frames.
+        int ms = (int)(120.0 - (double)speed * 1.0);
+        return ms < 10 ? 10 : (uint32_t)ms;
     }
 
     // NOT STOCK. Three ways to draw the same number.

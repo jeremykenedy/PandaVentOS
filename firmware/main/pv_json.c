@@ -365,6 +365,36 @@ const char *pv_json_state_part(int part)
         {
             pv_rgb_stats_t rs;
             pv_rgb_stats(&rs);
+            // NOT STOCK. What animation is loaded, and what it costs. Reported
+            // beside the render stats rather than with the effect settings,
+            // because it is not a setting: it is in RAM and gone at the next
+            // reboot, and the page has to be able to say so.
+            {
+                pv_anim_info_t ai;
+                pv_anim_info(&ai);
+                cJSON *an = cJSON_AddObjectToObject(st, "anim");
+                cJSON_AddNumberToObject(an, "frames", ai.frames);
+                cJSON_AddNumberToObject(an, "pixels", ai.pixels);
+                cJSON_AddNumberToObject(an, "bytes", ai.bytes);
+                cJSON_AddNumberToObject(an, "max_frames", PV_ANIM_MAX_FRAMES);
+                cJSON_AddNumberToObject(an, "max_pixels", PV_ANIM_PIXELS);
+                cJSON_AddNumberToObject(an, "max_bytes", PV_ANIM_MAX_BYTES);
+            }
+            // NOT STOCK. The printer's answer to the last command sent to it,
+            // in its own words. A control that springs back with no
+            // explanation is the worst of both: it looks like this firmware
+            // failed when the printer refused.
+            {
+                pv_cmd_ack_t ack;
+                pv_bambu_last_ack(&ack);
+                if (ack.cmd[0]) {
+                    cJSON *ca = cJSON_AddObjectToObject(st, "cmd");
+                    cJSON_AddStringToObject(ca, "name", ack.cmd);
+                    cJSON_AddBoolToObject(ca, "ok", ack.ok);
+                    cJSON_AddStringToObject(ca, "reason", ack.reason);
+                    cJSON_AddNumberToObject(ca, "at_s", ack.at_s);
+                }
+            }
             cJSON_AddNumberToObject(st, "fx_frames", (double)rs.frames);
             cJSON_AddNumberToObject(st, "fx_push_failed", (double)rs.push_failed);
             cJSON_AddNumberToObject(st, "fx_interval_ms", (double)rs.interval_ms);

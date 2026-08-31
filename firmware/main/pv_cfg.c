@@ -15,14 +15,16 @@ static const char *TAG = "pv_cfg";
 
 #define CFG_NS    "pv"
 #define CFG_KEY   "cfg"
-#define CFG_MAGIC 0x50564343   // "PVCC": temperature gradient, and four settings
+#define CFG_MAGIC 0x50564344   // "PVCD": the uploaded-animation effect
+#define CFG_MAGIC_V12 0x50564343  // "PVCC": temperature gradient, four settings
                                //          that used to be compiled in
 #define CFG_MAGIC_V11 0x50564342  // "PVCB": per-strip direction flags
 #define CFG_MAGIC_V10 0x50564341  // "PVCA": twenty effects, one spare byte each
 #define CFG_MAGIC_V9 0x50564339   // "PVC9": eighteen effects, brightness ramp
 #define CFG_MAGIC_V8 0x50564338   // "PVC8": four colours, H2D split out
 #define CFG_MAGIC_V7 0x50564337   // "PVC7": one blob, two colours
-#define H2D_MAGIC 0x50564842   // "PVHB": twenty-one effects
+#define H2D_MAGIC 0x50564843   // "PVHC": twenty-two effects
+#define H2D_MAGIC_V12 0x50564842  // "PVHB": twenty-one effects
 #define H2D_MAGIC_V11 0x50564841  // "PVHA": twenty effects, one spare byte each
 #define H2D_MAGIC_V9 0x50564839   // "PVH9": eighteen effects, brightness ramp
 #define H2D_MAGIC_V8 0x50564838   // "PVH8": one H2D state table, no ramp
@@ -68,6 +70,35 @@ typedef struct {
 // every count above it is frozen: these structs describe bytes that are
 // ALREADY IN FLASH.
 #define PV_FX_COUNT_V11 20
+
+// The twenty-one effect layout: v12, the one that added the temperature
+// gradient.
+#define PV_FX_COUNT_V12 21
+
+// The effect parameter shape as it stood for v10 through v12, frozen.
+//
+// v11's struct used the LIVE pv_fx_param_t, which was a bug of exactly the
+// kind the frozen counts above exist to prevent: it happened to be correct
+// only because that shape had not changed since. The next field added to
+// pv_fx_param_t would have silently redefined what a v11 blob in somebody's
+// flash means. Frozen here, with a check below that it still matches today.
+typedef struct {
+    uint8_t brightness;
+    uint8_t speed;
+    uint8_t rgb[3];
+    uint8_t rgb_closed[3];
+    uint8_t bg[3];
+    uint8_t bg_closed[3];
+    uint8_t bright_end;
+    uint8_t aux;
+    uint8_t opt_set;
+} pv_fx_param_v12_t;
+
+// If this fires, pv_fx_param_t has changed and the migrations below need a
+// new frozen shape rather than a wider copy of this one.
+_Static_assert(sizeof(pv_fx_param_v12_t) == sizeof(pv_fx_param_t),
+               "pv_fx_param_t changed shape: freeze a new legacy struct "
+               "instead of letting the old migrations follow it");
 
 typedef struct {
     bool    light_on;
@@ -152,7 +183,7 @@ typedef struct {
     uint8_t reverse_strips;
     uint8_t light_mode;
     uint8_t simple_current;
-    pv_fx_param_t simple[PV_FX_COUNT_V11];
+    pv_fx_param_v12_t simple[PV_FX_COUNT_V11];
     uint8_t h2d_active[PV_ST_COUNT];
     uint8_t warnhot_current[2];
     uint8_t warnhot_bg[2][2];
@@ -176,8 +207,56 @@ typedef struct {
 
 typedef struct {
     uint32_t magic;
-    pv_fx_param_t fx[PV_FX_COUNT_V11];
+    pv_fx_param_v12_t fx[PV_FX_COUNT_V11];
 } pv_h2d_blob_v11_t;
+
+// v12 is the current layout minus the one effect that plays an uploaded
+// animation. Nothing else about it changed: the four settings that arrived
+// with v12 are all still here, in the same order, so this migration IS an
+// append plus a wider effect array.
+typedef struct {
+    bool    light_on;
+    bool    warning_sw;
+    bool    follow_printer;
+    bool    follow_vent;
+    bool    reverse;
+    uint8_t reverse_strips;
+    uint8_t light_mode;
+    uint8_t simple_current;
+    pv_fx_param_v12_t simple[PV_FX_COUNT_V12];
+    uint8_t h2d_active[PV_ST_COUNT];
+    uint8_t warnhot_current[2];
+    uint8_t warnhot_bg[2][2];
+    uint8_t warnhot_speed[2][2];
+    uint8_t warn_hot_c;
+    uint8_t err_rgb[3];
+    uint8_t err_bright;
+    bool    err_strobe;
+    bool    err_set;
+    bool    contiguous;
+    uint8_t grad_min_c;
+    uint8_t grad_max_c;
+} pv_rgb_cfg_v12_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v12_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+    char device_name[32];
+    uint8_t ring_mode;
+    bool    ring_blink;
+    uint8_t leds[PV_STRIP_COUNT_MAX];
+} pv_cfg_v12_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_fx_param_v12_t fx[PV_FX_COUNT_V12];
+} pv_h2d_blob_v12_t;
 
 // NOTE: this is the SAME SIZE as pv_cfg_t. The bools before the new byte left
 // a padding hole and it landed in one, so the stored length cannot tell v10
@@ -684,6 +763,14 @@ void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode)
     }
 }
 
+// WARNING: this also rewrites the GLOBAL g_h2d, whatever struct you pass it.
+//
+// The per-state tables do not live inside pv_cfg_t (they are stored under
+// their own NVS keys, for the size reasons above), so there is nowhere else
+// for their defaults to be written. That makes calling this on a scratch
+// struct, to find out what a factory value looks like, destructive: it wipes
+// the tables the caller was reading. That has already caught a test out once,
+// which is why it is written here rather than left to be rediscovered.
 void pv_cfg_factory_defaults(pv_cfg_t *c)
 {
     memset(c, 0, sizeof(*c));
@@ -764,6 +851,40 @@ static void h2d_key(int st, char out[8])
     snprintf(out, 8, "h2d%d", st);
 }
 
+// WHICH save failed, not merely THAT one did.
+//
+// The warning banner is "settings are live but will be lost when it restarts",
+// which is a serious thing to tell someone, so it has to be true for as long
+// as it is shown and no longer. There are seven independent blobs: the config
+// and one per device state. Each used to write into the same single boolean,
+// and only the config path ever cleared it, so one transient failure while the
+// six per-state tables were being rewritten during a migration left the banner
+// up for the life of the device. Everything was in fact stored; the page just
+// had no way to learn that.
+//
+// One bit per blob now. The banner is shown while ANY bit is set and withdrawn
+// the moment the last one clears, and the page is told on every change rather
+// than only on the way in.
+#define SAVE_CFG    0x01
+#define SAVE_H2D0   0x02        /* .. shifted left by the state index */
+static uint16_t s_save_failed;
+
+static void save_failed_set(uint16_t bit, bool failed)
+{
+    uint16_t was = s_save_failed;
+    if (failed) s_save_failed |= bit;
+    else        s_save_failed &= (uint16_t)~bit;
+    bool now_any = (s_save_failed != 0);
+    if ((was != 0) == now_any) return;          // nothing the page can see changed
+    g_live.cfg_save_failed = now_any;
+    if (now_any)
+        ESP_LOGE(TAG, "SAVE FAILED: settings are live but NOT stored "
+                      "and will be lost on reboot");
+    else
+        ESP_LOGW(TAG, "saves are working again; settings are stored");
+    pv_ws_push_state();
+}
+
 static void h2d_save_state(int st)
 {
     nvs_handle_t h;
@@ -783,10 +904,9 @@ static void h2d_save_state(int st)
     }
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
-    if (err != ESP_OK) {
+    save_failed_set(SAVE_H2D0 << st, err != ESP_OK);
+    if (err != ESP_OK)
         ESP_LOGE(TAG, "h2d[%d] save failed: %d", st, err);
-        g_live.cfg_save_failed = true;
-    }
 }
 
 void pv_cfg_h2d_save(int st)
@@ -811,20 +931,31 @@ static bool h2d_load_all(void)
     for (int st = 0; st < PV_ST_COUNT; ++st) {
         char key[8]; h2d_key(st, key);
         // Big enough for either shape; the stored length and magic say which.
-        union { pv_h2d_blob_t v12; pv_h2d_blob_v11_t v11;
+        union { pv_h2d_blob_t v13; pv_h2d_blob_v12_t v12; pv_h2d_blob_v11_t v11;
                 pv_h2d_blob_v9_t v9; pv_h2d_blob_v8_t v8; } b;
         size_t len = sizeof(b);
         esp_err_t e = nvs_get_blob(h, key, &b, &len);
-        if (e == ESP_OK && len == sizeof(pv_h2d_blob_t) && b.v12.magic == H2D_MAGIC) {
-            memcpy(g_h2d[st], b.v12.fx, sizeof(g_h2d[st]));
+        if (e == ESP_OK && len == sizeof(pv_h2d_blob_t) && b.v13.magic == H2D_MAGIC) {
+            memcpy(g_h2d[st], b.v13.fx, sizeof(g_h2d[st]));
+        } else if (e == ESP_OK && len == sizeof(pv_h2d_blob_v12_t) &&
+                   b.v12.magic == H2D_MAGIC_V12) {
+            // v12 -> v13, per state. The twenty-one that existed keep every
+            // byte; the animation effect keeps the factory default already in
+            // g_h2d, which is why this stops at twenty-one rather than
+            // clearing first.
+            for (int f = 0; f < PV_FX_COUNT_V12; ++f)
+                memcpy(&g_h2d[st][f], &b.v12.fx[f], sizeof(pv_fx_param_v12_t));
+            ESP_LOGW(TAG, "migrated h2d[%d] v12 -> v13 (%u B -> %u B)",
+                     st, (unsigned)len, (unsigned)sizeof(pv_h2d_blob_t));
+            migrated = true;
         } else if (e == ESP_OK && len == sizeof(pv_h2d_blob_v11_t) &&
                    b.v11.magic == H2D_MAGIC_V11) {
-            // v11 -> v12, per state. The twenty that existed keep every byte;
-            // the twenty-first keeps the factory default already in g_h2d,
+            // v11 -> v13, per state. The twenty that existed keep every byte;
+            // the two added since keep the factory defaults already in g_h2d,
             // which is why this stops at twenty rather than clearing first.
             for (int f = 0; f < PV_FX_COUNT_V11; ++f)
-                g_h2d[st][f] = b.v11.fx[f];
-            ESP_LOGW(TAG, "migrated h2d[%d] v11 -> v12 (%u B -> %u B)",
+                memcpy(&g_h2d[st][f], &b.v11.fx[f], sizeof(pv_fx_param_v12_t));
+            ESP_LOGW(TAG, "migrated h2d[%d] v11 -> v13 (%u B -> %u B)",
                      st, (unsigned)len, (unsigned)sizeof(pv_h2d_blob_t));
             migrated = true;
         } else if (e == ESP_OK && len == sizeof(pv_h2d_blob_v9_t) &&
@@ -869,15 +1000,15 @@ void pv_cfg_load(void)
     }
     // Big enough for either layout. nvs_get_blob fills in the stored length,
     // and the magic says which shape those bytes are.
-    union { pv_cfg_t v12; pv_cfg_v11_t v11; pv_cfg_v10_t v10; pv_cfg_v9_t v9; pv_cfg_v8_t v8; pv_cfg_v7_t v7; pv_cfg_v6_t v6; pv_cfg_v5_t v5; pv_cfg_v4_t v4; pv_cfg_v3_t v3; pv_cfg_v2_t v2;
+    union { pv_cfg_t v13; pv_cfg_v12_t v12; pv_cfg_v11_t v11; pv_cfg_v10_t v10; pv_cfg_v9_t v9; pv_cfg_v8_t v8; pv_cfg_v7_t v7; pv_cfg_v6_t v6; pv_cfg_v5_t v5; pv_cfg_v4_t v4; pv_cfg_v3_t v3; pv_cfg_v2_t v2;
             pv_cfg_v1_t v1; } stored;
     size_t size = sizeof(stored);
     esp_err_t err = nvs_get_blob(h, CFG_KEY, &stored, &size);
     nvs_close(h);
 
     if (err == ESP_OK && size == sizeof(pv_cfg_t) &&
-        stored.v12.magic == CFG_MAGIC) {
-        g_cfg = stored.v12;
+        stored.v13.magic == CFG_MAGIC) {
+        g_cfg = stored.v13;
         if (!h2d_load_all())
             ESP_LOGW(TAG, "some H2D tables missing; defaults kept for those");
         cfg_clamp_loaded();
@@ -885,7 +1016,66 @@ void pv_cfg_load(void)
         return;
     }
 
-    // v11 -> v12. One more effect, and four numbers that used to be compiled
+    // v12 -> v13. One more effect, the one that plays an uploaded animation.
+    //
+    // The effect count moved, so this is not an append: rgb.simple changes
+    // shape and everything after it moves. Nothing else changed, which is why
+    // every field below is a straight copy and the four settings that arrived
+    // with v12 come across as they were rather than being reset.
+    if (err == ESP_OK && stored.v12.magic == CFG_MAGIC_V12 &&
+        size == sizeof(pv_cfg_v12_t)) {
+        const pv_rgb_cfg_v12_t *o = &stored.v12.rgb;
+        pv_cfg_factory_defaults(&g_cfg);      // the new effect starts here
+        g_cfg.rgb.light_on       = o->light_on;
+        g_cfg.rgb.warning_sw     = o->warning_sw;
+        g_cfg.rgb.follow_printer = o->follow_printer;
+        g_cfg.rgb.follow_vent    = o->follow_vent;
+        g_cfg.rgb.reverse        = o->reverse;
+        g_cfg.rgb.reverse_strips = o->reverse_strips;
+        g_cfg.rgb.light_mode     = o->light_mode;
+        g_cfg.rgb.simple_current = o->simple_current;
+        for (int i = 0; i < PV_FX_COUNT_V12; ++i)
+            memcpy(&g_cfg.rgb.simple[i], &o->simple[i], sizeof(pv_fx_param_v12_t));
+        memcpy(g_cfg.rgb.h2d_active, o->h2d_active, sizeof(g_cfg.rgb.h2d_active));
+        memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
+               sizeof(g_cfg.rgb.warnhot_current));
+        memcpy(g_cfg.rgb.warnhot_bg, o->warnhot_bg, sizeof(g_cfg.rgb.warnhot_bg));
+        memcpy(g_cfg.rgb.warnhot_speed, o->warnhot_speed,
+               sizeof(g_cfg.rgb.warnhot_speed));
+        // The four that arrived with v12 come across exactly as stored: a
+        // migration that quietly reset somebody's chosen warning temperature
+        // because a new effect was added would be a bug, not a migration.
+        g_cfg.rgb.warn_hot_c  = o->warn_hot_c;
+        memcpy(g_cfg.rgb.err_rgb, o->err_rgb, sizeof(g_cfg.rgb.err_rgb));
+        g_cfg.rgb.err_bright  = o->err_bright;
+        g_cfg.rgb.err_strobe  = o->err_strobe;
+        g_cfg.rgb.err_set     = o->err_set;
+        g_cfg.rgb.contiguous  = o->contiguous;
+        g_cfg.rgb.grad_min_c  = o->grad_min_c;
+        g_cfg.rgb.grad_max_c  = o->grad_max_c;
+        g_cfg.printer = stored.v12.printer;
+        g_cfg.ap      = stored.v12.ap;
+        memcpy(g_cfg.hostname, stored.v12.hostname, sizeof(g_cfg.hostname));
+        memcpy(g_cfg.language, stored.v12.language, sizeof(g_cfg.language));
+        g_cfg.motor_manual      = stored.v12.motor_manual;
+        g_cfg.motor_manual_open = stored.v12.motor_manual_open;
+        memcpy(g_cfg.device_name, stored.v12.device_name, sizeof(g_cfg.device_name));
+        g_cfg.ring_mode  = stored.v12.ring_mode;
+        g_cfg.ring_blink = stored.v12.ring_blink;
+        memcpy(g_cfg.leds, stored.v12.leds, sizeof(g_cfg.leds));
+        g_cfg.magic = CFG_MAGIC;
+        if (!h2d_load_all())
+            ESP_LOGW(TAG, "some H2D tables missing; defaults kept for those");
+        cfg_clamp_loaded();
+        ESP_LOGW(TAG, "migrated config v12 -> v13 (%u B -> %u B), %d effects -> %d",
+                 (unsigned)size, (unsigned)sizeof(pv_cfg_t),
+                 PV_FX_COUNT_V12, PV_FX_COUNT);
+        pv_cfg_save();
+        h2d_save_all();
+        return;
+    }
+
+    // v11 -> v13. One more effect, and four numbers that used to be compiled
     // in: the temperature the warning mode calls hot, what a fault looks like,
     // whether the two runs are one, and the two ends of the gradient. Every
     // one of them arrives as zero, which each reader takes to mean "use the
@@ -907,7 +1097,7 @@ void pv_cfg_load(void)
         g_cfg.rgb.light_mode     = o->light_mode;
         g_cfg.rgb.simple_current = o->simple_current;
         for (int i = 0; i < PV_FX_COUNT_V11; ++i)
-            g_cfg.rgb.simple[i] = o->simple[i];
+            memcpy(&g_cfg.rgb.simple[i], &o->simple[i], sizeof(pv_fx_param_v12_t));
         memcpy(g_cfg.rgb.h2d_active, o->h2d_active, sizeof(g_cfg.rgb.h2d_active));
         memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
                sizeof(g_cfg.rgb.warnhot_current));
@@ -962,7 +1152,7 @@ void pv_cfg_load(void)
         g_cfg.rgb.light_mode     = o->light_mode;
         g_cfg.rgb.simple_current = o->simple_current;
         for (int i = 0; i < PV_FX_COUNT_V11; ++i)
-            g_cfg.rgb.simple[i] = o->simple[i];
+            memcpy(&g_cfg.rgb.simple[i], &o->simple[i], sizeof(pv_fx_param_v12_t));
         memcpy(g_cfg.rgb.h2d_active, o->h2d_active, sizeof(g_cfg.rgb.h2d_active));
         memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
                sizeof(g_cfg.rgb.warnhot_current));
@@ -1379,16 +1569,9 @@ void pv_cfg_save(void)
     // on the next good save and nothing told the page, so it kept warning about
     // a condition that had already passed. A warning that does not withdraw
     // itself is worse than no warning, because the next real one is ignored.
-    bool failed = (err != ESP_OK);
-    bool changed = (failed != g_live.cfg_save_failed);
-    g_live.cfg_save_failed = failed;
-    if (failed) {
-        ESP_LOGE(TAG, "CONFIG SAVE FAILED (%d): settings are live but NOT stored "
-                      "and will be lost on reboot", err);
-    } else if (changed) {
-        ESP_LOGW(TAG, "config save recovered; settings are stored again");
-    }
-    if (changed) pv_ws_push_state();
+    if (err != ESP_OK)
+        ESP_LOGE(TAG, "CONFIG SAVE FAILED (%d)", err);
+    save_failed_set(SAVE_CFG, err != ESP_OK);
 }
 
 void pv_factory_reset_and_reboot(void)

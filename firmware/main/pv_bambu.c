@@ -37,10 +37,52 @@ static const char PUSHALL[] =
 // fan command that arrives twice because the first was assumed lost is worse
 // than one that does not arrive, since the UI shows what the printer reports
 // back and the owner can simply ask again.
-static bool bambu_send(const char *payload)
+// Each command gets its own sequence_id, as Bambu Studio does.
+//
+// This was "0" on every message, copied from the pushall above. That was
+// wrong, but it turned out NOT to be why commands were failing: a printer that
+// accepts LAN reads while requiring cloud authentication for control refuses
+// everything with "mqtt message verify failed", whatever the envelope looks
+// like. That was established by trying five payload shapes from a direct MQTT
+// client, which is worth recording because the two failures are
+// indistinguishable from the UI. The fix for that one is LAN Only Mode on the
+// printer, not anything here.
+//
+// It starts high enough not to collide with whatever the printer has already
+// seen this session from a phone or from Studio.
+static int s_seq = 1000;
+
+// The printer's answer to the last command. See pv.h for why it is kept.
+static pv_cmd_ack_t s_ack;
+static portMUX_TYPE s_ack_lock = portMUX_INITIALIZER_UNLOCKED;
+
+void pv_bambu_last_ack(pv_cmd_ack_t *out)
+{
+    if (!out) return;
+    portENTER_CRITICAL(&s_ack_lock);
+    *out = s_ack;
+    portEXIT_CRITICAL(&s_ack_lock);
+}
+
+static bool bambu_send(const char *cmd_json_body)
 {
     if (!s_client || g_live.printer_state != 3) {
         ESP_LOGW(TAG, "not connected; command dropped");
+        return false;
+    }
+    // No invented user_id.
+    //
+    // Bambu Studio sends one, so it was tried here: a made-up value, on the
+    // theory that the printer only checks for the field's presence. It changed
+    // nothing, on either command, which makes it a guess that happened not to
+    // help. A fabricated account number in a payload nobody can explain is
+    // worse than a payload without one, so it is gone.
+    char payload[256];
+    int n = snprintf(payload, sizeof(payload),
+                     "{\"print\":{\"sequence_id\":\"%d\",%s}}",
+                     ++s_seq, cmd_json_body);
+    if (n < 0 || n >= (int)sizeof(payload)) {
+        ESP_LOGW(TAG, "command too long");
         return false;
     }
     int id = esp_mqtt_client_publish(s_client, s_request_topic, payload, 0, 0, 0);
@@ -62,10 +104,9 @@ bool pv_bambu_set_fan(int which, int percent)
     if (percent < 0) percent = 0;
     if (percent > 100) percent = 100;
     int s = (percent * 255 + 50) / 100;
-    char buf[192];
+    char buf[160];
     snprintf(buf, sizeof(buf),
-             "{\"print\":{\"sequence_id\":\"0\",\"command\":\"gcode_line\","
-             "\"param\":\"M106 P%d S%d\\n\"}}", which, s);
+             "\"command\":\"gcode_line\",\"param\":\"M106 P%d S%d\\n\"", which, s);
     ESP_LOGI(TAG, "fan P%d -> %d%% (S%d)", which, percent, s);
     return bambu_send(buf);
 }
@@ -75,10 +116,9 @@ bool pv_bambu_set_fan(int which, int percent)
 bool pv_bambu_set_speed(int level)
 {
     if (level < 1 || level > 4) return false;
-    char buf[160];
+    char buf[96];
     snprintf(buf, sizeof(buf),
-             "{\"print\":{\"sequence_id\":\"0\",\"command\":\"print_speed\","
-             "\"param\":\"%d\"}}", level);
+             "\"command\":\"print_speed\",\"param\":\"%d\"", level);
     ESP_LOGI(TAG, "print speed -> %d", level);
     return bambu_send(buf);
 }
@@ -398,6 +438,48 @@ static void handle_report(const char *data, int len)
     if (g_test_live_lock) print = NULL;
 #endif
     if (print) {
+        // NOT STOCK. The printer's answer to a command we sent.
+        //
+        // A command that is refused looks exactly like one that was never
+        // sent: nothing changes and nothing is said. The printer DOES answer,
+        // on this same topic, echoing the command name and a result, so the
+        // answer is logged. Without this the print_speed bug looked like a
+        // fault in the vent for as long as anyone cared to look, when the
+        // printer had been rejecting a duplicate sequence_id all along.
+        {
+            cJSON *cmd = cJSON_GetObjectItemCaseSensitive(print, "command");
+            cJSON *res = cJSON_GetObjectItemCaseSensitive(print, "result");
+            if (cJSON_IsString(cmd) && cJSON_IsString(res)
+                && strcmp(cmd->valuestring, "push_status") != 0) {
+                cJSON *sq = cJSON_GetObjectItemCaseSensitive(print, "sequence_id");
+                // The reason, when there is one. A bare "failed" says the
+                // command was refused but not what was wrong with it, and
+                // that is the difference between a fix and a guess.
+                cJSON *rs = cJSON_GetObjectItemCaseSensitive(print, "reason");
+                if (!cJSON_IsString(rs)) rs = cJSON_GetObjectItemCaseSensitive(print, "err");
+                if (!cJSON_IsString(rs)) rs = cJSON_GetObjectItemCaseSensitive(print, "errno");
+                ESP_LOGI(TAG, "printer answered \"%s\" seq %s: %s%s%s",
+                         cmd->valuestring,
+                         cJSON_IsString(sq) ? sq->valuestring : "?",
+                         res->valuestring,
+                         cJSON_IsString(rs) ? " reason=" : "",
+                         cJSON_IsString(rs) ? rs->valuestring : "");
+                // Keep it, so the page can say what the printer said rather
+                // than showing a control that silently springs back.
+                {
+                    pv_cmd_ack_t a = { 0 };
+                    snprintf(a.cmd, sizeof(a.cmd), "%s", cmd->valuestring);
+                    a.ok = (strcasecmp(res->valuestring, "success") == 0);
+                    if (!a.ok && cJSON_IsString(rs))
+                        snprintf(a.reason, sizeof(a.reason), "%s", rs->valuestring);
+                    a.at_s = (int)(esp_timer_get_time() / 1000000);
+                    portENTER_CRITICAL(&s_ack_lock);
+                    s_ack = a;
+                    portEXIT_CRITICAL(&s_ack_lock);
+                    pv_ws_push_state();
+                }
+            }
+        }
         // Report key index 1. Parsed before gcode_state because the ERROR
         // decision below depends on it.
         cJSON *pe = cJSON_GetObjectItemCaseSensitive(print, "print_error");

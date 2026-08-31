@@ -348,6 +348,79 @@ static esp_err_t ws_handler(httpd_req_t *req)
 
 static void ota_reboot_task(void *arg) { vTaskDelay(pdMS_TO_TICKS(800)); esp_restart(); }
 
+// NOT STOCK. An animation, uploaded into RAM.
+//
+//   POST /anim   body: [u16 frames][u16 pixels] then frames*pixels*3 RGB bytes
+//   POST /anim   with an empty body clears whatever is loaded
+//
+// Little-endian, because that is what a DataView in the browser writes without
+// a byte-swap and what the ESP32 reads without one either.
+//
+// Raw RGB rather than an image. Decoding a PNG needs a decoder and a frame
+// buffer on a device with eighty kilobytes of heap free; the page already has
+// a canvas, which decodes every format the browser knows and scales the rows
+// at the same time, so the work happens where the memory is. It also means
+// the preview on screen is made of the same bytes that get sent.
+//
+// The whole body is read into one heap block before anything is committed, so
+// an upload that dies half way leaves the animation that was playing alone.
+static esp_err_t anim_post(httpd_req_t *req)
+{
+    if (req->content_len == 0) {
+        pv_anim_clear();
+        httpd_resp_send(req, "", 0);
+        pv_ws_broadcast(pv_json_response("anim", 1));
+        pv_ws_push_state();
+        return ESP_OK;
+    }
+    size_t max = 4 + (size_t)PV_ANIM_MAX_BYTES;
+    if (req->content_len < 4 || (size_t)req->content_len > max) {
+        ESP_LOGW(TAG, "anim: %d bytes, allowed 4..%u",
+                 (int)req->content_len, (unsigned)max);
+        httpd_resp_send(req, "", 0);
+        pv_ws_broadcast(pv_json_response("anim", 0));
+        return ESP_OK;
+    }
+    uint8_t *body = malloc(req->content_len);
+    if (!body) {
+        ESP_LOGW(TAG, "anim: no room for %d bytes", (int)req->content_len);
+        httpd_resp_send(req, "", 0);
+        pv_ws_broadcast(pv_json_response("anim", 0));
+        return ESP_OK;
+    }
+    size_t got = 0;
+    int timeouts = 0;
+    bool bad = false;
+    while (got < (size_t)req->content_len) {
+        int r = httpd_req_recv(req, (char *)body + got, req->content_len - got);
+        if (r == HTTPD_SOCK_ERR_TIMEOUT) {
+            // Same reasoning as the OTA path: a timeout means the socket has
+            // nothing ready yet, not that the upload failed.
+            if (++timeouts > OTA_MAX_TIMEOUTS) { bad = true; break; }
+            continue;
+        }
+        if (r <= 0) { bad = true; break; }
+        timeouts = 0;
+        got += r;
+    }
+    bool ok = false;
+    if (!bad && got >= 4) {
+        int frames = body[0] | (body[1] << 8);
+        int pixels = body[2] | (body[3] << 8);
+        size_t need = (size_t)frames * pixels * 3;
+        if (need == got - 4)
+            ok = pv_anim_set(body + 4, frames, pixels);
+        else
+            ESP_LOGW(TAG, "anim: header says %d x %d = %u bytes, body has %u",
+                     frames, pixels, (unsigned)need, (unsigned)(got - 4));
+    }
+    free(body);
+    httpd_resp_send(req, "", 0);
+    pv_ws_broadcast(pv_json_response("anim", ok ? 1 : 0));
+    pv_ws_push_state();
+    return ESP_OK;
+}
+
 static esp_err_t ota_post(httpd_req_t *req)
 {
     char ota_type[24] = "ota_fw";
@@ -449,6 +522,7 @@ esp_err_t pv_http_start(void)
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) return err;
 
+    static const httpd_uri_t anim = { .uri = "/anim", .method = HTTP_POST, .handler = anim_post };
     static const httpd_uri_t root = { .uri = "/", .method = HTTP_GET, .handler = root_get };
     static const httpd_uri_t ws = {
         .uri = "/ws", .method = HTTP_GET, .handler = ws_handler,
@@ -458,6 +532,7 @@ esp_err_t pv_http_start(void)
     static const httpd_uri_t backup = {
         .uri = "/backup", .method = HTTP_GET, .handler = backup_get,
     };
+    httpd_register_uri_handler(s_server, &anim);
     httpd_register_uri_handler(s_server, &root);
     httpd_register_uri_handler(s_server, &ws);
     httpd_register_uri_handler(s_server, &ota);

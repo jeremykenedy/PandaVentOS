@@ -7,7 +7,8 @@
  * render_effect that fxdump never touched, and every one of those parts is
  * newer and less exercised than the effect renderers themselves.
  *
- *   cc -I stub -I ../../firmware/main -o framecheck framecheck.c -lm && ./framecheck
+ *   cc -I stub -I ../../firmware/main -o framecheck \
+ *      framecheck.c ../../firmware/main/pv_anim.c -lm && ./framecheck
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -56,6 +57,11 @@ void pv_rgb3_to_hex(const uint8_t rgb[3], char out[7])
     out[6] = 0;
 }
 
+/* pv_anim.c is LINKED, not included.
+   Two .c files in one translation unit collide: both define a static TAG, and
+   both have an s_frames of a different type. The build line at the top of this
+   file compiles it separately, so the animation effect is driven through the
+   same store the device runs rather than through a fake. */
 #include "pv_rgb.c"
 
 static int ok_n, bad_n;
@@ -886,6 +892,113 @@ int main(void)
           lit0 + lit1 >= 7 && lit0 + lit1 <= 9, buf);
         t("and all of them are in the first run, which is twelve long",
           lit1 == 0, buf);
+    }
+
+    /* ---------------------------------------------------------------
+     * 19. The uploaded animation.
+     *
+     * The whole point of this effect is that it plays bytes somebody sent,
+     * so the test sends bytes and reads the pixels back. It also has to be
+     * right in the two cases nobody thinks about: nothing loaded, which is
+     * what every reboot leaves behind, and a frame shorter than the strip.
+     * ------------------------------------------------------------------ */
+    printf("\n19. the uploaded animation\n");
+    {
+        rgb_t out[PV_STRIP_COUNT_MAX][PV_LEDS_PER_STRIP];
+
+        /* Nothing loaded: it must be the effect's own colour, not black. A
+         * strip that goes dark when an effect is picked reads as a fault. */
+        pv_anim_clear();
+        setup(PV_FX_ANIM, "00FF00", "", "", "", 100, -1, 16, 16, true);
+        pv_rgb_render_frame(out, false);
+        t("with nothing loaded it is the effect's own colour, not black",
+          out[0][0].g == 255 && out[0][0].r == 0 && out[0][0].b == 0, NULL);
+        int lit = 0;
+        for (int i = 0; i < 16; ++i) if (out[0][i].g == 255) ++lit;
+        t("across the whole strip", lit == 16, NULL);
+
+        /* Two frames of two distinct colours, one pixel per strip position. */
+        {
+            uint8_t buf[2 * PV_ANIM_PIXELS * 3];
+            memset(buf, 0, sizeof(buf));
+            for (int i = 0; i < PV_ANIM_PIXELS; ++i) {
+                buf[i * 3 + 0] = 255;                              /* frame 0: red */
+                buf[(PV_ANIM_PIXELS + i) * 3 + 2] = 255;           /* frame 1: blue */
+            }
+            t("the store accepts a well formed animation",
+              pv_anim_set(buf, 2, PV_ANIM_PIXELS), NULL);
+        }
+        pv_anim_info_t ai;
+        pv_anim_info(&ai);
+        t("and reports what it holds",
+          ai.frames == 2 && ai.pixels == PV_ANIM_PIXELS
+          && ai.bytes == 2 * PV_ANIM_PIXELS * 3, NULL);
+
+        setup(PV_FX_ANIM, "00FF00", "", "", "", 100, -1, 16, 16, true);
+        pv_rgb_render_frame(out, false);
+        t("the first frame is the first row of the upload",
+          out[0][0].r == 255 && out[0][0].g == 0 && out[0][0].b == 0, NULL);
+        pv_rgb_render_frame(out, false);
+        t("the next frame is the next row",
+          out[0][0].b == 255 && out[0][0].r == 0, NULL);
+        pv_rgb_render_frame(out, false);
+        t("and it wraps back to the first rather than going dark",
+          out[0][0].r == 255 && out[0][0].b == 0, NULL);
+
+        /* BOTH strips draw the same instant. This is the bug every animated
+         * effect here has had at least once: the phase advancing per strip
+         * instead of per frame runs the animation at double speed and puts
+         * the two runs a frame apart. */
+        pv_rgb_render_frame(out, false);
+        t("both strips show the same row at the same moment",
+          out[0][0].r == out[1][0].r && out[0][0].b == out[1][0].b, NULL);
+
+        /* Brightness is the effect's, applied to the uploaded pixel. */
+        setup(PV_FX_ANIM, "00FF00", "", "", "", 50, -1, 16, 16, true);
+        pv_rgb_anim_rewind();
+        pv_rgb_render_frame(out, false);
+        t("the effect's brightness scales the uploaded colour",
+          out[0][0].r > 120 && out[0][0].r < 135, NULL);
+
+        /* A frame shorter than the strip: the tail is the effect's colour,
+         * not darkness, for the same reason as the empty case. */
+        {
+            uint8_t buf[4 * 3];
+            memset(buf, 0, sizeof(buf));
+            for (int i = 0; i < 4; ++i) buf[i * 3 + 0] = 255;
+            t("a short frame is accepted", pv_anim_set(buf, 1, 4), NULL);
+        }
+        setup(PV_FX_ANIM, "00FF00", "", "", "", 100, -1, 16, 16, true);
+        pv_rgb_anim_rewind();
+        pv_rgb_render_frame(out, false);
+        t("the pixels the frame covers come from the upload",
+          out[0][0].r == 255 && out[0][3].r == 255, NULL);
+        t("and the tail falls back to the effect's colour, not black",
+          out[0][4].g == 255 && out[0][4].r == 0, NULL);
+
+        /* Refusals. Each of these is a way a broken or hostile upload could
+         * have walked off the end of the buffer. */
+        {
+            uint8_t one[3] = { 1, 2, 3 };
+            t("too many pixels per frame is refused",
+              !pv_anim_set(one, 1, PV_ANIM_PIXELS + 1), NULL);
+            t("zero frames is refused", !pv_anim_set(one, 0, 1), NULL);
+            t("zero pixels is refused", !pv_anim_set(one, 1, 0), NULL);
+            t("a negative count is refused", !pv_anim_set(one, -1, 1), NULL);
+            t("more than the cap is refused",
+              !pv_anim_set(one, PV_ANIM_MAX_FRAMES + 1, PV_ANIM_PIXELS), NULL);
+        }
+        pv_anim_info(&ai);
+        t("and a refused upload leaves the loaded one alone",
+          ai.frames == 1 && ai.pixels == 4, NULL);
+
+        pv_anim_clear();
+        pv_anim_info(&ai);
+        t("clearing empties it", ai.frames == 0 && ai.bytes == 0, NULL);
+        setup(PV_FX_ANIM, "00FF00", "", "", "", 100, -1, 16, 16, true);
+        pv_rgb_render_frame(out, false);
+        t("and the strip goes back to the effect's colour rather than dark",
+          out[0][0].g == 255, NULL);
     }
 
     printf("\n%d passed, %d failed\n", ok_n, bad_n);

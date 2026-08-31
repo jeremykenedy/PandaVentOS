@@ -92,7 +92,11 @@
 // end, between two temperatures the user picks, which makes "is it still hot
 // in there" answerable from across a room.
 #define PV_FX_TEMP_GRADIENT    20
-#define PV_FX_COUNT       21
+// NOT STOCK. Plays whatever animation has been uploaded into RAM. With
+// nothing uploaded it renders as Static, so selecting it never leaves the
+// strip dark with no explanation.
+#define PV_FX_ANIM             21
+#define PV_FX_COUNT       22
 #define PV_FX_STOCK_COUNT 7
 
 // Not user selectable and not part of the config arrays. Stock's warning
@@ -533,6 +537,27 @@ bool pv_bambu_set_fan(int which, int percent);
 // 1 silent, 2 standard, 3 sport, 4 ludicrous. Returns false if the link is
 // down or the level is not one of those four.
 bool pv_bambu_set_speed(int level);
+
+// NOT STOCK. What the printer said about the last command sent to it.
+//
+// A command can leave this device correctly and still not happen, and the two
+// look identical from the UI: the control snaps back to whatever the printer
+// is still reporting. The printer does answer, so its answer is kept and put
+// in the state document.
+//
+// This is not a nicety. Every command to a printer that accepts LAN reads but
+// requires cloud authentication for control comes back "mqtt message verify
+// failed", and without the reason on screen that is indistinguishable from a
+// bug in this firmware. It took a direct MQTT client to tell them apart once;
+// it should not take one again.
+typedef struct {
+    char cmd[20];       // "print_speed", "gcode_line"; empty if none yet
+    char reason[48];    // the printer's own words, empty when it succeeded
+    bool ok;
+    int  at_s;          // uptime when the answer came back
+} pv_cmd_ack_t;
+
+void pv_bambu_last_ack(pv_cmd_ack_t *out);
 // Whether the link layer has run once. Stock's equivalent is the init at
 // 0x400d9840, which is what first evaluates the level 3 indicator; until then
 // the word keeps the 2 the rgb task armed at 0x400dcabd.
@@ -638,6 +663,50 @@ void pv_motor_update(void);                         // printer state changed
 // and ORs them into 0x3ffb6954 at 0x400de524; that byte is what the rgb task
 // reads through 0x400de550 to raise the red strobe.
 bool pv_motor_fault_any(void);
+
+// NOT STOCK. An animation, uploaded and held in RAM.
+//
+// RAM, deliberately. The obvious home for an uploaded animation is flash, and
+// this device has no room in flash that is not already spoken for: the
+// partition table is BIQU's, both OTA slots are needed for the revert path
+// that makes this firmware safe to try, and repartitioning would take that
+// away. So the animation lives in the heap and is gone on the next reboot.
+// That is a real limitation and it is stated plainly in the UI rather than
+// worked around, because the alternative costs the one property that matters
+// more.
+//
+// The device does NOT decode images. The page reads the file with a canvas,
+// scales each row to the strip length and uploads raw RGB, which means no
+// image decoder on an ESP32 with 80 KB of heap free, and a preview on screen
+// that is exactly what will play.
+//
+// The cap is chosen against the free heap rather than against how long an
+// animation anyone might want: at 96 bytes a frame, 16 KB is about 170
+// frames, which is five or six seconds. Asking for more than the device can
+// give is refused with the numbers, not with a generic failure.
+#define PV_ANIM_MAX_BYTES   16384
+#define PV_ANIM_PIXELS      (PV_LEDS_PER_STRIP * PV_STRIP_COUNT_MAX)
+#define PV_ANIM_MAX_FRAMES  (PV_ANIM_MAX_BYTES / (PV_ANIM_PIXELS * 3))
+
+typedef struct {
+    int frames;         // 0 when nothing is loaded
+    int pixels;         // per frame, <= PV_ANIM_PIXELS
+    int bytes;          // what it is costing
+} pv_anim_info_t;
+
+// Replaces whatever was loaded. rgb is frames*pixels*3 bytes, row major,
+// pixel 0 first. Returns false if the numbers are out of range or the heap
+// cannot give the block; the previous animation is left alone in that case.
+bool pv_anim_set(const uint8_t *rgb, int frames, int pixels);
+void pv_anim_clear(void);
+void pv_anim_info(pv_anim_info_t *out);
+// Copies one frame into dst, wrapping the index. Returns the number of pixels
+// written, 0 when nothing is loaded. A COPY rather than a pointer: an upload
+// frees the buffer, and the renderer must not be reading it when that happens.
+int pv_anim_copy(int i, uint8_t *dst, int max_pixels);
+// Rewinds the renderer's frame counter, so a fresh upload starts at its first
+// row rather than wherever the previous animation had got to.
+void pv_rgb_anim_rewind(void);
 
 // NOT STOCK. Re-seat the vent on both endstops and report what the hall
 // sensor read at each of them.
