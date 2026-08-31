@@ -417,6 +417,37 @@ void pv_rgb_notify(void);                           // config/state changed
 // an OTA so the strip goes dark and RMT is released.
 void pv_rgb_stop(void);
 
+// NOT STOCK. LIVE PREVIEW: render a set of effect parameters right now, without
+// storing them anywhere, and go back to the real configuration on its own.
+//
+// Everything else in this firmware saves the moment you touch it, which is
+// stock's model and is right for a control panel. It is wrong for choosing a
+// colour or an effect: you cannot see the strip and the picker at the same
+// time, so the only way to judge a change was to commit it and then undo it,
+// and undoing it is what wore out the NVS and lost settings.
+//
+// A preview deliberately ignores the master switch and the follow gates. If it
+// did not, previewing with the lights off, or with Follow Printer on and the
+// chamber light off, would show nothing and read as a broken button.
+//
+// state and percent are for the forced-state preview and are -1 (use the live
+// value) until that is wired up.
+typedef struct {
+    bool          active;
+    int64_t       until_us;
+    int           fx;            // PV_FX_*
+    pv_fx_param_t p;             // the four colours, brightness, speed, ramp
+    int8_t        state;         // -1 live, else PV_ST_*
+    int8_t        percent;       // -1 live, else 0..100
+} pv_preview_t;
+
+#define PV_PREVIEW_MAX_S 120
+
+void pv_rgb_preview(int fx, const pv_fx_param_t *p, int state, int percent, int seconds);
+void pv_rgb_preview_cancel(void);
+// Seconds remaining, or 0 when no preview is running.
+int  pv_rgb_preview_left(void);
+
 // NOT STOCK. One rendered frame, the SHIPPING one: render_task calls it and
 // does nothing else, and tools/fxdump calls it with a buffer and push = false
 // so a host test exercises resolve, the brightness ramp, the per-strip lengths

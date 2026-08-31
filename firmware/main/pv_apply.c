@@ -243,11 +243,50 @@ static void apply_fx_fields(pv_fx_param_t *p, cJSON *o)
     }
 }
 
+// NOT STOCK. {"rgb_mode":{"preview":{...}}} renders a parameter set NOW without
+// storing it, and {"rgb_mode":{"preview":null}} stops. The body is the same
+// shape as a simple_mode or h2d_mode body, so the page sends what it is already
+// holding, plus "seconds". Nothing here touches g_cfg or NVS.
+static void apply_preview(cJSON *o)
+{
+    if (cJSON_IsNull(o)) { pv_rgb_preview_cancel(); pv_ws_push_state(); return; }
+    if (!cJSON_IsObject(o)) return;
+
+    cJSON *e = cJSON_GetObjectItemCaseSensitive(o, "effect");
+    int fx = (cJSON_IsNumber(e) && e->valueint >= 0 && e->valueint < PV_FX_COUNT)
+             ? e->valueint : PV_FX_STATIC;
+
+    // Start from what that effect actually holds, so a body that names only a
+    // colour previews THAT colour against the effect's real brightness and
+    // speed rather than against zeros.
+    pv_fx_param_t p;
+    cJSON *m = cJSON_GetObjectItemCaseSensitive(o, "mode");
+    if (cJSON_IsNumber(m) && m->valueint >= 0 && m->valueint < PV_ST_COUNT)
+        p = g_h2d[m->valueint][fx];
+    else
+        p = g_cfg.rgb.simple[fx];
+    apply_fx_fields(&p, o);
+
+    int secs = 15;
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "seconds")) && cJSON_IsNumber(e))
+        secs = e->valueint;
+    int state = -1, percent = -1;
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "state")) && cJSON_IsNumber(e))
+        state = e->valueint;
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "percent")) && cJSON_IsNumber(e))
+        percent = e->valueint;
+
+    pv_rgb_preview(fx, &p, state, percent, secs);
+    pv_ws_push_state();
+}
+
 static void apply_rgb_mode(cJSON *o)
 {
     cJSON *e;
     // {} = query -> full state push (factory behavior).
     if (cJSON_GetArraySize(o) == 0) { pv_ws_push_state(); return; }
+
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "preview"))) { apply_preview(e); return; }
 
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "reset")) && cJSON_IsNumber(e)) {
         int mode = e->valueint % 3;

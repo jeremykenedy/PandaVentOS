@@ -1039,6 +1039,46 @@ static rgb_t fx_bg(const pv_fx_param_t *p)
     return (rgb_t){ c[0], c[1], c[2] };
 }
 
+// NOT STOCK. The live preview. See pv.h for why it bypasses the gates.
+static pv_preview_t s_preview;
+
+void pv_rgb_preview(int fx, const pv_fx_param_t *p, int state, int percent, int seconds)
+{
+    if (!p) return;
+    if (fx < 0 || fx >= PV_FX_COUNT) fx = PV_FX_STATIC;
+    if (seconds < 1) seconds = 1;
+    if (seconds > PV_PREVIEW_MAX_S) seconds = PV_PREVIEW_MAX_S;
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_preview.fx = fx;
+    s_preview.p = *p;
+    if (s_preview.p.brightness > 100) s_preview.p.brightness = 100;
+    if (s_preview.p.speed > 100) s_preview.p.speed = 100;
+    if (s_preview.p.bright_end > 100) s_preview.p.bright_end = 100;
+    s_preview.state = (int8_t)((state >= 0 && state < PV_ST_COUNT) ? state : -1);
+    s_preview.percent = (int8_t)((percent >= 0 && percent <= 100) ? percent : -1);
+    s_preview.until_us = esp_timer_get_time() + (int64_t)seconds * 1000000LL;
+    s_preview.active = true;
+    // Start the ramp and the animation from the beginning, so what is being
+    // judged is the effect from its start rather than mid-sweep.
+    s_ramp_step = 0;
+    xSemaphoreGive(s_lock);
+}
+
+void pv_rgb_preview_cancel(void)
+{
+    xSemaphoreTake(s_lock, portMAX_DELAY);
+    s_preview.active = false;
+    xSemaphoreGive(s_lock);
+}
+
+int pv_rgb_preview_left(void)
+{
+    if (!s_preview.active) return 0;
+    int64_t left = s_preview.until_us - esp_timer_get_time();
+    if (left <= 0) return 0;
+    return (int)((left + 999999) / 1000000);
+}
+
 // -1 means "no ramp": one brightness for the whole cycle, as before.
 static int fx_bright_end(const pv_fx_param_t *p)
 {
@@ -1155,6 +1195,28 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
         //    byte at 0x3ffb5678+19. Only reached when follow_printer is off.
         else if (r->follow_vent) {
             if (!g_live.vent_open) return false;
+        }
+    }
+
+    // 4b. NOT STOCK. A live preview replaces the whole answer from here down.
+    //
+    // It sits BELOW the fault and test gates, which are safety and diagnostics
+    // and must never be masked, and ABOVE the master switch and the follow
+    // gates, which would otherwise make a preview show nothing at all. See the
+    // comment on pv_preview_t.
+    if (s_preview.active) {
+        if (esp_timer_get_time() >= s_preview.until_us) {
+            s_preview.active = false;
+            pv_ws_push_state();          // let the UI drop its countdown
+        } else {
+            const pv_fx_param_t *p = &s_preview.p;
+            *fx = s_preview.fx;
+            *color = fx_colour(p);
+            *bg = fx_bg(p);
+            *bright = p->brightness;
+            *speed = p->speed;
+            *bright_end = fx_bright_end(p);
+            return true;
         }
     }
 
