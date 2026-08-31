@@ -560,7 +560,13 @@ pv_live_t g_live = {
     // zero. Everything the Status page shows starts unknown and stays that
     // way until the printer actually says otherwise.
     .chamber_temp = -1, .fan_part = -1, .fan_aux = -1, .fan_chamber = -1,
-    .layer_total = -1, .remain_min = -1, .spd_lvl = -1,
+    .layer_total = -1, .remain_min = -1, .spd_lvl = -1, .work_light = -1,
+    .filament_in = -1, .spd_mag = -1, .ams_humidity = -1, .ams_humidity_pct = -1,
+    .ams_temp = -1, .door_open = -1, .fw_update = -1, .tray_now = -1,
+    .cam_present = -1, .cam_record = -1, .cam_timelapse = -1,
+    .cam_free_mb = -1, .cam_total_mb = -1,
+    .tray = { { .remain = -1 }, { .remain = -1 }, { .remain = -1 },
+              { .remain = -1 }, { .remain = -1 } },
 };
 
 // Every layout before v5 carried one colour per effect. Lifting it means

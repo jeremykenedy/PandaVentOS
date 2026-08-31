@@ -281,6 +281,9 @@ const char *pv_json_state_part(int part)
         if (vm < 0 || vm > 2) vm = PV_VENT_AUTO;
         cJSON_AddStringToObject(vp, "vent_mode", mode_name[vm]);
     }
+    // NOT STOCK. Whether the flap is travelling right now, as opposed to
+    // where it last arrived. See pv_motor_moving in pv.h.
+    cJSON_AddNumberToObject(vp, "vent_moving", pv_motor_moving() ? 1 : 0);
     // NOT STOCK. The last endstop check, and whether one is running now.
     // Reported always, because a page that only learns about it by having
     // asked for it cannot show a check a second browser started.
@@ -329,12 +332,31 @@ const char *pv_json_state_part(int part)
             else          cJSON_AddNullToObject(st, k); } while (0)
         cJSON_AddNumberToObject(st, "nozzle_temp", g_live.nozzle_temp);
         NUM_OR_NULL("chamber_temp", g_live.chamber_temp);
+        // NOT STOCK. -1 means the printer has never mentioned a toolhead
+        // light, which the page draws as "no such control" rather than "off".
+        NUM_OR_NULL("work_light", g_live.work_light);
         NUM_OR_NULL("fan_part",     g_live.fan_part);
         NUM_OR_NULL("fan_aux",      g_live.fan_aux);
         NUM_OR_NULL("fan_chamber",  g_live.fan_chamber);
         NUM_OR_NULL("layer_total",  g_live.layer_total);
         NUM_OR_NULL("remain_min",   g_live.remain_min);
         NUM_OR_NULL("spd_lvl",      g_live.spd_lvl);
+        // NOT STOCK. Readings the printer was already sending and nothing was
+        // reading. Same rule as everything above: never reported is null, not
+        // zero.
+        NUM_OR_NULL("filament_in",      g_live.filament_in);
+        NUM_OR_NULL("spd_mag",          g_live.spd_mag);
+        NUM_OR_NULL("ams_humidity",     g_live.ams_humidity);
+        NUM_OR_NULL("ams_humidity_pct", g_live.ams_humidity_pct);
+        NUM_OR_NULL("ams_temp",         g_live.ams_temp);
+        NUM_OR_NULL("door_open",        g_live.door_open);
+        NUM_OR_NULL("fw_update",        g_live.fw_update);
+        NUM_OR_NULL("tray_now",         g_live.tray_now);
+        NUM_OR_NULL("cam_present",      g_live.cam_present);
+        NUM_OR_NULL("cam_record",       g_live.cam_record);
+        NUM_OR_NULL("cam_timelapse",    g_live.cam_timelapse);
+        NUM_OR_NULL("cam_free_mb",      g_live.cam_free_mb);
+        NUM_OR_NULL("cam_total_mb",     g_live.cam_total_mb);
         #undef NUM_OR_NULL
         cJSON_AddNumberToObject(st, "layer_num", g_live.layer_num);
         cJSON_AddNumberToObject(st, "gcode_state", g_live.gcode_state);
@@ -344,6 +366,35 @@ const char *pv_json_state_part(int part)
         cJSON_AddNumberToObject(st, "printer_light", g_live.printer_light ? 1 : 0);
         cJSON_AddStringToObject(st, "job_name", g_live.job_name);
         cJSON_AddStringToObject(st, "printer_rssi", g_live.printer_rssi);
+        // Strings are sent only when they hold something. An empty nozzle
+        // type is not a nozzle type of "".
+        if (g_live.nozzle_dia[0])  cJSON_AddStringToObject(st, "nozzle_dia", g_live.nozzle_dia);
+        if (g_live.nozzle_kind[0]) cJSON_AddStringToObject(st, "nozzle_kind", g_live.nozzle_kind);
+        if (g_live.hms_code[0])    cJSON_AddStringToObject(st, "hms_code", g_live.hms_code);
+        if (g_live.cam_res[0])     cJSON_AddStringToObject(st, "cam_res", g_live.cam_res);
+        if (g_live.cam_rtsp[0])    cJSON_AddStringToObject(st, "cam_rtsp", g_live.cam_rtsp);
+        // The AMS trays. Sent as an array only when at least one slot holds
+        // something, so a printer with no AMS sends no key at all rather than
+        // four empty objects the page then has to decide not to draw.
+        {
+            bool any = false;
+            for (int i = 0; i < PV_TRAY_MAX; ++i)
+                if (g_live.tray[i].type[0]) { any = true; break; }
+            if (any) {
+                cJSON *arr = cJSON_AddArrayToObject(st, "trays");
+                for (int i = 0; i < PV_TRAY_MAX; ++i) {
+                    if (!g_live.tray[i].type[0]) continue;
+                    cJSON *t = cJSON_CreateObject();
+                    cJSON_AddNumberToObject(t, "i", i);
+                    cJSON_AddStringToObject(t, "type", g_live.tray[i].type);
+                    if (g_live.tray[i].color[0])
+                        cJSON_AddStringToObject(t, "color", g_live.tray[i].color);
+                    if (g_live.tray[i].remain >= 0)
+                        cJSON_AddNumberToObject(t, "remain", g_live.tray[i].remain);
+                    cJSON_AddItemToArray(arr, t);
+                }
+            }
+        }
         // The VENT's own signal, read at the moment of the push rather than
         // cached, because it is the one number here that is about this device
         // and it moves.

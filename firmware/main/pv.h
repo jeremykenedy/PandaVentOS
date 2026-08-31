@@ -400,6 +400,9 @@ char *pv_json_logs(void);
 // ---------------------------------------------------------------------------
 // Live (non-persisted) state pushed to the UI.
 // ---------------------------------------------------------------------------
+// Four AMS slots plus the external spool.
+#define PV_TRAY_MAX 5
+
 typedef struct {
     // sta.state: 1 nossid, 2 connecting, 3 connected, 4 reconnecting, 5 pw err
     int  sta_state;
@@ -460,6 +463,57 @@ typedef struct {
     // thing from zero: a chamber at 0 C and a printer that reports no chamber
     // at all are not the same reading.
     int   chamber_temp;          // C
+    // NOT STOCK. The toolhead light: 1 on, 0 off, -1 the printer has never
+    // mentioned one. Three states, not two, because a page that draws a switch
+    // for a light that does not exist is worse than one that draws nothing.
+    int   work_light;            // -1 unknown, 0 off, 1 on
+
+    // NOT STOCK. Everything else the printer was already sending and nothing
+    // was reading. All of it is a READING; none of it can be written from
+    // here, and most of it cannot be written from anywhere without the
+    // printer being in Developer Mode.
+    //
+    // Every one starts at -1 or empty, because "not reported" and "zero" are
+    // different answers and the page draws them differently. A printer with no
+    // AMS is not a printer with an AMS at 0% humidity.
+    int   filament_in;           // -1 unknown, 0 no, 1 yes (runout sensor)
+    int   spd_mag;               // speed magnitude, percent; -1 unknown
+    int   ams_humidity;          // 1..5 level; -1 unknown
+    int   ams_humidity_pct;      // 1..100; -1 unknown
+    int   ams_temp;              // C; -1 unknown
+    int   door_open;             // -1 unknown, 0 shut, 1 open
+    int   fw_update;             // -1 unknown, 0 none, 1 one is waiting
+    char  nozzle_dia[8];         // "0.4"; empty until reported
+    char  nozzle_kind[8];        // "HH01" / "stainless_steel"; empty until reported
+    // The first HMS code, formatted the way Bambu's own wiki spells them:
+    // XXXX_XXXX_XXXX_XXXX. Empty when there are none. The COUNT is separate,
+    // because "three faults" and "this is the first of three" are both worth
+    // saying and neither is the other.
+    char  hms_code[24];
+    // The AMS trays, as reported. Four is what every AMS has; a fifth slot
+    // holds the external spool when there is one.
+    struct {
+        char type[10];           // "PLA"; empty means the slot is empty
+        char color[9];           // "RRGGBBAA"
+        int  remain;             // percent, -1 unknown
+    } tray[PV_TRAY_MAX];
+    int   tray_now;              // active tray index, -1 none, 254 external
+
+    // NOT STOCK. The camera.
+    //
+    // Reported so the Camera page can say what is there. RTSP cannot be
+    // played by a browser at all, so the URL is something to paste into VLC or
+    // a recorder, not something this page can show; saying so is the whole
+    // point of having the page.
+    int   cam_present;           // -1 unknown, 0 no camera, 1 there is one
+    int   cam_record;            // -1 unknown, 0 off, 1 on
+    int   cam_timelapse;         // -1 unknown, 0 off, 1 on
+    int   cam_free_mb;           // internal storage free, -1 unknown
+    int   cam_total_mb;          // internal storage total, -1 unknown
+    char  cam_res[12];           // "1080p"; empty until reported
+    // "disable" when the printer has RTSP turned off, otherwise the URL.
+    // Both are worth showing and they are not the same message.
+    char  cam_rtsp[96];
     int   fan_part;              // 0..100
     int   fan_aux;               // 0..100
     int   fan_chamber;           // 0..100
@@ -537,6 +591,22 @@ bool pv_bambu_set_fan(int which, int percent);
 // 1 silent, 2 standard, 3 sport, 4 ludicrous. Returns false if the link is
 // down or the level is not one of those four.
 bool pv_bambu_set_speed(int level);
+
+// NOT STOCK. The printer's lights, via system.ledctrl.
+//
+// The ONLY write a printer outside Developer Mode accepts. Everything under
+// the "print" envelope is signature checked and comes back "mqtt message
+// verify failed"; ledctrl is not. Nodes: "chamber_light", "work_light".
+bool pv_bambu_set_light(const char *node, bool on);
+
+// NOT STOCK. The camera's recording switch, via camera.ipcam_record_set.
+//
+// A THIRD command family that is not signature checked, alongside
+// system.ledctrl. Measured the same way: this returns "SUCCESS" on a printer
+// that refuses every gcode_line. camera.ipcam_timelapse on the same printer
+// returns "unsupport common", which is the printer declining the feature
+// rather than declining the sender, so it is not offered.
+bool pv_bambu_set_record(bool on);
 
 // NOT STOCK. What the printer said about the last command sent to it.
 //
@@ -663,6 +733,14 @@ void pv_motor_update(void);                         // printer state changed
 // and ORs them into 0x3ffb6954 at 0x400de524; that byte is what the rgb task
 // reads through 0x400de550 to raise the red strobe.
 bool pv_motor_fault_any(void);
+
+// NOT STOCK. Whether the flap is travelling right now.
+//
+// The state document reported where the vent HAD got to and never that it was
+// still on its way, so the page could only ever draw two states for a thing
+// with three. Travel takes a few seconds and is the moment somebody is most
+// likely to be looking at the dial wondering whether their tap did anything.
+bool pv_motor_moving(void);
 
 // NOT STOCK. An animation, uploaded and held in RAM.
 //

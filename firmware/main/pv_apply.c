@@ -507,6 +507,7 @@ static void apply_vent(cJSON *o)
 //
 //   {"printer_ctl":{"fan":"part"|"aux"|"chamber","percent":0..100}}
 //   {"printer_ctl":{"speed":1..4}}
+//   {"printer_ctl":{"light":"chamber_light"|"work_light","on":0|1}}
 //
 // Named for what it controls rather than tucked inside "printer", which is
 // where the binding lives: a message that changes which printer this vent
@@ -535,6 +536,29 @@ static void apply_printer_ctl(cJSON *o)
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "speed")) && cJSON_IsNumber(e)) {
         bool ok = pv_bambu_set_speed(e->valueint);
         pv_ws_broadcast(pv_json_response("printer_speed", ok ? 1 : 0));
+        return;
+    }
+    // NOT STOCK. {"printer_ctl":{"light":"chamber_light"|"work_light","on":0|1}}
+    //
+    // The one write a printer outside Developer Mode will take. The fan and
+    // speed branches above are kept, and kept working, because a printer that
+    // IS in Developer Mode accepts them; the web page simply stopped offering
+    // controls that the common case refuses.
+    // NOT STOCK. {"printer_ctl":{"record":0|1}}
+    //
+    // The camera's recording switch. A third command family this printer
+    // accepts, measured the same way as the lights.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "record"))) {
+        bool want = cJSON_IsTrue(e) || (cJSON_IsNumber(e) && e->valueint);
+        bool ok = pv_bambu_set_record(want);
+        pv_ws_broadcast(pv_json_response("printer_record", ok ? 1 : 0));
+        return;
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "light")) && cJSON_IsString(e)) {
+        cJSON *on = cJSON_GetObjectItemCaseSensitive(o, "on");
+        bool want = cJSON_IsTrue(on) || (cJSON_IsNumber(on) && on->valueint);
+        bool ok = pv_bambu_set_light(e->valuestring, want);
+        pv_ws_broadcast(pv_json_response("printer_light", ok ? 1 : 0));
         return;
     }
 }

@@ -69,17 +69,22 @@ upload puts BIQU's firmware back.
 | **Live flap position** | :x: target only | :white_check_mark: target, actual and travelling |
 | **Endstop recalibration** | button only | :white_check_mark: from the web page |
 | **Vent button ring light** | 1 behaviour | :white_check_mark: 5 modes |
-| **Printer fan control** | :x: | :white_check_mark: part, aux and chamber |
-| **Print speed control** | :x: | :white_check_mark: 4 levels |
-| **Chamber light control** | :x: | :white_check_mark: |
-| **Printer telemetry** | connection only | :white_check_mark: temps, layer, ETA, HMS errors |
+| **Printer light control** | :x: | :white_check_mark: chamber and toolhead |
+| **Printer telemetry** | connection only | :white_check_mark: 18 readings |
+| **AMS readout** | :x: | :white_check_mark: humidity, temperature, every spool |
+| **Fault codes** | :x: | :white_check_mark: decoded, in Bambu's own spelling |
 | **Languages** | 2 | **24**, Arabic RTL |
 | **Device name** | fixed | :white_check_mark: yours |
 | **Full flash backup** | USB cable only | :white_check_mark: `GET /backup`, about 17 seconds |
 | **Plain restart** | power cycle | :white_check_mark: from the web page |
 | **Failed save reporting** | silent | :white_check_mark: reported and shown |
 | **Settings across updates** | :x: | :white_check_mark: migrated field by field |
-| **Web UI** | BIQU stock | Material 3, dark mode, masonry dashboard |
+| **Web UI** | BIQU stock | Material 3 tokens, generated from one seed |
+| **Dark mode** | :x: one look | :white_check_mark: Auto, Light or Dark |
+| **Typeface** | Arial | :white_check_mark: Roboto, embedded, 5 scripts |
+| **Icons** | raster PNGs | :white_check_mark: one stroked sprite, tints with the text |
+| **Navigation** | bottom bar | :white_check_mark: bottom bar, or a left rail that expands |
+| **Contrast** | unchecked | :white_check_mark: every pair measured, plain and through 3 CVD simulations |
 | **Partition layout** | stock | :white_check_mark: identical |
 | **Source published** | :x: | :white_check_mark: MIT |
 
@@ -123,11 +128,24 @@ upload puts BIQU's firmware back.
 | | |
 | --- | --- |
 | **Link** | Bambu LAN MQTT over TLS, scan and bind or enter by hand |
-| **Reads** | state, progress, layer, ETA, nozzle, bed and chamber temperature, Wi-Fi signal, AMS trays, HMS and print errors |
-| **Fans** | part cooling, auxiliary, chamber |
-| **Speed** | silent, standard, sport, ludicrous |
-| **Chamber light** | on and off |
-| **Requirement** | the printer must be in LAN Only Mode or it refuses every command |
+| **Reads** | state, progress, layer, ETA, nozzle, bed and chamber temperature, the fitted nozzle, filament runout, door, fan speeds, speed level, lights, Wi-Fi signal, AMS humidity and temperature, every spool with its colour and remaining, HMS fault codes, waiting firmware updates |
+| **Controls** | the chamber light and the toolhead light |
+| **Does not control** | fans, print speed, temperatures. See below |
+
+**Why the fans and the speed are not there.** They were, they worked, and the
+printer threw every one of them away. Measured on real hardware, one command at
+a time, on one connection: `ledctrl` comes back `result: success` and every
+`gcode_line` and `print_speed` comes back `mqtt message verify failed`.
+
+The printer says so itself, in the `fun` field of its own report: bit
+`0x20000000` means unsigned commands are rejected. That needs **Developer
+Mode**, which is a separate switch underneath LAN Only Mode in the printer's
+network settings and only appears once LAN Only Mode is on and the printer has
+restarted.
+
+A control that cannot work is worse than no control, so the ones that cannot
+are not offered. If your printer is in Developer Mode the firmware still speaks
+every one of those commands; only the web page stopped drawing them.
 
 ### Device
 
@@ -139,7 +157,8 @@ upload puts BIQU's firmware back.
 | **Restart** | plain restart, and factory reset |
 | **OTA** | one upload, no cable, settings carried forward |
 | **Save failures** | reported in the state document and shown on the page |
-| **Logs** | live device log in the browser |
+| **Logs** | live device log, on its own page |
+| **Camera** | what the printer's camera is doing, its RTSP address, and its recording switch |
 
 ## Languages
 
@@ -180,13 +199,17 @@ Pick a language on first boot, or change it any time from the Settings page.
 
 ## Screenshots
 
-| Dashboard | Lighting |
+| Dashboard, light | Dashboard, dark |
 | --- | --- |
-| <img src="screenshots/dashboard-light.png" alt="Dashboard"> | <img src="screenshots/lighting-light.png" alt="Lighting"> |
+| <img src="screenshots/dashboard-light.png" alt="Dashboard in light mode"> | <img src="screenshots/dashboard-dark.png" alt="Dashboard in dark mode"> |
 
-| Vent Policy | Dark Mode |
+| Lighting | Camera |
 | --- | --- |
-| <img src="screenshots/policy-light.png" alt="Vent policy"> | <img src="screenshots/dashboard-dark.png" alt="Dark mode"> |
+| <img src="screenshots/lighting-light.png" alt="Lighting"> | <img src="screenshots/camera-light.png" alt="Camera"> |
+
+| Settings | On a phone |
+| --- | --- |
+| <img src="screenshots/policy-light.png" alt="Settings"> | <img src="screenshots/mobile-dark.png" alt="On a phone"> |
 
 ## Requirements
 

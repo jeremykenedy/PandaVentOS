@@ -64,7 +64,7 @@ void pv_bambu_last_ack(pv_cmd_ack_t *out)
     portEXIT_CRITICAL(&s_ack_lock);
 }
 
-static bool bambu_send(const char *cmd_json_body)
+static bool bambu_send_top(const char *top, const char *cmd_json_body)
 {
     if (!s_client || g_live.printer_state != 3) {
         ESP_LOGW(TAG, "not connected; command dropped");
@@ -77,10 +77,10 @@ static bool bambu_send(const char *cmd_json_body)
     // nothing, on either command, which makes it a guess that happened not to
     // help. A fabricated account number in a payload nobody can explain is
     // worse than a payload without one, so it is gone.
-    char payload[256];
+    char payload[320];
     int n = snprintf(payload, sizeof(payload),
-                     "{\"print\":{\"sequence_id\":\"%d\",%s}}",
-                     ++s_seq, cmd_json_body);
+                     "{\"%s\":{\"sequence_id\":\"%d\",%s}}",
+                     top, ++s_seq, cmd_json_body);
     if (n < 0 || n >= (int)sizeof(payload)) {
         ESP_LOGW(TAG, "command too long");
         return false;
@@ -92,6 +92,51 @@ static bool bambu_send(const char *cmd_json_body)
     // on a printer with no chamber fan changes nothing at all.
     esp_mqtt_client_publish(s_client, s_request_topic, PUSHALL, 0, 0, 0);
     return true;
+}
+
+static bool bambu_send(const char *cmd_json_body)
+{
+    return bambu_send_top("print", cmd_json_body);
+}
+
+// NOT STOCK, and the only command this printer actually accepts.
+//
+// `system.ledctrl` is not signature checked. Everything under `print` is:
+// measured on a real P2S, one command at a time, every gcode_line and
+// print_speed came back `mqtt message verify failed` while ledctrl came back
+// `result: success`, on the same connection, seconds apart. So the light
+// works and the fans do not, and that is the printer's rule, not ours.
+//
+// The four timing fields are required even when the mode is not flashing.
+bool pv_bambu_set_light(const char *node, bool on)
+{
+    if (!node) return false;
+    // Only the nodes a machine this firmware talks to actually has. An unknown
+    // node is answered by the printer with "did not find the valid led", which
+    // is a round trip spent to learn something already known here.
+    if (strcmp(node, "chamber_light") && strcmp(node, "work_light")) {
+        ESP_LOGW(TAG, "light: unknown node \"%s\"", node);
+        return false;
+    }
+    char buf[240];
+    snprintf(buf, sizeof(buf),
+             "\"command\":\"ledctrl\",\"led_node\":\"%s\","
+             "\"led_mode\":\"%s\",\"led_on_time\":500,\"led_off_time\":500,"
+             "\"loop_times\":0,\"interval_time\":0",
+             node, on ? "on" : "off");
+    ESP_LOGI(TAG, "%s -> %s", node, on ? "on" : "off");
+    return bambu_send_top("system", buf);
+}
+
+// NOT STOCK. Recording on or off, via the camera envelope.
+bool pv_bambu_set_record(bool on)
+{
+    char buf[120];
+    snprintf(buf, sizeof(buf),
+             "\"command\":\"ipcam_record_set\",\"control\":\"%s\"",
+             on ? "enable" : "disable");
+    ESP_LOGI(TAG, "camera recording -> %s", on ? "on" : "off");
+    return bambu_send_top("camera", buf);
 }
 
 // M106 P<part> S<0..255>. Bambu's part indices, from its own gcode:
@@ -388,8 +433,34 @@ static void parse_status(cJSON *print)
 {
     cJSON *e;
 
-    e = cJSON_GetObjectItemCaseSensitive(print, "chamber_temper");
-    if (cJSON_IsNumber(e)) g_live.chamber_temp = (int)e->valuedouble;
+    // Chamber temperature, from EITHER shape.
+    //
+    // The P2S does not send chamber_temper at all. It sends
+    // device.ctc.info.temp, where ctc is the chamber temperature controller,
+    // and it is an integer in Celsius. The Status page was showing a dash for
+    // the chamber on a machine that was reporting 33 C the whole time.
+    //
+    // Both are read, newest first, because the older flat field is what a P1
+    // and an X1 send and this firmware has to be right on all of them.
+    bool got_chamber = false;
+    cJSON *dev = cJSON_GetObjectItemCaseSensitive(print, "device");
+    if (cJSON_IsObject(dev)) {
+        cJSON *ctc = cJSON_GetObjectItemCaseSensitive(dev, "ctc");
+        if (cJSON_IsObject(ctc)) {
+            cJSON *inf = cJSON_GetObjectItemCaseSensitive(ctc, "info");
+            if (cJSON_IsObject(inf)) {
+                e = cJSON_GetObjectItemCaseSensitive(inf, "temp");
+                if (cJSON_IsNumber(e)) {
+                    g_live.chamber_temp = (int)e->valuedouble;
+                    got_chamber = true;
+                }
+            }
+        }
+    }
+    if (!got_chamber) {
+        e = cJSON_GetObjectItemCaseSensitive(print, "chamber_temper");
+        if (cJSON_IsNumber(e)) g_live.chamber_temp = (int)e->valuedouble;
+    }
 
     int f;
     if ((f = fan_pct(print, "cooling_fan_speed")) != -2) g_live.fan_part    = f;
@@ -425,6 +496,161 @@ static void parse_status(cJSON *print)
     e = cJSON_GetObjectItemCaseSensitive(print, "wifi_signal");
     if (cJSON_IsString(e) && e->valuestring[0])
         strlcpy(g_live.printer_rssi, e->valuestring, sizeof g_live.printer_rssi);
+
+    // ---- NOT STOCK. Everything below was already on the wire and nothing
+    // was reading it. All readings; none of it is written from here.
+
+    // Filament present in the extruder. This is the runout sensor, and it is
+    // the one number that says why a print stopped when nothing else does.
+    e = cJSON_GetObjectItemCaseSensitive(print, "hw_switch_state");
+    if (cJSON_IsNumber(e)) g_live.filament_in = e->valueint ? 1 : 0;
+
+    // Speed MAGNITUDE, which is not the speed LEVEL beside it. The level is
+    // one of four presets; the magnitude is the percentage those presets
+    // currently work out to, and they disagree often enough to be worth both.
+    e = cJSON_GetObjectItemCaseSensitive(print, "spd_mag");
+    if (cJSON_IsNumber(e)) g_live.spd_mag = e->valueint;
+
+    e = cJSON_GetObjectItemCaseSensitive(print, "nozzle_diameter");
+    if (cJSON_IsString(e) && e->valuestring[0])
+        strlcpy(g_live.nozzle_dia, e->valuestring, sizeof g_live.nozzle_dia);
+    else if (cJSON_IsNumber(e))
+        snprintf(g_live.nozzle_dia, sizeof g_live.nozzle_dia, "%.1f", e->valuedouble);
+
+    e = cJSON_GetObjectItemCaseSensitive(print, "nozzle_type");
+    if (cJSON_IsString(e) && e->valuestring[0])
+        strlcpy(g_live.nozzle_kind, e->valuestring, sizeof g_live.nozzle_kind);
+
+    // The newer shape carries the nozzle under device.nozzle.info[0], where
+    // the type is a code like "HH01" rather than the older "hardened_steel".
+    cJSON *dev2 = cJSON_GetObjectItemCaseSensitive(print, "device");
+    if (cJSON_IsObject(dev2)) {
+        cJSON *nz = cJSON_GetObjectItemCaseSensitive(dev2, "nozzle");
+        cJSON *inf = nz ? cJSON_GetObjectItemCaseSensitive(nz, "info") : NULL;
+        cJSON *first = cJSON_IsArray(inf) ? cJSON_GetArrayItem(inf, 0) : NULL;
+        if (cJSON_IsObject(first)) {
+            cJSON *d = cJSON_GetObjectItemCaseSensitive(first, "diameter");
+            if (cJSON_IsNumber(d))
+                snprintf(g_live.nozzle_dia, sizeof g_live.nozzle_dia, "%.1f", d->valuedouble);
+            cJSON *ty = cJSON_GetObjectItemCaseSensitive(first, "type");
+            if (cJSON_IsString(ty) && ty->valuestring[0])
+                strlcpy(g_live.nozzle_kind, ty->valuestring, sizeof g_live.nozzle_kind);
+        }
+    }
+
+    // The door, from `stat`. A hex string, and bit 0x00800000 is the door.
+    // The older machines put it in home_flag instead, which is a signed int
+    // that arrives negative, so it is masked rather than compared.
+    e = cJSON_GetObjectItemCaseSensitive(print, "stat");
+    if (cJSON_IsString(e) && e->valuestring[0]) {
+        unsigned long v = strtoul(e->valuestring, NULL, 16);
+        g_live.door_open = (v & 0x00800000UL) ? 1 : 0;
+    }
+
+    // A firmware update waiting on the printer. 1 means one is available and
+    // 2 means none, which is the opposite way round from every other flag in
+    // this report, so it is read explicitly rather than as a truth value.
+    cJSON *up = cJSON_GetObjectItemCaseSensitive(print, "upgrade_state");
+    if (cJSON_IsObject(up)) {
+        e = cJSON_GetObjectItemCaseSensitive(up, "new_version_state");
+        if (cJSON_IsNumber(e)) g_live.fw_update = (e->valueint == 1) ? 1 : 0;
+    }
+
+    // The first HMS fault, spelled the way Bambu's own wiki spells them, so
+    // the code on the page can be pasted into a search and find the answer.
+    // The count is kept separately and already exists.
+    cJSON *hms = cJSON_GetObjectItemCaseSensitive(print, "hms");
+    if (cJSON_IsArray(hms)) {
+        cJSON *h0 = cJSON_GetArrayItem(hms, 0);
+        if (cJSON_IsObject(h0)) {
+            cJSON *at = cJSON_GetObjectItemCaseSensitive(h0, "attr");
+            cJSON *cd = cJSON_GetObjectItemCaseSensitive(h0, "code");
+            if (cJSON_IsNumber(at) && cJSON_IsNumber(cd)) {
+                unsigned a = (unsigned)at->valuedouble, c = (unsigned)cd->valuedouble;
+                snprintf(g_live.hms_code, sizeof g_live.hms_code,
+                         "%04X_%04X_%04X_%04X",
+                         a >> 16, a & 0xFFFF, c >> 16, c & 0xFFFF);
+            }
+        } else {
+            g_live.hms_code[0] = 0;
+        }
+    }
+
+    // The camera. Reported under its own object, and every field of it is a
+    // reading: the only one that can be changed from here is the recording
+    // switch, and that goes out on the camera envelope rather than as G-code.
+    cJSON *cam = cJSON_GetObjectItemCaseSensitive(print, "ipcam");
+    if (cJSON_IsObject(cam)) {
+        cJSON *v;
+        if ((v = cJSON_GetObjectItemCaseSensitive(cam, "ipcam_dev"))) {
+            if (cJSON_IsString(v))      g_live.cam_present = v->valuestring[0] == '1';
+            else if (cJSON_IsNumber(v)) g_live.cam_present = v->valueint ? 1 : 0;
+        }
+        if ((v = cJSON_GetObjectItemCaseSensitive(cam, "ipcam_record")) && cJSON_IsString(v))
+            g_live.cam_record = !strcmp(v->valuestring, "enable");
+        if ((v = cJSON_GetObjectItemCaseSensitive(cam, "timelapse")) && cJSON_IsString(v))
+            g_live.cam_timelapse = !strcmp(v->valuestring, "enable");
+        if ((v = cJSON_GetObjectItemCaseSensitive(cam, "resolution")) &&
+            cJSON_IsString(v) && v->valuestring[0])
+            strlcpy(g_live.cam_res, v->valuestring, sizeof g_live.cam_res);
+        if ((v = cJSON_GetObjectItemCaseSensitive(cam, "rtsp_url")) &&
+            cJSON_IsString(v) && v->valuestring[0])
+            strlcpy(g_live.cam_rtsp, v->valuestring, sizeof g_live.cam_rtsp);
+        // Kilobytes on the wire. Megabytes are what a person reads.
+        if ((v = cJSON_GetObjectItemCaseSensitive(cam, "tl_internal_free_kb")) && cJSON_IsNumber(v))
+            g_live.cam_free_mb = (int)(v->valuedouble / 1024.0);
+        if ((v = cJSON_GetObjectItemCaseSensitive(cam, "tl_internal_total_kb")) && cJSON_IsNumber(v))
+            g_live.cam_total_mb = (int)(v->valuedouble / 1024.0);
+    }
+
+    // The AMS: its humidity and temperature, and what is in each tray.
+    cJSON *ams = cJSON_GetObjectItemCaseSensitive(print, "ams");
+    if (cJSON_IsObject(ams)) {
+        e = cJSON_GetObjectItemCaseSensitive(ams, "tray_now");
+        if (cJSON_IsString(e))      g_live.tray_now = (int)strtol(e->valuestring, NULL, 10);
+        else if (cJSON_IsNumber(e)) g_live.tray_now = e->valueint;
+
+        cJSON *units = cJSON_GetObjectItemCaseSensitive(ams, "ams");
+        cJSON *u0 = cJSON_IsArray(units) ? cJSON_GetArrayItem(units, 0) : NULL;
+        if (cJSON_IsObject(u0)) {
+            // humidity is a LEVEL, 1 to 5. humidity_raw is the percentage.
+            // They are different numbers and showing one as the other is how
+            // a 33% reading becomes "2%".
+            e = cJSON_GetObjectItemCaseSensitive(u0, "humidity");
+            if (cJSON_IsString(e))      g_live.ams_humidity = (int)strtol(e->valuestring, NULL, 10);
+            else if (cJSON_IsNumber(e)) g_live.ams_humidity = e->valueint;
+
+            e = cJSON_GetObjectItemCaseSensitive(u0, "humidity_raw");
+            if (cJSON_IsString(e))      g_live.ams_humidity_pct = (int)strtol(e->valuestring, NULL, 10);
+            else if (cJSON_IsNumber(e)) g_live.ams_humidity_pct = e->valueint;
+
+            e = cJSON_GetObjectItemCaseSensitive(u0, "temp");
+            if (cJSON_IsString(e))      g_live.ams_temp = (int)strtod(e->valuestring, NULL);
+            else if (cJSON_IsNumber(e)) g_live.ams_temp = (int)e->valuedouble;
+
+            cJSON *trays = cJSON_GetObjectItemCaseSensitive(u0, "tray");
+            if (cJSON_IsArray(trays)) {
+                int i = 0;
+                cJSON *tr;
+                cJSON_ArrayForEach(tr, trays) {
+                    if (i >= PV_TRAY_MAX - 1) break;   // the last slot is the external spool
+                    g_live.tray[i].type[0] = 0;
+                    g_live.tray[i].color[0] = 0;
+                    g_live.tray[i].remain = -1;
+                    cJSON *v;
+                    if ((v = cJSON_GetObjectItemCaseSensitive(tr, "tray_type")) &&
+                        cJSON_IsString(v) && v->valuestring[0])
+                        strlcpy(g_live.tray[i].type, v->valuestring, sizeof g_live.tray[i].type);
+                    if ((v = cJSON_GetObjectItemCaseSensitive(tr, "tray_color")) &&
+                        cJSON_IsString(v) && v->valuestring[0])
+                        strlcpy(g_live.tray[i].color, v->valuestring, sizeof g_live.tray[i].color);
+                    if ((v = cJSON_GetObjectItemCaseSensitive(tr, "remain")) && cJSON_IsNumber(v))
+                        g_live.tray[i].remain = v->valueint;
+                    ++i;
+                }
+            }
+        }
+    }
 }
 
 static void handle_report(const char *data, int len)
@@ -572,15 +798,21 @@ static void handle_report(const char *data, int len)
             cJSON_ArrayForEach(e, lights) {
                 cJSON *node = cJSON_GetObjectItemCaseSensitive(e, "node");
                 cJSON *mode = cJSON_GetObjectItemCaseSensitive(e, "mode");
-                if (cJSON_IsString(node) && cJSON_IsString(mode) &&
-                    !strcmp(node->valuestring, "chamber_light")) {
-                    bool on = !strcmp(mode->valuestring, "on");
+                if (!cJSON_IsString(node) || !cJSON_IsString(mode)) continue;
+                bool on = !strcmp(mode->valuestring, "on");
+                if (!strcmp(node->valuestring, "chamber_light")) {
                     if (on != g_live.printer_light) {
                         g_live.printer_light = on;
                         ESP_LOGI(TAG, "printer chamber light -> %s",
                                  on ? "on" : "off");
                         pv_rgb_notify();
                     }
+                } else if (!strcmp(node->valuestring, "work_light")) {
+                    // NOT STOCK. The toolhead light. Reported by every machine
+                    // that has one, and -1 until one says so, because "off"
+                    // and "this printer has no such light" are different
+                    // answers and the page draws them differently.
+                    g_live.work_light = on ? 1 : 0;
                 }
             }
         }

@@ -289,6 +289,14 @@ static void drive_task(void *arg)
     int target = open_dir ? HALL_OPEN : HALL_CLOSED;
     s_moving = true;
     ESP_LOGI(TAG, "vent -> %s (hall target %d)", open_dir ? "OPEN" : "CLOSED", target);
+    // Say so NOW, not just on arrival.
+    //
+    // This task only ever pushed when the travel finished, so "moving" existed
+    // for several seconds and no client was ever told. The page could draw two
+    // states for a thing that has three, and the seconds after somebody taps
+    // the dial - exactly when they are looking at it hardest - were the ones
+    // it could say least about.
+    pv_ws_push_state();
 
     bool moving[PV_MOTOR_GROUPS] = {0};
     // SAFETY DEPARTURE FROM STOCK. Stock re-issues the drive on the tick after
@@ -449,6 +457,8 @@ static void cal_set(const pv_cal_t *v)
     portEXIT_CRITICAL(&s_cal_lock);
     pv_ws_push_state();
 }
+
+bool pv_motor_moving(void) { return s_moving; }
 
 void pv_motor_calibrate_get(pv_cal_t *out)
 {

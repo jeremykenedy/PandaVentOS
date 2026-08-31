@@ -16,26 +16,10 @@ The access code is on the printer: **Settings, then Network, then LAN Only
 Mode**. It is a short code the printer shows you, and it changes if you turn
 LAN Only Mode off and on again.
 
-## LAN Only Mode is not optional
-
-Reading the printer's status works either way. **Sending it a command does
-not.**
-
-With LAN Only Mode off, the printer accepts the connection, accepts the
-message, and then answers every command with:
-
-    mqtt message verify failed
-
-That is the printer refusing, not the vent failing. It was verified here
-against five different message shapes from a plain MQTT client with no vent
-involved at all. The printer wants cloud signed commands unless it is in LAN
-Only Mode.
-
-**Turn LAN Only Mode on if you want the fan, speed and light controls to work.**
-
 ## What it reads
 
-Pushed by the printer, no polling.
+Pushed by the printer, no polling, and never affected by which mode the printer
+is in.
 
 | | |
 | --- | --- |
@@ -46,32 +30,75 @@ Pushed by the printer, no polling.
 | Job | the file name |
 | Nozzle | temperature |
 | Bed | temperature |
-| Chamber | temperature |
+| Chamber | temperature. On a P2S this arrives as `device.ctc.info.temp`, not `chamber_temper`, and reading only the older field is why this showed a dash for a while |
+| Door | open or shut |
+| Nozzle fitted | diameter and material, decoded from the four character code the printer sends |
+| Filament | whether there is any in the extruder, from the runout sensor |
 | Fans | part cooling, auxiliary, chamber |
-| Speed | the current speed level |
-| Light | whether the chamber light is on |
-| AMS | the loaded tray and its filament type |
-| Faults | HMS codes and print errors |
+| Speed | the current level, and the percentage it works out to |
+| Lights | chamber and toolhead |
+| AMS | humidity as a percentage and as a level, temperature, and every spool with its type, its actual colour and how much is left |
+| Faults | HMS codes, spelled the way Bambu's own wiki spells them so a code can be pasted into a search |
+| Firmware | whether an update is waiting on the printer |
 | Signal | the printer's Wi-Fi strength |
 
-## What it can change
+## What it can change, and what it cannot
 
-Requires LAN Only Mode.
+**Two lights. That is the whole list.**
 
-| Control | Range |
+| Control | |
 | --- | --- |
-| Part cooling fan | 0 to 100% |
-| Auxiliary fan | 0 to 100% |
-| Chamber fan | 0 to 100% |
-| Print speed | Silent, Standard, Sport, Ludicrous |
 | Chamber light | on, off |
+| Toolhead light | on, off, when the printer has one |
 
-The vent does not store any of these. It forwards the command and then shows
-you what the printer reports it actually did, which is not always what was
-asked. A slider holds still for a moment after you let go so that the incoming
-reports do not fight your thumb.
+Fans, print speed and temperatures are not here. They were, they were correct,
+and the printer refused every one of them.
 
-If a command is refused, the page says so, with the printer's own reason.
+### The measurement
+
+One connection, one command at a time, against a real machine:
+
+| Command | Answer |
+| --- | --- |
+| `system.ledctrl` chamber light | `result: success` |
+| `system.ledctrl` toolhead light | `result: success` |
+| `system.ledctrl` `chamber_light2` | `fail`, "did not find the valid led" |
+| `print.gcode_line` `M106 P1` part fan | `mqtt message verify failed` |
+| `print.gcode_line` `M106 P2` aux fan | `mqtt message verify failed` |
+| `print.gcode_line` `M106 P3` chamber fan | `mqtt message verify failed` |
+| `print.gcode_line` `M104` nozzle temp | `mqtt message verify failed` |
+| `print.print_speed` | `mqtt message verify failed` |
+| `print.print_option` | `mqtt message verify failed` |
+| `print.set_airduct` | `mqtt message verify failed` |
+| `print.ams_get_rfid` | `mqtt message verify failed` |
+
+The line is exact. **`system.ledctrl` is not signature checked. Everything
+under `print` is.**
+
+### Developer Mode is not LAN Only Mode
+
+The printer tells you which mode it is in, in the `fun` field of its own status
+report. Bit `0x20000000` set means unsigned commands are rejected.
+
+| Mode | Commands |
+| --- | --- |
+| Cloud | rejected |
+| LAN Only Mode | **still rejected** |
+| Developer Mode | accepted |
+
+Developer Mode is a separate switch that only appears in the printer's network
+settings **after** LAN Only Mode is on and the printer has been restarted.
+Turning on LAN Only Mode by itself changes nothing about what the printer will
+accept.
+
+**Reading is never gated.** Every value in the table above arrives whatever
+mode the printer is in. Only writing is, and only the lights get through.
+
+### If your printer is in Developer Mode
+
+The firmware still speaks all of it: the three fans, the speed levels,
+arbitrary G-code. Only the web page stopped drawing controls for them, because
+a control that cannot work teaches you that the page lies.
 
 ## Connection
 
