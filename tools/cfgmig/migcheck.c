@@ -230,7 +230,55 @@ int main(void)
           && !memcmp(&bh2d, &g_h2d[2][9], sizeof bh2d), NULL);
     }
 
-    puts("\n4. a v8 device, two layouts back, also survives");
+    puts("\n4. a v10 device, one layout back, keeps everything");
+    wipe();
+    {
+        pv_cfg_v10_t o;
+        memset(&o, 0, sizeof o);
+        o.magic = CFG_MAGIC_V10;
+        o.rgb.light_on = true;
+        o.rgb.reverse = true;
+        o.rgb.light_mode = PV_MODE_H2D;
+        o.rgb.simple_current = 19;
+        for (int i = 0; i < PV_FX_COUNT; ++i) {
+            o.rgb.simple[i].brightness = (uint8_t)(30 + i);
+            o.rgb.simple[i].speed = (uint8_t)(i * 2);
+            o.rgb.simple[i].rgb[2] = (uint8_t)i;
+            o.rgb.simple[i].aux = (uint8_t)(i % 7);
+            o.rgb.simple[i].opt_set = PV_AUX;
+        }
+        for (int st = 0; st < PV_ST_COUNT; ++st) o.rgb.h2d_active[st] = (uint8_t)(st + 1);
+        snprintf(o.device_name, sizeof o.device_name, "%s", "Ten Unit");
+        o.leds[0] = 16; o.leds[1] = 12;
+        put(CFG_KEY, &o, sizeof o);
+    }
+    pv_cfg_load();
+    t("all twenty effects came across, spare byte and all",
+      g_cfg.rgb.simple[19].brightness == 49 && g_cfg.rgb.simple[19].aux == (19 % 7)
+      && (g_cfg.rgb.simple[19].opt_set & PV_AUX), NULL);
+    t("the master direction survived", g_cfg.rgb.reverse == true, NULL);
+    t("the per-strip flags start clear, so nothing changed direction",
+      g_cfg.rgb.reverse_strips == 0, NULL);
+    {
+        int flipped = 0;
+        for (int i = 0; i < PV_FX_COUNT; ++i)
+            if (g_cfg.rgb.simple[i].opt_set & PV_FX_REVERSE) flipped++;
+        snprintf(B, sizeof B, "%d effects", flipped);
+        t("and no effect claims a direction it never had", flipped == 0, B);
+    }
+    t("its name and LED counts survived",
+      !strcmp(g_cfg.device_name, "Ten Unit") && g_cfg.leds[1] == 12, g_cfg.device_name);
+    t("and it is now the current layout", g_cfg.magic == CFG_MAGIC, NULL);
+    // v10 and v11 are the SAME SIZE: the new byte landed in a padding hole.
+    // So the size check cannot tell them apart and the magic is doing all the
+    // work, which is exactly the situation that has to be proven rather than
+    // assumed. If it were not, the branch above would never have run and a v10
+    // blob would have been read straight in as v11.
+    snprintf(B, sizeof B, "v10 %zu, v11 %zu", sizeof(pv_cfg_v10_t), sizeof(pv_cfg_t));
+    t("the two layouts really are the same size, so the magic is the only test",
+      sizeof(pv_cfg_v10_t) == sizeof(pv_cfg_t), B);
+
+    puts("\n5. a v8 device, three layouts back, also survives");
     wipe();
     {
         pv_cfg_v8_t o;
@@ -257,7 +305,7 @@ int main(void)
     t("nor the spare byte", !(g_cfg.rgb.simple[3].opt_set & PV_AUX), NULL);
     t("and it is now the current layout", g_cfg.magic == CFG_MAGIC, NULL);
 
-    puts("\n5. rubbish is refused rather than half-read");
+    puts("\n6. rubbish is refused rather than half-read");
     wipe();
     {
         unsigned char junk[400];

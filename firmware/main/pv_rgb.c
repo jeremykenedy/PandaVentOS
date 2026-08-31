@@ -1244,7 +1244,7 @@ static int fx_bright_end(const pv_fx_param_t *p)
 }
 
 static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
-                    rgb_t *bg, int *bright_end, int *band, int n)
+                    rgb_t *bg, int *bright_end, int *band, bool *flip, int n)
 {
     // Every path that is not a configured effect runs at one brightness.
     *bright_end = -1;
@@ -1391,6 +1391,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
         *bright = p->brightness; *speed = p->speed;
         *bright_end = fx_bright_end(p);
         *band = fx_band(p, n);
+        *flip = (p->opt_set & PV_FX_REVERSE) != 0;
         return true;
     }
     case PV_MODE_WARNING: {
@@ -1424,6 +1425,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
         *bright = p->brightness; *speed = p->speed;
         *bright_end = fx_bright_end(p);
         *band = fx_band(p, n);
+        *flip = (p->opt_set & PV_FX_REVERSE) != 0;
         return true;
     }
     }
@@ -1467,11 +1469,14 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
     // frame off the FIRST strip's length, so both runs draw the same pole
     // rather than two different ones when they are different lengths.
     int band = 3;
+    // NOT STOCK. Whether THIS effect runs the other way round, which is a
+    // separate answer from the master switch and from the per-strip flags.
+    bool fx_flip = false;
     uint32_t wait_ms = 50;
     pv_fx_phase_t phase;
     int n0 = g_cfg.leds[0];
     if (n0 < 1 || n0 > PV_LEDS_PER_STRIP) n0 = PV_LEDS_PER_STRIP;
-    bool on = resolve(&fx, &color, &bright, &speed, &bg, &bright_end, &band, n0);
+    bool on = resolve(&fx, &color, &bright, &speed, &bg, &bright_end, &band, &fx_flip, n0);
     s_fx_band = band;
     // NOT STOCK. Fold the brightness ramp into the value the effect is
     // given, so every effect inherits it without knowing it exists and an
@@ -1493,8 +1498,20 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
                 // this strip's pass advance it. The last pass leaves the
                 // phase advanced exactly once for the frame.
                 fx_phase_restore(&phase);
+                // Three independent flips, combined by exclusive-or:
+                //
+                //   the master switch     everything turns around
+                //   this strip's flag     one run is mounted backwards
+                //   this effect's flag    this look reads better the other way
+                //
+                // Exclusive-or is the only composition that lets all three
+                // mean the same thing. Two of them set is back where you
+                // started, which is what "turn it around, twice" means.
+                bool rev = g_cfg.rgb.reverse
+                         ^ ((g_cfg.rgb.reverse_strips >> s) & 1)
+                         ^ fx_flip;
                 wait_ms = render_effect(fx, color, bg, bright, speed,
-                                        g_cfg.rgb.reverse, px, n);
+                                        rev, px, n);
                 // Anything past the configured length is explicitly dark.
                 for (int i = n; i < PV_LEDS_PER_STRIP; ++i)
                     px[i] = (rgb_t){0, 0, 0};

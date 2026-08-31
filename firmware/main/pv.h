@@ -164,6 +164,14 @@
 #define PV_BG_CLOSED   0x02   // opt_set: the vent-closed inactive colour is set
 #define PV_BRIGHT_END  0x04   // opt_set: bright_end is set, so brightness ramps
 #define PV_AUX         0x08   // opt_set: aux is set, so the effect uses it
+// NOT STOCK. This effect runs the other way round.
+//
+// A FLIP, not a direction: it is combined with the master switch and with the
+// per-strip flags by exclusive-or, so each of the three answers the question
+// "should this be turned around" and no one of them silently wins. Stock has
+// exactly one direction flag for the whole device; this is per effect, and
+// because the per-state tables hold their own parameters, per state as well.
+#define PV_FX_REVERSE  0x10
 
 typedef struct {
     uint8_t brightness;      // 0..100, and the START of the ramp when one is set
@@ -196,7 +204,12 @@ typedef struct {
     bool    warning_sw;          // warning_overide
     bool    follow_printer;      // is_follow_printer
     bool    follow_vent;         // is_follow_vent
-    bool    reverse;             // is_reverse
+    bool    reverse;             // is_reverse, the master flip
+    // NOT STOCK. One bit per strip, so a run that is physically mounted the
+    // other way round can be turned around on its own instead of forcing the
+    // whole device to match it. Combined with the master flip and the
+    // per-effect one by exclusive-or.
+    uint8_t reverse_strips;
     uint8_t light_mode;          // rgb_light_mode / current_light_mode 0..2
     // Simple mode
     uint8_t simple_current;      // current_simple_effect 0..6

@@ -246,6 +246,14 @@ static void apply_fx_fields(pv_fx_param_t *p, cJSON *o)
             p->opt_set |= PV_AUX;
         }
     }
+    // NOT STOCK. This effect runs the other way round. A flip, not a
+    // direction: it is combined with the master switch and the per-strip flags
+    // by exclusive-or, so no one of the three quietly wins.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "reverse"))) {
+        bool on = cJSON_IsTrue(e) || (cJSON_IsNumber(e) && e->valueint != 0);
+        if (on) p->opt_set |= PV_FX_REVERSE;
+        else    p->opt_set &= (uint8_t)~PV_FX_REVERSE;
+    }
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "inactive_closed"))) {
         if (cJSON_IsNull(e) || (cJSON_IsString(e) && e->valuestring[0] == '\0')) {
             p->opt_set &= (uint8_t)~PV_BG_CLOSED;
@@ -458,10 +466,34 @@ static void apply_vent(cJSON *o)
 static void apply_leds(cJSON *o)
 {
     cJSON *si = cJSON_GetObjectItemCaseSensitive(o, "strip");
-    cJSON *ct = cJSON_GetObjectItemCaseSensitive(o, "count");
-    if (!cJSON_IsNumber(si) || !cJSON_IsNumber(ct)) return;
-    int i = si->valueint, n = ct->valueint;
+    if (!cJSON_IsNumber(si)) return;
+    int i = si->valueint;
     if (i < 0 || i >= PV_STRIP_COUNT_MAX) return;
+
+    // NOT STOCK. Turn ONE strip around, for a run that is physically mounted
+    // the other way. Sent on the same object as the count because it is the
+    // same thing being described: this strip.
+    cJSON *rv = cJSON_GetObjectItemCaseSensitive(o, "reverse");
+    if (cJSON_IsBool(rv) || cJSON_IsNumber(rv)) {
+        bool on = cJSON_IsTrue(rv) || (cJSON_IsNumber(rv) && rv->valueint != 0);
+        uint8_t was = g_cfg.rgb.reverse_strips;
+        if (on) g_cfg.rgb.reverse_strips |=  (uint8_t)(1u << i);
+        else    g_cfg.rgb.reverse_strips &= (uint8_t)~(1u << i);
+        if (was != g_cfg.rgb.reverse_strips) {
+            ESP_LOGI(TAG, "strip %d -> %s", i, on ? "reversed" : "forward");
+            pv_cfg_save();
+            pv_rgb_notify();
+        }
+        pv_ws_push_state();
+        pv_ws_broadcast(pv_json_response("leds", 1));
+        // A message that carries only the direction says nothing about the
+        // count, and must not be read as saying the count is missing.
+        if (!cJSON_GetObjectItemCaseSensitive(o, "count")) return;
+    }
+
+    cJSON *ct = cJSON_GetObjectItemCaseSensitive(o, "count");
+    if (!cJSON_IsNumber(ct)) return;
+    int n = ct->valueint;
     // Refused, not clamped: a count outside the buffer is a mistake worth
     // seeing rather than silently rounding into something that looks fine.
     if (n < 1 || n > PV_LEDS_PER_STRIP) {

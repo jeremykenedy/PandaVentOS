@@ -622,6 +622,87 @@ int main(void)
         t("lights off still means dark, pole or no pole", allDark, NULL);
     }
 
+    puts("\n14. three independent ways to turn a strip around");
+
+    /* Progress at 25% lights the first four of sixteen. Which END those four
+     * are on is the whole question here, and it is one that three separate
+     * settings all get to answer. */
+    #define LIT_AT_START() ({ int _v = !black(frame[0][0]) && black(frame[0][15]); _v; })
+    #define LIT_AT_END()   ({ int _v = black(frame[0][0]) && !black(frame[0][15]); _v; })
+
+    {
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 25;
+        for (int f = 0; f < 60; ++f) step();
+        t("nothing reversed: the bar fills from the start", LIT_AT_START(), NULL);
+    }
+    {
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 25;
+        g_cfg.rgb.reverse = true;
+        for (int f = 0; f < 60; ++f) step();
+        t("the master switch alone: it fills from the far end", LIT_AT_END(), NULL);
+    }
+    {
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 25;
+        g_cfg.rgb.simple[PV_FX_PROGRESS].opt_set |= PV_FX_REVERSE;
+        for (int f = 0; f < 60; ++f) step();
+        t("the effect's own flag alone: the same, from the far end", LIT_AT_END(), NULL);
+    }
+    {
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 25;
+        g_cfg.rgb.reverse_strips = 1;          /* strip 0 only */
+        for (int f = 0; f < 60; ++f) step();
+        t("one strip's flag alone: that strip fills from the far end", LIT_AT_END(), NULL);
+        int otherAtStart = !black(frame[1][0]) && black(frame[1][15]);
+        t("and the OTHER strip is untouched by it", otherAtStart, NULL);
+    }
+    {
+        /* Exclusive-or, not "any of them wins". Two flips is where you
+         * started, and a scheme where the second one did nothing would make
+         * the per-effect flag useless the moment the master switch was on. */
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 25;
+        g_cfg.rgb.reverse = true;
+        g_cfg.rgb.simple[PV_FX_PROGRESS].opt_set |= PV_FX_REVERSE;
+        for (int f = 0; f < 60; ++f) step();
+        t("master AND effect: turned around twice, so back at the start",
+          LIT_AT_START(), NULL);
+    }
+    {
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 25;
+        g_cfg.rgb.reverse = true;
+        g_cfg.rgb.reverse_strips = 1;
+        g_cfg.rgb.simple[PV_FX_PROGRESS].opt_set |= PV_FX_REVERSE;
+        for (int f = 0; f < 60; ++f) step();
+        t("all three: three flips is one flip, so the far end again",
+          LIT_AT_END(), NULL);
+        int otherAtStart = !black(frame[1][0]) && black(frame[1][15]);
+        t("and the strip without its own flag is back at the start", otherAtStart, NULL);
+    }
+    {
+        /* The per-state tables carry their own parameters, so a per-effect
+         * flag is a per-state one for free. */
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 25;
+        g_cfg.rgb.light_mode = PV_MODE_H2D;
+        g_live.device_state = PV_ST_PRINTING;
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            g_cfg.rgb.h2d_active[st] = PV_FX_PROGRESS;
+            g_h2d[st][PV_FX_PROGRESS] = g_cfg.rgb.simple[PV_FX_PROGRESS];
+        }
+        g_h2d[PV_ST_PRINTING][PV_FX_PROGRESS].opt_set |= PV_FX_REVERSE;
+        for (int f = 0; f < 60; ++f) step();
+        t("printing has its own direction", LIT_AT_END(), NULL);
+
+        g_live.device_state = PV_ST_IDLE;
+        for (int f = 0; f < 60; ++f) step();
+        t("and idle, which does not, keeps the other one", LIT_AT_START(), NULL);
+    }
+
     printf("\n%d passed, %d failed\n", ok_n, bad_n);
     return bad_n ? 1 : 0;
 }

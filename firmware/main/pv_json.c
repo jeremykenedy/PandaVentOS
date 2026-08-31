@@ -49,6 +49,9 @@ static cJSON *fx_param(int id_key_is_effect, int id, const pv_fx_param_t *p)
     // able to tell "never set" from "set to zero".
     if (p->opt_set & PV_AUX)
         cJSON_AddNumberToObject(o, "aux", p->aux);
+    // Always sent, unlike the optional ones above: an effect is either
+    // reversed or it is not, and there is no third answer to leave out.
+    cJSON_AddBoolToObject(o, "reverse", (p->opt_set & PV_FX_REVERSE) != 0);
     return o;
 }
 
@@ -135,6 +138,14 @@ const char *pv_json_state_part(int part)
                 cJSON_AddNumberToObject(rm, "preview_percent", pv_rgb_preview_percent());
         }
         cJSON_AddBoolToObject(rm, "is_reverse", g_cfg.rgb.reverse);
+        // NOT STOCK. One flag per strip, so a run mounted the other way round
+        // can be turned around on its own.
+        {
+            cJSON *rs = cJSON_AddArrayToObject(rm, "reverse_strips");
+            for (int i = 0; i < PV_STRIP_COUNT_MAX; ++i)
+                cJSON_AddItemToArray(rs, cJSON_CreateBool(
+                    (g_cfg.rgb.reverse_strips >> i) & 1));
+        }
         cJSON_AddNumberToObject(rm, "current_simple_effect", g_cfg.rgb.simple_current);
         cJSON *effects = cJSON_AddArrayToObject(rm, "effects");
         for (int i = 0; i < PV_FX_COUNT; ++i)

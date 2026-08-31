@@ -15,7 +15,8 @@ static const char *TAG = "pv_cfg";
 
 #define CFG_NS    "pv"
 #define CFG_KEY   "cfg"
-#define CFG_MAGIC 0x50564341   // "PVCA": twenty effects, one spare byte each
+#define CFG_MAGIC 0x50564342   // "PVCB": per-strip direction flags
+#define CFG_MAGIC_V10 0x50564341  // "PVCA": twenty effects, one spare byte each
 #define CFG_MAGIC_V9 0x50564339   // "PVC9": eighteen effects, brightness ramp
 #define CFG_MAGIC_V8 0x50564338   // "PVC8": four colours, H2D split out
 #define CFG_MAGIC_V7 0x50564337   // "PVC7": one blob, two colours
@@ -130,6 +131,46 @@ typedef struct {
     uint8_t bg_closed[3];
     uint8_t opt_set;
 } pv_fx_param_v8_t;
+
+// NOTE: this is the SAME SIZE as pv_cfg_t. The bools before the new byte left
+// a padding hole and it landed in one, so the stored length cannot tell v10
+// from v11 and the magic is doing all the work. That is fine, and it is why
+// every branch below checks the magic FIRST and treats the size as a
+// corroboration rather than as the test.
+//
+// v10 is the current layout minus the per-strip direction flags. Only
+// pv_rgb_cfg_t changes, so the H2D tables are untouched and keep their magic:
+// the effect parameters are the same bytes they were, and the new per-effect
+// direction lives in a bit of the flag byte those bytes already carry.
+typedef struct {
+    bool    light_on;
+    bool    warning_sw;
+    bool    follow_printer;
+    bool    follow_vent;
+    bool    reverse;
+    uint8_t light_mode;
+    uint8_t simple_current;
+    pv_fx_param_t simple[PV_FX_COUNT];
+    uint8_t h2d_active[PV_ST_COUNT];
+    uint8_t warnhot_current[2];
+    uint8_t warnhot_bg[2][2];
+    uint8_t warnhot_speed[2][2];
+} pv_rgb_cfg_v10_t;
+
+typedef struct {
+    uint32_t magic;
+    pv_rgb_cfg_v10_t rgb;
+    pv_printer_cfg_t printer;
+    pv_ap_cfg_t ap;
+    char hostname[32];
+    char language[6];
+    bool motor_manual;
+    bool motor_manual_open;
+    char device_name[32];
+    uint8_t ring_mode;
+    bool    ring_blink;
+    uint8_t leds[PV_STRIP_COUNT_MAX];
+} pv_cfg_v10_t;
 
 // v9 is the current layout minus the spare per-effect byte, and two effects
 // short. v10 appends `aux` to each effect and gives the flag byte a fourth
@@ -753,19 +794,62 @@ void pv_cfg_load(void)
     }
     // Big enough for either layout. nvs_get_blob fills in the stored length,
     // and the magic says which shape those bytes are.
-    union { pv_cfg_t v10; pv_cfg_v9_t v9; pv_cfg_v8_t v8; pv_cfg_v7_t v7; pv_cfg_v6_t v6; pv_cfg_v5_t v5; pv_cfg_v4_t v4; pv_cfg_v3_t v3; pv_cfg_v2_t v2;
+    union { pv_cfg_t v11; pv_cfg_v10_t v10; pv_cfg_v9_t v9; pv_cfg_v8_t v8; pv_cfg_v7_t v7; pv_cfg_v6_t v6; pv_cfg_v5_t v5; pv_cfg_v4_t v4; pv_cfg_v3_t v3; pv_cfg_v2_t v2;
             pv_cfg_v1_t v1; } stored;
     size_t size = sizeof(stored);
     esp_err_t err = nvs_get_blob(h, CFG_KEY, &stored, &size);
     nvs_close(h);
 
     if (err == ESP_OK && size == sizeof(pv_cfg_t) &&
-        stored.v10.magic == CFG_MAGIC) {
-        g_cfg = stored.v10;
+        stored.v11.magic == CFG_MAGIC) {
+        g_cfg = stored.v11;
         if (!h2d_load_all())
             ESP_LOGW(TAG, "some H2D tables missing; defaults kept for those");
         cfg_clamp_loaded();
         ESP_LOGI(TAG, "config loaded (%u B)", (unsigned)size);
+        return;
+    }
+
+    // v10 -> v11. One byte: the per-strip direction flags, which start clear so
+    // every strip follows the master flip exactly as it did. The effect
+    // parameters are byte-identical, so the H2D tables are not touched at all.
+    if (err == ESP_OK && stored.v10.magic == CFG_MAGIC_V10 &&
+        size == sizeof(pv_cfg_v10_t)) {
+        const pv_rgb_cfg_v10_t *o = &stored.v10.rgb;
+        g_cfg.rgb.light_on       = o->light_on;
+        g_cfg.rgb.warning_sw     = o->warning_sw;
+        g_cfg.rgb.follow_printer = o->follow_printer;
+        g_cfg.rgb.follow_vent    = o->follow_vent;
+        g_cfg.rgb.reverse        = o->reverse;
+        g_cfg.rgb.reverse_strips = 0;
+        g_cfg.rgb.light_mode     = o->light_mode;
+        g_cfg.rgb.simple_current = o->simple_current;
+        memcpy(g_cfg.rgb.simple, o->simple, sizeof(g_cfg.rgb.simple));
+        memcpy(g_cfg.rgb.h2d_active, o->h2d_active, sizeof(g_cfg.rgb.h2d_active));
+        memcpy(g_cfg.rgb.warnhot_current, o->warnhot_current,
+               sizeof(g_cfg.rgb.warnhot_current));
+        memcpy(g_cfg.rgb.warnhot_bg, o->warnhot_bg, sizeof(g_cfg.rgb.warnhot_bg));
+        memcpy(g_cfg.rgb.warnhot_speed, o->warnhot_speed,
+               sizeof(g_cfg.rgb.warnhot_speed));
+
+        g_cfg.printer           = stored.v10.printer;
+        g_cfg.ap                = stored.v10.ap;
+        memcpy(g_cfg.hostname, stored.v10.hostname, sizeof(g_cfg.hostname));
+        memcpy(g_cfg.language, stored.v10.language, sizeof(g_cfg.language));
+        g_cfg.motor_manual      = stored.v10.motor_manual;
+        g_cfg.motor_manual_open = stored.v10.motor_manual_open;
+        memcpy(g_cfg.device_name, stored.v10.device_name, sizeof(g_cfg.device_name));
+        g_cfg.ring_mode         = stored.v10.ring_mode;
+        g_cfg.ring_blink        = stored.v10.ring_blink;
+        memcpy(g_cfg.leds, stored.v10.leds, sizeof(g_cfg.leds));
+        g_cfg.magic             = CFG_MAGIC;
+
+        if (!h2d_load_all())
+            ESP_LOGW(TAG, "some H2D tables missing; defaults kept for those");
+        cfg_clamp_loaded();
+        ESP_LOGW(TAG, "migrated config v10 -> v11 (%u B -> %u B), per-strip direction added clear",
+                 (unsigned)size, (unsigned)sizeof(pv_cfg_t));
+        pv_cfg_save();
         return;
     }
 
