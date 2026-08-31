@@ -430,8 +430,10 @@ void pv_rgb_stop(void);
 // did not, previewing with the lights off, or with Follow Printer on and the
 // chamber light off, would show nothing and read as a broken button.
 //
-// state and percent are for the forced-state preview and are -1 (use the live
-// value) until that is wired up.
+// state pins the printer state the LIGHT answers to, and percent pins the
+// progress the progress effects fill to. Both are -1 for "use the live value".
+// Neither is written back into g_live: the motor and the vent policy read the
+// real device state, and a preview must never move the flap.
 typedef struct {
     bool          active;
     int64_t       until_us;
@@ -447,6 +449,9 @@ void pv_rgb_preview(int fx, const pv_fx_param_t *p, int state, int percent, int 
 void pv_rgb_preview_cancel(void);
 // Seconds remaining, or 0 when no preview is running.
 int  pv_rgb_preview_left(void);
+// The forced printer state and pinned percentage, or -1 for "use the live one".
+int  pv_rgb_preview_state(void);
+int  pv_rgb_preview_percent(void);
 
 // NOT STOCK. One rendered frame, the SHIPPING one: render_task calls it and
 // does nothing else, and tools/fxdump calls it with a buffer and push = false

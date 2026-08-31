@@ -265,6 +265,11 @@ static inline uint8_t chan_f(uint8_t colour, uint8_t bright100, float f)
 // channel and needs no clamp.
 static rgb_t s_fx_bg;            // set once per frame by render_effect
 
+// The print percentage the effects should use. Defined further down, next to
+// the preview state it consults; declared here because the progress renderer
+// above needs it.
+static int fx_percent(void);
+
 static inline rgb_t mix3(rgb_t active, uint8_t bright100, float f)
 {
     rgb_t o;
@@ -734,7 +739,9 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         // per frame, and the frame period is speed-dependent, so a slower
         // speed setting also means a lazier catch-up, which is what someone
         // reaching for the speed slider on a progress bar is asking for.
-        float target = (float)g_live.print_percent;
+        // NOT STOCK. A preview may pin the percentage, so the fill can be
+        // judged at a chosen point instead of waiting for a print to reach it.
+        float target = (float)fx_percent();
         float delta  = target - s_progress_shown;
         // Snap on a big jump. A new print starting at 0 after the last one
         // finished at 100 should not spend five seconds draining.
@@ -1071,6 +1078,54 @@ void pv_rgb_preview_cancel(void)
     xSemaphoreGive(s_lock);
 }
 
+// The print percentage the effects should use: the preview's, when it has
+// pinned one, otherwise whatever the printer is actually reporting.
+static int fx_percent(void)
+{
+    if (s_preview.active && s_preview.percent >= 0) return s_preview.percent;
+    return g_live.print_percent;
+}
+
+// NOT STOCK. The printer state the LIGHT should answer to. A preview may pin
+// one so the look of a state can be judged without waiting for the printer to
+// reach it, which for the error state means without causing an error.
+//
+// Deliberately read-side and local to this renderer. g_live.device_state
+// itself is never written, because pv_motor.c reads it to choose the flap
+// direction and pv_policy.c reads it to decide whether to vent at all: a
+// preview must change what the strip shows and nothing else.
+static int fx_state(void)
+{
+    if (s_preview.active && s_preview.state >= 0) return s_preview.state;
+    return g_live.device_state;
+}
+
+// NOT STOCK. Retire a preview whose time is up.
+//
+// Called at the very top of resolve() rather than at the override, because
+// several gates above the override return early: a pinned ERROR state with
+// the warning override on answers red at gate 2 and never reaches it. Expiring
+// there too would leave the preview pinned for good.
+static void preview_tick(void)
+{
+    if (s_preview.active && esp_timer_get_time() >= s_preview.until_us) {
+        s_preview.active = false;
+        pv_ws_push_state();          // let the UI drop its countdown
+    }
+}
+
+// What a running preview has pinned, or -1 where it has pinned nothing. Only
+// meaningful while pv_rgb_preview_left() is non-zero.
+int pv_rgb_preview_state(void)
+{
+    return s_preview.active ? s_preview.state : -1;
+}
+
+int pv_rgb_preview_percent(void)
+{
+    return s_preview.active ? s_preview.percent : -1;
+}
+
 int pv_rgb_preview_left(void)
 {
     if (!s_preview.active) return 0;
@@ -1094,6 +1149,8 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
     // Every path that does not come from a configured effect keeps the stock
     // behaviour of going dark where it is not lit.
     *bg = (rgb_t){0, 0, 0};
+
+    preview_tick();      // NOT STOCK, and above every early return by design
 
     // ---- Level 1: factory test mode, gate at 0x400dcb2d ----
     if (s_test_entered) {
@@ -1175,7 +1232,7 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
 
     // 2. warning_overide, switch array +4, gate at 0x400dcc90, and only when
     //    the printer state byte reads ERROR (0x400dcc98 tests == 1).
-    if (r->warning_sw && g_live.device_state == PV_ST_ERROR) {
+    if (r->warning_sw && fx_state() == PV_ST_ERROR) {
         if (r->light_mode != PV_MODE_H2D) {
             // 0x400dcc9d: mode != 1 routes to 0x400ddeac, solid red 127.
             *fx = PV_FX_OVERRIDE_RED;
@@ -1205,24 +1262,23 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
     // gates, which would otherwise make a preview show nothing at all. See the
     // comment on pv_preview_t.
     if (s_preview.active) {
-        if (esp_timer_get_time() >= s_preview.until_us) {
-            s_preview.active = false;
-            pv_ws_push_state();          // let the UI drop its countdown
-        } else {
-            const pv_fx_param_t *p = &s_preview.p;
-            *fx = s_preview.fx;
-            *color = fx_colour(p);
-            *bg = fx_bg(p);
-            *bright = p->brightness;
-            *speed = p->speed;
-            *bright_end = fx_bright_end(p);
-            return true;
-        }
+        const pv_fx_param_t *p = &s_preview.p;
+        *fx = s_preview.fx;
+        *color = fx_colour(p);
+        *bg = fx_bg(p);
+        *bright = p->brightness;
+        *speed = p->speed;
+        *bright_end = fx_bright_end(p);
+        return true;
     }
 
     // 5. The selected light mode.
     switch (r->light_mode) {
     case PV_MODE_H2D: {
+        // The live state, not fx_state(): a pinned state cannot reach here,
+        // because the preview override above returns before it. Pinning is
+        // felt at the warning gate, which sits above that override, and in
+        // fx_percent(), which the progress effects read.
         int st = g_live.device_state;
         if (st < 0 || st >= PV_ST_COUNT) st = PV_ST_IDLE;
         int e = r->h2d_active[st];

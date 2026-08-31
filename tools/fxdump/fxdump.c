@@ -19,6 +19,7 @@
 
 /* pv_rgb.c owns these; the firmware defines them in pv_cfg.c. */
 #include "pv.h"
+int64_t   fc_clock_us;      /* the movable stub clock */
 pv_cfg_t  g_cfg;
 pv_live_t g_live;
 

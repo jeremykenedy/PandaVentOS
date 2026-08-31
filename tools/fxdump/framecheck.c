@@ -14,6 +14,7 @@
 #include <string.h>
 
 #include "pv.h"
+int64_t   fc_clock_us;      /* the movable stub clock */
 pv_cfg_t  g_cfg;
 pv_live_t g_live;
 
@@ -77,6 +78,10 @@ static void setup(int fx, const char *open_hex, const char *closed_hex,
 {
     memset(&g_cfg, 0, sizeof(g_cfg));
     memset(&g_live, 0, sizeof(g_live));
+    /* A preview left running by the previous case would silently answer this
+     * one instead of the config being set up here. */
+    pv_rgb_preview_cancel();
+    fc_clock_us = 0;
     s_strips = 2;
     s_test_entered = false;
     s_link_ind = 0;
@@ -338,6 +343,106 @@ int main(void)
         for (int s2 = 0; s2 < 2; ++s2)
             for (int i = 0; i < 16; ++i) if (!black(frame[s2][i])) allDark = 0;
         t("lights off: both strips dark, inactive colour and all", allDark, NULL);
+    }
+
+    puts("\n12. a preview pins the printer state and the job progress");
+    /* The pinned percentage. The progress effect must fill to what the preview
+     * says and not to what the printer is reporting, so a fill can be judged
+     * without waiting for a print to reach it. */
+    {
+        pv_fx_param_t p;
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 10;
+        p = g_cfg.rgb.simple[PV_FX_PROGRESS];
+        pv_rgb_preview(PV_FX_PROGRESS, &p, -1, 75, 60);
+        for (int f = 0; f < 60; ++f) step();
+        int lit = 0;
+        for (int i = 0; i < 16; ++i) if (!black(frame[0][i])) lit++;
+        snprintf(buf, sizeof buf, "lit=%d want~12", lit);
+        t("progress fills to the PINNED percent, not the printer's",
+          lit >= 11 && lit <= 13, buf);
+
+        /* And drops back the moment the pin goes away. */
+        pv_rgb_preview_cancel();
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.print_percent = 10;
+        for (int f = 0; f < 60; ++f) step();
+        lit = 0;
+        for (int i = 0; i < 16; ++i) if (!black(frame[0][i])) lit++;
+        snprintf(buf, sizeof buf, "lit=%d want~2", lit);
+        t("and back to the printer's percent once the preview is cancelled",
+          lit >= 1 && lit <= 3, buf);
+    }
+
+    /* The pinned STATE. Pinning ERROR with the warning override on must give
+     * stock's solid red 127, which is the whole point: see the fault look
+     * without causing a fault. */
+    {
+        pv_fx_param_t p;
+        setup(PV_FX_STATIC, "00FF00", "00FF00", NULL, NULL, 100, -1, 16, 16, true);
+        g_cfg.rgb.warning_sw = true;
+        g_live.device_state = PV_ST_IDLE;
+        p = g_cfg.rgb.simple[PV_FX_STATIC];
+        step();
+        t("no pin, printer idle: the panel's own colour",
+          is(frame[0][0], 0, 255, 0), NULL);
+
+        pv_rgb_preview(PV_FX_STATIC, &p, PV_ST_ERROR, -1, 60);
+        step();
+        t("pinning ERROR with the warning override on shows stock's red 127",
+          is(frame[0][0], 127, 0, 0), NULL);
+
+        /* The override sits ABOVE the preview, so it must beat it. */
+        pv_rgb_preview_cancel();
+        step();
+        t("cancelling the preview puts the panel's colour back",
+          is(frame[0][0], 0, 255, 0), NULL);
+
+        /* With the warning override OFF the pin changes nothing: stock only
+         * consults the printer state through that one gate. */
+        g_cfg.rgb.warning_sw = false;
+        pv_rgb_preview(PV_FX_STATIC, &p, PV_ST_ERROR, -1, 60);
+        step();
+        t("with the warning override off, pinning ERROR shows the preview",
+          is(frame[0][0], 0, 255, 0), NULL);
+        pv_rgb_preview_cancel();
+    }
+
+    /* A pin must never leak into g_live: pv_motor.c reads device_state to
+     * choose the flap direction and pv_policy.c reads it to decide whether to
+     * vent at all. A preview that moved the flap would be a hardware bug. */
+    {
+        pv_fx_param_t p;
+        setup(PV_FX_STATIC, "00FF00", "00FF00", NULL, NULL, 100, -1, 16, 16, true);
+        g_live.device_state = PV_ST_IDLE;
+        g_live.print_percent = 10;
+        p = g_cfg.rgb.simple[PV_FX_STATIC];
+        pv_rgb_preview(PV_FX_STATIC, &p, PV_ST_PRINTING, 90, 60);
+        for (int f = 0; f < 10; ++f) step();
+        t("the pinned state never reaches g_live.device_state",
+          g_live.device_state == PV_ST_IDLE, NULL);
+        t("nor the pinned percent g_live.print_percent",
+          g_live.print_percent == 10, NULL);
+        pv_rgb_preview_cancel();
+    }
+
+    /* The deadline has to be honoured on every path out of resolve(), not just
+     * the one that runs the override. A pinned ERROR with the warning override
+     * on returns red at the gate above it and never reaches the override, so
+     * expiring there would leave the preview pinned for good. */
+    {
+        pv_fx_param_t p;
+        setup(PV_FX_STATIC, "00FF00", "00FF00", NULL, NULL, 100, -1, 16, 16, true);
+        g_cfg.rgb.warning_sw = true;
+        p = g_cfg.rgb.simple[PV_FX_STATIC];
+        pv_rgb_preview(PV_FX_STATIC, &p, PV_ST_ERROR, -1, 1);
+        step();
+        t("pinned ERROR is red while it runs", is(frame[0][0], 127, 0, 0), NULL);
+        fc_clock_us += 2000000;                 /* two seconds later */
+        step();
+        t("and expires on its own even down that early-return path",
+          is(frame[0][0], 0, 255, 0), NULL);
+        t("with the preview really gone", pv_rgb_preview_left() == 0, NULL);
     }
 
     printf("\n%d passed, %d failed\n", ok_n, bad_n);

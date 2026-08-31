@@ -83,8 +83,15 @@ char *pv_json_state(void)
     cJSON_AddBoolToObject(rm, "is_follow_vent", g_cfg.rgb.follow_vent);
     // NOT STOCK. A live preview is running; the page shows a countdown and an
     // obvious way out. Absent when nothing is being previewed.
-    if (pv_rgb_preview_left() > 0)
+    if (pv_rgb_preview_left() > 0) {
         cJSON_AddNumberToObject(rm, "preview_left", pv_rgb_preview_left());
+        // Absent unless the preview pinned one, so "not pinned" and "pinned to
+        // zero" stay different things.
+        if (pv_rgb_preview_state() >= 0)
+            cJSON_AddNumberToObject(rm, "preview_state", pv_rgb_preview_state());
+        if (pv_rgb_preview_percent() >= 0)
+            cJSON_AddNumberToObject(rm, "preview_percent", pv_rgb_preview_percent());
+    }
     cJSON_AddBoolToObject(rm, "is_reverse", g_cfg.rgb.reverse);
     cJSON_AddNumberToObject(rm, "current_simple_effect", g_cfg.rgb.simple_current);
     cJSON *effects = cJSON_AddArrayToObject(rm, "effects");
