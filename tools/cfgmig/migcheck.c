@@ -192,7 +192,7 @@ int main(void)
         snprintf(B, sizeof B, "%d effects", aux_set);
         t("no migrated effect claims a spare byte it never had", aux_set == 0, B);
     }
-    t("the two new effects exist", PV_FX_COUNT == 20, NULL);
+    t("the effect count has only grown", PV_FX_COUNT > PV_FX_COUNT_V9, NULL);
     t("and carry a real brightness rather than zero",
       g_cfg.rgb.simple[PV_FX_PROGRESS_ANIM].brightness > 0
       && g_cfg.rgb.simple[PV_FX_BARBER].brightness > 0, NULL);
@@ -269,16 +269,83 @@ int main(void)
     t("its name and LED counts survived",
       !strcmp(g_cfg.device_name, "Ten Unit") && g_cfg.leds[1] == 12, g_cfg.device_name);
     t("and it is now the current layout", g_cfg.magic == CFG_MAGIC, NULL);
-    // v10 and v11 are the SAME SIZE: the new byte landed in a padding hole.
-    // So the size check cannot tell them apart and the magic is doing all the
-    // work, which is exactly the situation that has to be proven rather than
-    // assumed. If it were not, the branch above would never have run and a v10
-    // blob would have been read straight in as v11.
-    snprintf(B, sizeof B, "v10 %zu, v11 %zu", sizeof(pv_cfg_v10_t), sizeof(pv_cfg_t));
-    t("the two layouts really are the same size, so the magic is the only test",
-      sizeof(pv_cfg_v10_t) == sizeof(pv_cfg_t), B);
+    // v10 and v11 were the SAME SIZE, because the byte that separated them
+    // landed in a padding hole; the magic was doing all the work. v12 is
+    // bigger again, but the lesson stands and is asserted rather than assumed:
+    // every branch has to check the MAGIC, and a layout that happens to match
+    // on length must not be read in as the current one.
+    snprintf(B, sizeof B, "v10 %zu, v11 %zu, v12 %zu",
+             sizeof(pv_cfg_v10_t), sizeof(pv_cfg_v11_t), sizeof(pv_cfg_t));
+    t("v10 and v11 are the same size, so the magic is the only thing separating them",
+      sizeof(pv_cfg_v10_t) == sizeof(pv_cfg_v11_t), B);
+    // Every layout is at most as big as the one after it. A legacy struct that
+    // measures LARGER than the current one is a struct that followed the live
+    // effect count instead of the frozen one, and has stopped describing the
+    // bytes it exists to describe. That happened, and this is what found it.
+    t("no stored layout is larger than the one that replaced it",
+      sizeof(pv_cfg_v8_t)  <= sizeof(pv_cfg_v9_t)  &&
+      sizeof(pv_cfg_v9_t)  <= sizeof(pv_cfg_v10_t) &&
+      sizeof(pv_cfg_v10_t) <= sizeof(pv_cfg_v11_t) + 0 &&
+      sizeof(pv_cfg_v11_t) <= sizeof(pv_cfg_t), B);
+    t("and the config still fits the NVS budget", sizeof(pv_cfg_t) <= PV_CFG_MAX_BYTES, B);
 
-    puts("\n5. a v8 device, three layouts back, also survives");
+    puts("\n5. a v11 device, one layout back, keeps everything");
+    wipe();
+    {
+        pv_cfg_v11_t o;
+        memset(&o, 0, sizeof o);
+        o.magic = CFG_MAGIC_V11;
+        o.rgb.light_on = true;
+        o.rgb.reverse = true;
+        o.rgb.reverse_strips = 0x02;          /* strip 2 only */
+        o.rgb.light_mode = PV_MODE_SIMPLE;
+        o.rgb.simple_current = 13;
+        for (int i = 0; i < PV_FX_COUNT_V11; ++i) {
+            o.rgb.simple[i].brightness = (uint8_t)(40 + i);
+            o.rgb.simple[i].rgb[1] = (uint8_t)i;
+            o.rgb.simple[i].aux = (uint8_t)(i % 5);
+            o.rgb.simple[i].opt_set = PV_AUX | ((i & 1) ? PV_FX_REVERSE : 0);
+        }
+        snprintf(o.device_name, sizeof o.device_name, "%s", "Eleven Unit");
+        o.leds[0] = 16; o.leds[1] = 16;
+        put(CFG_KEY, &o, sizeof o);
+
+        pv_h2d_blob_v11_t hb;
+        for (int st = 0; st < PV_ST_COUNT; ++st) {
+            memset(&hb, 0, sizeof hb);
+            hb.magic = H2D_MAGIC_V11;
+            for (int f = 0; f < PV_FX_COUNT_V11; ++f) {
+                hb.fx[f].brightness = (uint8_t)(st * 7 + f);
+                hb.fx[f].rgb[0] = (uint8_t)(st + f);
+                hb.fx[f].opt_set = PV_FX_REVERSE;
+            }
+            char k[8]; h2d_key(st, k);
+            put(k, &hb, sizeof hb);
+        }
+    }
+    pv_cfg_load();
+    t("all twenty effects came across",
+      g_cfg.rgb.simple[19].brightness == 59 && g_cfg.rgb.simple[19].aux == (19 % 5), NULL);
+    t("their per-effect direction came with them",
+      (g_cfg.rgb.simple[1].opt_set & PV_FX_REVERSE)
+      && !(g_cfg.rgb.simple[2].opt_set & PV_FX_REVERSE), NULL);
+    t("the per-strip flags came across", g_cfg.rgb.reverse_strips == 0x02,
+      NULL);
+    t("the H2D tables came across too",
+      g_h2d[3][11].brightness == 3 * 7 + 11
+      && (g_h2d[3][11].opt_set & PV_FX_REVERSE), NULL);
+    t("and the new effect arrived at the factory default in every state",
+      g_h2d[0][PV_FX_TEMP_GRADIENT].brightness > 0
+      && g_h2d[5][PV_FX_TEMP_GRADIENT].brightness > 0, NULL);
+    t("the settings that used to be compiled in start unset",
+      g_cfg.rgb.warn_hot_c == 0 && !g_cfg.rgb.err_set
+      && !g_cfg.rgb.contiguous && g_cfg.rgb.grad_min_c == 0, NULL);
+    t("the gradient's own colours are set, because unset would be a dimmer",
+      (g_cfg.rgb.simple[PV_FX_TEMP_GRADIENT].opt_set & PV_BG_OPEN) != 0, NULL);
+    t("its name survived", !strcmp(g_cfg.device_name, "Eleven Unit"), g_cfg.device_name);
+    t("and it is now the current layout", g_cfg.magic == CFG_MAGIC, NULL);
+
+    puts("\n6. a v8 device, four layouts back, also survives");
     wipe();
     {
         pv_cfg_v8_t o;
@@ -305,7 +372,7 @@ int main(void)
     t("nor the spare byte", !(g_cfg.rgb.simple[3].opt_set & PV_AUX), NULL);
     t("and it is now the current layout", g_cfg.magic == CFG_MAGIC, NULL);
 
-    puts("\n6. rubbish is refused rather than half-read");
+    puts("\n7. rubbish is refused rather than half-read");
     wipe();
     {
         unsigned char junk[400];

@@ -143,9 +143,14 @@ int main(void)
         (void)frames;
     }
 
-    puts("\n2. with NO inactive colour those same pixels are black, all 18 effects");
+    puts("\n2. with NO inactive colour those same pixels are black, every effect");
     for (int fx = 0; fx < PV_FX_COUNT; ++fx) {
         setup(fx, "0000FF", "0000FF", NULL, NULL, 100, -1, 16, 16, true);
+        // The gradient draws its COLD colour at a cold bed, and the cold end
+        // is the inactive colour, which this loop deliberately leaves unset.
+        // A hot bed is what makes it draw anything at all here; that it is
+        // dark when cold and unset is the subject of its own section below.
+        g_live.bed_temp = 100;
         int nonBlackEver = 0;
         for (int f = 0; f < 60; ++f) {
             step();
@@ -701,6 +706,186 @@ int main(void)
         g_live.device_state = PV_ST_IDLE;
         for (int f = 0; f < 60; ++f) step();
         t("and idle, which does not, keeps the other one", LIT_AT_START(), NULL);
+    }
+
+    puts("\n15. the bed temperature, as a colour");
+    {
+        /* Cold end is the inactive colour, hot end is the active one. */
+        setup(PV_FX_TEMP_GRADIENT, "FF0000", "FF0000", "0000FF", "0000FF",
+              100, -1, 16, 16, true);
+        g_cfg.rgb.grad_min_c = 20;
+        g_cfg.rgb.grad_max_c = 60;
+
+        g_live.bed_temp = 0;
+        step();
+        t("below the cold point it is exactly the cold colour",
+          is(frame[0][0], 0, 0, 255), NULL);
+
+        g_live.bed_temp = 100;
+        step();
+        t("above the hot point it is exactly the hot colour",
+          is(frame[0][0], 255, 0, 0), NULL);
+
+        g_live.bed_temp = 40;                    /* half way */
+        step();
+        snprintf(buf, sizeof buf, "rgb(%d,%d,%d)", frame[0][0].r, frame[0][0].g, frame[0][0].b);
+        t("half way between, it is half way between",
+          frame[0][0].r > 100 && frame[0][0].r < 155
+          && frame[0][0].b > 100 && frame[0][0].b < 155, buf);
+
+        int flat = 1;
+        for (int i = 1; i < 16; ++i) if (!same(frame[0][i], frame[0][0])) flat = 0;
+        t("the whole strip is one colour, because it says how hot and not how far",
+          flat, NULL);
+
+        /* It has to MOVE with the temperature, or it is just a colour. */
+        g_live.bed_temp = 30; step();
+        rgb_t at30 = frame[0][0];
+        g_live.bed_temp = 50; step();
+        t("hotter is further along the ramp", frame[0][0].r > at30.r, NULL);
+
+        /* An unconfigured range uses the compiled one rather than dividing by
+         * zero or collapsing to one end. */
+        setup(PV_FX_TEMP_GRADIENT, "FF0000", "FF0000", "0000FF", "0000FF",
+              100, -1, 16, 16, true);
+        g_live.bed_temp = (PV_GRAD_MIN_C_DEFAULT + PV_GRAD_MAX_C_DEFAULT) / 2;
+        step();
+        t("with no range set it uses the compiled one",
+          frame[0][0].r > 60 && frame[0][0].b > 60, NULL);
+
+        /* A range with no width would divide by zero. */
+        setup(PV_FX_TEMP_GRADIENT, "FF0000", "FF0000", "0000FF", "0000FF",
+              100, -1, 16, 16, true);
+        g_cfg.rgb.grad_min_c = 50;
+        g_cfg.rgb.grad_max_c = 50;
+        g_live.bed_temp = 50;
+        step();
+        t("a zero-width range does not divide by zero", 1, NULL);
+    }
+
+    puts("\n16. the temperature the warning mode calls hot");
+    {
+        setup(PV_FX_STATIC, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 16, 16, true);
+        g_cfg.rgb.light_mode = PV_MODE_WARNING;
+        // Warning mode takes its brightness from its own table, which setup()
+        // zeroes along with everything else. At zero both levels render black
+        // and the two are indistinguishable, which is a fault in the test.
+        g_cfg.rgb.warnhot_bg[0][0] = 100;
+        g_cfg.rgb.warnhot_bg[1][0] = 100;
+        g_live.bed_temp = 60; g_live.nozzle_temp = 0;
+
+        g_cfg.rgb.warn_hot_c = 0;               /* never set: stock's fifty */
+        step();
+        t("unset, sixty is hot, because stock's number is fifty",
+          frame[0][0].r > frame[0][0].g, NULL);
+
+        g_cfg.rgb.warn_hot_c = 80;
+        step();
+        t("set to eighty, sixty is safe", frame[0][0].g > frame[0][0].r, NULL);
+
+        g_live.bed_temp = 90;
+        step();
+        t("and ninety is hot again", frame[0][0].r > frame[0][0].g, NULL);
+
+        /* Stock compares with a STRICT greater-than, and that must not change
+         * just because the number became a setting. */
+        g_cfg.rgb.warn_hot_c = 90;
+        g_live.bed_temp = 90;
+        step();
+        t("exactly at the threshold is still safe, as stock has it",
+          frame[0][0].g > frame[0][0].r, NULL);
+    }
+
+    puts("\n17. what a printer fault looks like");
+    {
+        setup(PV_FX_STATIC, "00FF00", "00FF00", NULL, NULL, 100, -1, 16, 16, true);
+        g_cfg.rgb.warning_sw = true;
+        g_live.device_state = PV_ST_ERROR;
+
+        g_cfg.rgb.err_set = false;
+        step();
+        t("unset, it is stock's solid red 127, byte for byte",
+          is(frame[0][0], 127, 0, 0), NULL);
+
+        g_cfg.rgb.err_set = true;
+        g_cfg.rgb.err_rgb[0] = 0x00; g_cfg.rgb.err_rgb[1] = 0x00; g_cfg.rgb.err_rgb[2] = 0xFF;
+        g_cfg.rgb.err_bright = 100;
+        g_cfg.rgb.err_strobe = 0;
+        step();
+        t("set, it is the colour that was chosen", is(frame[0][0], 0, 0, 255), NULL);
+
+        g_cfg.rgb.err_bright = 50;
+        step();
+        snprintf(buf, sizeof buf, "b=%d", frame[0][0].b);
+        t("and the brightness that was chosen, unlike stock's unscaled 127",
+          frame[0][0].b > 100 && frame[0][0].b < 160, buf);
+
+        g_cfg.rgb.err_strobe = 1;
+        g_cfg.rgb.err_bright = 100;
+        int sawLit = 0, sawDark = 0;
+        for (int f = 0; f < 8; ++f) {
+            step();
+            if (black(frame[0][0])) sawDark = 1; else sawLit = 1;
+        }
+        t("strobing set, it flashes rather than sitting there", sawLit && sawDark, NULL);
+
+        /* And it is still BELOW the fault and test gates, which are safety. */
+        setup(PV_FX_STATIC, "00FF00", "00FF00", NULL, NULL, 100, -1, 16, 16, true);
+        g_cfg.rgb.warning_sw = true;
+        g_cfg.rgb.err_set = true;
+        g_cfg.rgb.err_rgb[2] = 0xFF;
+        g_cfg.rgb.err_bright = 100;
+        g_live.device_state = PV_ST_ERROR;
+        g_cfg.rgb.light_on = false;
+        step();
+        {
+            int allDark = 1;
+            for (int i = 0; i < 16; ++i) if (!black(frame[0][i])) allDark = 0;
+            t("lights off still beats a custom fault colour", allDark, NULL);
+        }
+    }
+
+    puts("\n18. one run, or two");
+    {
+        /* Marquee's blob travels the strip. Separately, both runs show it at
+         * the same place; joined, only one of them holds it at a time. */
+        setup(PV_FX_MARQUEE, "FFFFFF", "FFFFFF", NULL, NULL, 100, 0, 8, 8, true);
+        g_cfg.rgb.contiguous = false;
+        int mirrored = 1;
+        for (int f = 0; f < 40; ++f) {
+            step();
+            for (int i = 0; i < 8; ++i) if (!same(frame[0][i], frame[1][i])) mirrored = 0;
+        }
+        t("separately, the two runs show the same thing at the same time",
+          mirrored, NULL);
+
+        setup(PV_FX_MARQUEE, "FFFFFF", "FFFFFF", NULL, NULL, 100, 0, 8, 8, true);
+        g_cfg.rgb.contiguous = true;
+        int differed = 0, secondLit = 0;
+        for (int f = 0; f < 60; ++f) {
+            step();
+            for (int i = 0; i < 8; ++i) {
+                if (!same(frame[0][i], frame[1][i])) differed = 1;
+                if (!black(frame[1][i])) secondLit = 1;
+            }
+        }
+        t("joined, the light is in one place at a time", differed, NULL);
+        t("and it does reach the second run", secondLit, NULL);
+
+        /* The slice boundary is the first run's length, so a longer first run
+         * takes more of the joined strip. */
+        setup(PV_FX_PROGRESS, "FFFFFF", "FFFFFF", NULL, NULL, 100, -1, 12, 4, true);
+        g_cfg.rgb.contiguous = true;
+        g_live.print_percent = 50;              /* 8 of 16 */
+        for (int f = 0; f < 60; ++f) step();
+        int lit0 = 0, lit1 = 0;
+        for (int i = 0; i < 12; ++i) if (!black(frame[0][i])) lit0++;
+        for (int i = 0; i < 4; ++i)  if (!black(frame[1][i])) lit1++;
+        snprintf(buf, sizeof buf, "first %d, second %d", lit0, lit1);
+        t("a bar at half fills eight of the sixteen, across the join",
+          lit0 + lit1 >= 7 && lit0 + lit1 <= 9, buf);
+        t("and all of them are in the first run, which is twelve long",
+          lit1 == 0, buf);
     }
 
     printf("\n%d passed, %d failed\n", ok_n, bad_n);

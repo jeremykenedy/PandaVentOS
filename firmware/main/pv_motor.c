@@ -15,6 +15,7 @@
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -394,12 +395,36 @@ void pv_motor_update(void)
     // master switch off it returns stock_open unchanged, so stock behaviour is
     // bit-for-bit what it was.
     bool want = pv_policy_decide(open_dir, g_live.vent_open);
-    if (want != open_dir) {
-        int r = pv_policy_match(g_live.material);
-        ESP_LOGI(TAG, "policy overrides vent: %s -> %s (mat=%s rule=%s bed=%d)",
-                 open_dir ? "OPEN" : "CLOSED", want ? "OPEN" : "CLOSED",
-                 g_live.material[0] ? g_live.material : "?",
-                 r >= 0 ? pv_material_name[r] : "none", g_live.bed_temp);
+    // Log the DECISION CHANGING, not the decision holding.
+    //
+    // This runs about once a second. Logging every time the policy disagreed
+    // with stock wrote the same line once a second for the life of the print,
+    // which filled the sixty-four line ring in a minute: the log viewer could
+    // only ever show one repeated sentence, and any error that mattered had
+    // already been pushed off the end. What is worth recording is the moment
+    // the answer changes, and the inputs it changed on.
+    {
+        static bool s_seen;
+        static bool s_last_override, s_last_want, s_last_stock;
+        bool override_now = (want != open_dir);
+        if (!s_seen || override_now != s_last_override
+            || want != s_last_want || open_dir != s_last_stock) {
+            if (override_now) {
+                int r = pv_policy_match(g_live.material);
+                ESP_LOGI(TAG, "policy overrides vent: %s -> %s (mat=%s rule=%s bed=%d)",
+                         open_dir ? "OPEN" : "CLOSED", want ? "OPEN" : "CLOSED",
+                         g_live.material[0] ? g_live.material : "?",
+                         r >= 0 ? pv_material_name[r] : "none", g_live.bed_temp);
+            } else if (s_seen && s_last_override) {
+                ESP_LOGI(TAG, "policy no longer overrides vent: %s (mat=%s bed=%d)",
+                         want ? "OPEN" : "CLOSED",
+                         g_live.material[0] ? g_live.material : "?", g_live.bed_temp);
+            }
+            s_seen = true;
+            s_last_override = override_now;
+            s_last_want = want;
+            s_last_stock = open_dir;
+        }
     }
     vent_go(want);
 }
@@ -409,6 +434,109 @@ void pv_motor_set_auto(bool auto_mode)
     g_cfg.motor_manual = !auto_mode;
     pv_cfg_save();
     if (auto_mode) pv_motor_update();
+}
+
+// NOT STOCK. Re-seat both endstops and report what the sensor read at each.
+// See the block comment on pv_motor_calibrate_start in pv.h for why this is
+// a measurement rather than a calibration.
+static pv_cal_t s_cal;
+static portMUX_TYPE s_cal_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static void cal_set(const pv_cal_t *v)
+{
+    portENTER_CRITICAL(&s_cal_lock);
+    s_cal = *v;
+    portEXIT_CRITICAL(&s_cal_lock);
+    pv_ws_push_state();
+}
+
+void pv_motor_calibrate_get(pv_cal_t *out)
+{
+    portENTER_CRITICAL(&s_cal_lock);
+    *out = s_cal;
+    portEXIT_CRITICAL(&s_cal_lock);
+}
+
+// Wait for the drive task to finish, or give up. Stock has no travel timeout
+// and neither does drive_task, but THIS caller has to have one: a jammed vent
+// would otherwise leave the calibration marked as running for ever, and a
+// progress bar that never ends is worse than an honest failure.
+#define CAL_TRAVEL_MS   20000
+
+static bool cal_travel(bool open_dir)
+{
+    pv_motor_set_mode(open_dir ? PV_VENT_OPEN : PV_VENT_CLOSED);
+    // Give the drive task a tick to pick the travel up before watching for it
+    // to end, or an already-seated vent reads as "finished" before it started.
+    vTaskDelay(pdMS_TO_TICKS(300));
+    for (int waited = 0; waited < CAL_TRAVEL_MS; waited += 100) {
+        if (!s_moving) return true;
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+    return false;
+}
+
+// The average across the groups, because there is one vent and the owner is
+// being shown one number. A group that reads nothing at all is left out: on a
+// single-group unit the second channel reads zero, and averaging that in would
+// halve a perfectly good reading.
+static int cal_read_mv(void)
+{
+    int sum = 0, n = 0;
+    for (int i = 0; i < s_groups; ++i) {
+        int mv = hall_raw(&GROUPS[i]);
+        if (mv <= 0) continue;
+        sum += mv; ++n;
+    }
+    return n ? (sum / n) : 0;
+}
+
+static void cal_task(void *arg)
+{
+    int restore = (int)(uintptr_t)arg;
+    pv_cal_t c = { .state = PV_CAL_RUNNING, .step = 0 };
+    cal_set(&c);
+
+    bool ok = cal_travel(false);                 // closed first
+    vTaskDelay(pdMS_TO_TICKS(400));              // let it settle on the stop
+    c.closed_mv = cal_read_mv();
+    c.closed_ok = ok && hall_state_from_raw(c.closed_mv) == HALL_CLOSED;
+    c.step = 1;
+    cal_set(&c);
+
+    ok = cal_travel(true);                       // then open
+    vTaskDelay(pdMS_TO_TICKS(400));
+    c.open_mv = cal_read_mv();
+    c.open_ok = ok && hall_state_from_raw(c.open_mv) == HALL_OPEN;
+    c.step = 2;
+    cal_set(&c);
+
+    // Put the vent back under whatever was driving it before, rather than
+    // leaving it held open because a diagnostic ran.
+    pv_motor_set_mode(restore);
+
+    c.state = (c.closed_ok && c.open_ok) ? PV_CAL_DONE : PV_CAL_FAILED;
+    c.at_s  = (int)(esp_timer_get_time() / 1000000);
+    cal_set(&c);
+    ESP_LOGI(TAG, "endstops: closed %d mV %s, open %d mV %s",
+             c.closed_mv, c.closed_ok ? "ok" : "OFF BAND",
+             c.open_mv,   c.open_ok   ? "ok" : "OFF BAND");
+    vTaskDelete(NULL);
+}
+
+bool pv_motor_calibrate_start(void)
+{
+#if PV_SAFE_NO_MOTORS
+    ESP_LOGW(TAG, "SAFE BUILD: endstop check refused");
+    return false;
+#else
+    pv_cal_t now;
+    pv_motor_calibrate_get(&now);
+    if (now.state == PV_CAL_RUNNING) return false;
+    int restore = pv_motor_get_mode();
+    return xTaskCreate(cal_task, "pv_cal", 3072,
+                       (void *)(uintptr_t)restore, 4, NULL) == pdPASS;
+#endif
 }
 
 // NOT STOCK. The button gives you a manual toggle and nothing else; there was

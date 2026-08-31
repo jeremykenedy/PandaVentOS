@@ -28,6 +28,61 @@ static const char PUSHALL[] =
     "{\"pushing\":{\"sequence_id\":\"0\",\"command\":\"pushall\","
     "\"version\":1,\"push_target\":1}}";
 
+// NOT STOCK. Sending TO the printer.
+//
+// Everything else in this file listens. These two write, which is a different
+// kind of thing: they change a machine that is not this one, in the middle of
+// somebody's print. Both are refused unless the link is actually up, both
+// clamp their argument rather than trusting it, and neither has a retry: a
+// fan command that arrives twice because the first was assumed lost is worse
+// than one that does not arrive, since the UI shows what the printer reports
+// back and the owner can simply ask again.
+static bool bambu_send(const char *payload)
+{
+    if (!s_client || g_live.printer_state != 3) {
+        ESP_LOGW(TAG, "not connected; command dropped");
+        return false;
+    }
+    int id = esp_mqtt_client_publish(s_client, s_request_topic, payload, 0, 0, 0);
+    if (id < 0) { ESP_LOGW(TAG, "publish failed"); return false; }
+    // Ask for a fresh report so the UI shows what the printer actually did
+    // rather than what it was told to do. They differ: a chamber fan command
+    // on a printer with no chamber fan changes nothing at all.
+    esp_mqtt_client_publish(s_client, s_request_topic, PUSHALL, 0, 0, 0);
+    return true;
+}
+
+// M106 P<part> S<0..255>. Bambu's part indices, from its own gcode:
+//   P1 the part cooling fan, P2 the aux fan, P3 the chamber fan.
+// The UI works in percent because that is what the printer reports back; the
+// conversion is here so there is exactly one place that knows about 255.
+bool pv_bambu_set_fan(int which, int percent)
+{
+    if (which < PV_FAN_PART || which > PV_FAN_CHAMBER) return false;
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    int s = (percent * 255 + 50) / 100;
+    char buf[192];
+    snprintf(buf, sizeof(buf),
+             "{\"print\":{\"sequence_id\":\"0\",\"command\":\"gcode_line\","
+             "\"param\":\"M106 P%d S%d\\n\"}}", which, s);
+    ESP_LOGI(TAG, "fan P%d -> %d%% (S%d)", which, percent, s);
+    return bambu_send(buf);
+}
+
+// print_speed takes 1..4: silent, standard, sport, ludicrous. The same four
+// the printer's own screen offers, and the same four the status page names.
+bool pv_bambu_set_speed(int level)
+{
+    if (level < 1 || level > 4) return false;
+    char buf[160];
+    snprintf(buf, sizeof(buf),
+             "{\"print\":{\"sequence_id\":\"0\",\"command\":\"print_speed\","
+             "\"param\":\"%d\"}}", level);
+    ESP_LOGI(TAG, "print speed -> %d", level);
+    return bambu_send(buf);
+}
+
 // ---------- report parsing ----------
 
 // ---------------------------------------------------------------------------

@@ -151,6 +151,30 @@ const char *pv_json_state_part(int part)
         for (int i = 0; i < PV_FX_COUNT; ++i)
             cJSON_AddItemToArray(effects, fx_param(0, i, &g_cfg.rgb.simple[i]));
 
+        // NOT STOCK. The four settings that used to be compiled in. Sent as
+        // what they ARE, including zero for "never set", so the page can show
+        // the compiled default as a placeholder rather than as a value the
+        // owner chose.
+        cJSON_AddNumberToObject(rm, "warn_hot_c", g_cfg.rgb.warn_hot_c);
+        cJSON_AddNumberToObject(rm, "warn_hot_c_default", PV_WARN_HOT_C);
+        cJSON_AddBoolToObject(rm, "contiguous", g_cfg.rgb.contiguous);
+        {
+            cJSON *gr = cJSON_AddObjectToObject(rm, "gradient");
+            cJSON_AddNumberToObject(gr, "min_c", g_cfg.rgb.grad_min_c);
+            cJSON_AddNumberToObject(gr, "max_c", g_cfg.rgb.grad_max_c);
+            cJSON_AddNumberToObject(gr, "min_c_default", PV_GRAD_MIN_C_DEFAULT);
+            cJSON_AddNumberToObject(gr, "max_c_default", PV_GRAD_MAX_C_DEFAULT);
+        }
+        {
+            cJSON *ef = cJSON_AddObjectToObject(rm, "error_flash");
+            char ehex[7];
+            pv_rgb3_to_hex(g_cfg.rgb.err_rgb, ehex);
+            cJSON_AddBoolToObject(ef, "set", g_cfg.rgb.err_set);
+            cJSON_AddStringToObject(ef, "rgb", g_cfg.rgb.err_set ? ehex : "7F0000");
+            cJSON_AddNumberToObject(ef, "bright", g_cfg.rgb.err_set ? g_cfg.rgb.err_bright : 100);
+            cJSON_AddBoolToObject(ef, "strobe", g_cfg.rgb.err_strobe != 0);
+        }
+
         cJSON *wh = cJSON_AddObjectToObject(rm, "warning_hot_mode");
         static const char *lvl_name[2] = { "safe", "warn" };
         for (int lvl = 0; lvl < 2; ++lvl) {
@@ -257,6 +281,26 @@ const char *pv_json_state_part(int part)
         if (vm < 0 || vm > 2) vm = PV_VENT_AUTO;
         cJSON_AddStringToObject(vp, "vent_mode", mode_name[vm]);
     }
+    // NOT STOCK. The last endstop check, and whether one is running now.
+    // Reported always, because a page that only learns about it by having
+    // asked for it cannot show a check a second browser started.
+    {
+        pv_cal_t c;
+        pv_motor_calibrate_get(&c);
+        cJSON *cal = cJSON_AddObjectToObject(vp, "calibrate");
+        cJSON_AddNumberToObject(cal, "state", c.state);
+        cJSON_AddNumberToObject(cal, "step", c.step);
+        // Only report readings from a check that actually finished. A run in
+        // progress carries the previous run's numbers otherwise, and a stale
+        // number beside a spinner is read as a live one.
+        if (c.state == PV_CAL_DONE || c.state == PV_CAL_FAILED) {
+            cJSON_AddNumberToObject(cal, "closed_mv", c.closed_mv);
+            cJSON_AddNumberToObject(cal, "open_mv", c.open_mv);
+            cJSON_AddBoolToObject(cal, "closed_ok", c.closed_ok);
+            cJSON_AddBoolToObject(cal, "open_ok", c.open_ok);
+            cJSON_AddNumberToObject(cal, "at_s", c.at_s);
+        }
+    }
     // NOT STOCK. What the button ring is doing.
     cJSON_AddNumberToObject(vp, "ring_mode", g_cfg.ring_mode);
     cJSON_AddNumberToObject(vp, "ring_blink", g_cfg.ring_blink ? 1 : 0);
@@ -315,6 +359,20 @@ const char *pv_json_state_part(int part)
         cJSON_AddNumberToObject(st, "uptime_s", (int)(esp_timer_get_time() / 1000000));
         cJSON_AddNumberToObject(st, "heap_free", (int)esp_get_free_heap_size());
         cJSON_AddNumberToObject(st, "heap_min", (int)esp_get_minimum_free_heap_size());
+        // NOT STOCK. What the renderer is doing. A strip that looks wrong and
+        // a strip that is not being drawn at all look the same from across a
+        // room; these tell them apart without a serial cable.
+        {
+            pv_rgb_stats_t rs;
+            pv_rgb_stats(&rs);
+            cJSON_AddNumberToObject(st, "fx_frames", (double)rs.frames);
+            cJSON_AddNumberToObject(st, "fx_push_failed", (double)rs.push_failed);
+            cJSON_AddNumberToObject(st, "fx_interval_ms", (double)rs.interval_ms);
+            if (rs.fps >= 0) cJSON_AddNumberToObject(st, "fx_fps", rs.fps);
+            else             cJSON_AddNullToObject(st, "fx_fps");
+            if (rs.effect >= 0) cJSON_AddNumberToObject(st, "fx_now", rs.effect);
+            else                cJSON_AddNullToObject(st, "fx_now");
+        }
     }
 
     cJSON *mats = cJSON_AddArrayToObject(vp, "materials");

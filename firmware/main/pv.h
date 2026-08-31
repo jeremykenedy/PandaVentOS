@@ -87,7 +87,12 @@
 // from across a room rather than as a static bar you have to look twice at.
 #define PV_FX_PROGRESS_ANIM    18   // the fill, with a chase and a live tip
 #define PV_FX_BARBER           19   // two-colour pole crawling through the fill
-#define PV_FX_COUNT       20
+// NOT STOCK. The bed temperature, as a colour. The strip runs from the
+// effect's INACTIVE colour at the cold end to its ACTIVE colour at the hot
+// end, between two temperatures the user picks, which makes "is it still hot
+// in there" answerable from across a room.
+#define PV_FX_TEMP_GRADIENT    20
+#define PV_FX_COUNT       21
 #define PV_FX_STOCK_COUNT 7
 
 // Not user selectable and not part of the config arrays. Stock's warning
@@ -224,7 +229,47 @@ typedef struct {
     uint8_t warnhot_current[2];
     uint8_t warnhot_bg[2][2];    // [level][effect]
     uint8_t warnhot_speed[2][2];
+
+    // NOT STOCK. The temperature the warning mode calls hot.
+    //
+    // Stock burns 50 C into the comparison. Fifty is right for a machine that
+    // prints PLA and wrong for one that prints ABS, where the bed sits at a
+    // hundred and the light would say "hot" for the whole job. 0 means "use
+    // the stock number", so an untouched device behaves exactly as stock does.
+    uint8_t warn_hot_c;
+
+    // NOT STOCK. What a printer fault looks like.
+    //
+    // Stock hard-codes solid red at 127 with no brightness scaling. That is a
+    // fine default and a poor rule: red is the one colour a red-green
+    // colourblind owner cannot pick out, and a fault that does not move is a
+    // fault that gets walked past. err_set is what makes these mean anything;
+    // clear, the override is stock's, byte for byte.
+    uint8_t err_rgb[3];
+    uint8_t err_bright;          // 0..100
+    uint8_t err_strobe;          // 0 solid, 1 strobing
+    bool    err_set;
+
+    // NOT STOCK. Treat the two runs as ONE.
+    //
+    // The strips are separate outputs and every effect renders on each of them
+    // from its own start, so a marquee runs twice, side by side. Contiguous
+    // renders one strip of leds[0] + leds[1] pixels and gives each output its
+    // own slice of it, so the light travels the whole length once.
+    bool    contiguous;
+
+    // NOT STOCK. The two ends of the temperature gradient, in Celsius.
+    // Zero for either means the compiled default.
+    uint8_t grad_min_c;
+    uint8_t grad_max_c;
 } pv_rgb_cfg_t;
+
+// NOT STOCK. The compiled defaults for the settings above, used whenever the
+// stored byte is zero. Zero means "never set", which has to stay different
+// from a real value: a gradient that runs to 0 C and a gradient nobody has
+// configured are not the same thing.
+#define PV_GRAD_MIN_C_DEFAULT 25
+#define PV_GRAD_MAX_C_DEFAULT 60
 
 typedef struct {
     char name[32];
@@ -475,6 +520,19 @@ void pv_bambu_start(void);
 void pv_bambu_rebind(void);                         // apply g_cfg.printer now
 void pv_bambu_disconnect(void);
 void pv_bambu_scan_start(void);                     // SSDP discovery
+
+// NOT STOCK. Telling the printer to do something, rather than only listening.
+//
+// Bambu's own fan part numbers, used verbatim in the M106 that goes out, so
+// there is no second numbering to keep in step with theirs.
+#define PV_FAN_PART     1
+#define PV_FAN_AUX      2
+#define PV_FAN_CHAMBER  3
+// percent 0..100, clamped. Returns false if the link is down.
+bool pv_bambu_set_fan(int which, int percent);
+// 1 silent, 2 standard, 3 sport, 4 ludicrous. Returns false if the link is
+// down or the level is not one of those four.
+bool pv_bambu_set_speed(int level);
 // Whether the link layer has run once. Stock's equivalent is the init at
 // 0x400d9840, which is what first evaluates the level 3 indicator; until then
 // the word keeps the 2 the rgb task armed at 0x400dcabd.
@@ -524,6 +582,19 @@ int  pv_rgb_preview_left(void);
 int  pv_rgb_preview_state(void);
 int  pv_rgb_preview_percent(void);
 
+// NOT STOCK. What the renderer is actually doing, for the Status page.
+// A strip that looks wrong and a strip that is not being drawn at all look the
+// same from across a room; these tell them apart without a serial cable.
+typedef struct {
+    uint32_t frames;         // frames rendered since boot
+    uint32_t push_failed;    // RMT transactions the driver refused
+    int      effect;         // PV_FX_* last drawn, -1 before the first frame
+    uint32_t interval_ms;    // what that effect asked to wait
+    int      fps;            // over the window since this was last read, -1 unknown
+} pv_rgb_stats_t;
+
+void pv_rgb_stats(pv_rgb_stats_t *out);
+
 // NOT STOCK. One rendered frame, the SHIPPING one: render_task calls it and
 // does nothing else, and tools/fxdump calls it with a buffer and push = false
 // so a host test exercises resolve, the brightness ramp, the per-strip lengths
@@ -567,3 +638,37 @@ void pv_motor_update(void);                         // printer state changed
 // and ORs them into 0x3ffb6954 at 0x400de524; that byte is what the rgb task
 // reads through 0x400de550 to raise the red strobe.
 bool pv_motor_fault_any(void);
+
+// NOT STOCK. Re-seat the vent on both endstops and report what the hall
+// sensor read at each of them.
+//
+// There is nothing to "calibrate" in the sense of writing a number: the hall
+// bands are constants in BIQU's image and this is a clone, so they stay
+// constants here. What goes wrong in practice is the other half of the
+// question. A vent that was unplugged mid-travel, or whose sensor has drifted,
+// sits at a reading that is in no band at all, and every symptom of that looks
+// like something else: the vent refuses to move, or moves and reports the
+// wrong position, or strobes red for no reason anyone can see.
+//
+// So this drives to each end in turn, reads the millivolts there, and says
+// whether each one landed in the band it is supposed to. That re-seats a vent
+// left half open as a side effect, which is the part owners actually want, and
+// it turns "the vent is being weird" into two numbers.
+#define PV_CAL_IDLE     0
+#define PV_CAL_RUNNING  1
+#define PV_CAL_DONE     2
+#define PV_CAL_FAILED   3
+
+typedef struct {
+    int  state;             // PV_CAL_*
+    int  step;              // 0 closing, 1 opening, 2 restoring
+    int  closed_mv;         // what the hall read at the closed end
+    int  open_mv;           // and at the open end
+    bool closed_ok;         // and whether each was inside its band
+    bool open_ok;
+    int  at_s;              // uptime when it finished, 0 if it never has
+} pv_cal_t;
+
+// Returns false if one is already running, or if this is a no-motor build.
+bool pv_motor_calibrate_start(void);
+void pv_motor_calibrate_get(pv_cal_t *out);

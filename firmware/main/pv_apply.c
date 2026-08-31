@@ -303,6 +303,15 @@ static void apply_preview(cJSON *o)
     pv_ws_push_state();
 }
 
+// Clamp an integer into a range. Refusing an out-of-range number outright is
+// right for a count, where a wrong one is a mistake worth seeing; for a
+// temperature or a percentage the nearest legal value is what the slider that
+// sent it can express anyway.
+static int clamp_u8(int v, int lo, int hi)
+{
+    return v < lo ? lo : (v > hi ? hi : v);
+}
+
 static void apply_rgb_mode(cJSON *o)
 {
     cJSON *e;
@@ -335,6 +344,42 @@ static void apply_rgb_mode(cJSON *o)
             g_cfg.rgb.h2d_active[mode->valueint] = fx->valueint;
             apply_fx_fields(&g_h2d[mode->valueint][fx->valueint], e);
             pv_cfg_h2d_save(mode->valueint);
+        }
+    }
+    // NOT STOCK. The four settings that used to be compiled in. Each of them
+    // reads zero, or false, as "never set", which every reader takes to mean
+    // the number that was compiled in.
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "warn_hot_c")) && cJSON_IsNumber(e)) {
+        int v = e->valueint;
+        if (v < 0) v = 0;
+        if (v > 200) v = 200;
+        g_cfg.rgb.warn_hot_c = (uint8_t)v;
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "contiguous"))) {
+        g_cfg.rgb.contiguous = cJSON_IsTrue(e) || (cJSON_IsNumber(e) && e->valueint);
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "gradient")) && cJSON_IsObject(e)) {
+        cJSON *lo = cJSON_GetObjectItemCaseSensitive(e, "min_c");
+        cJSON *hi = cJSON_GetObjectItemCaseSensitive(e, "max_c");
+        if (cJSON_IsNumber(lo)) g_cfg.rgb.grad_min_c = (uint8_t)clamp_u8(lo->valueint, 0, 200);
+        if (cJSON_IsNumber(hi)) g_cfg.rgb.grad_max_c = (uint8_t)clamp_u8(hi->valueint, 0, 200);
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "error_flash")) && cJSON_IsObject(e)) {
+        cJSON *x;
+        if ((x = cJSON_GetObjectItemCaseSensitive(e, "set"))) {
+            g_cfg.rgb.err_set = cJSON_IsTrue(x) || (cJSON_IsNumber(x) && x->valueint);
+        }
+        if ((x = cJSON_GetObjectItemCaseSensitive(e, "rgb")) && cJSON_IsString(x)) {
+            pv_hex_to_rgb3(x->valuestring, g_cfg.rgb.err_rgb);
+            g_cfg.rgb.err_set = true;
+        }
+        if ((x = cJSON_GetObjectItemCaseSensitive(e, "bright")) && cJSON_IsNumber(x)) {
+            g_cfg.rgb.err_bright = (uint8_t)clamp_u8(x->valueint, 0, 100);
+            g_cfg.rgb.err_set = true;
+        }
+        if ((x = cJSON_GetObjectItemCaseSensitive(e, "strobe"))) {
+            g_cfg.rgb.err_strobe = (cJSON_IsTrue(x) || (cJSON_IsNumber(x) && x->valueint)) ? 1 : 0;
+            g_cfg.rgb.err_set = true;
         }
     }
     if ((e = cJSON_GetObjectItemCaseSensitive(o, "warning_hot_mode")) && cJSON_IsObject(e)) {
@@ -458,6 +503,56 @@ static void apply_vent(cJSON *o)
     pv_ws_broadcast(pv_json_response("vent", 1));
 }
 
+// NOT a stock message. Telling the PRINTER to do something.
+//
+//   {"printer_ctl":{"fan":"part"|"aux"|"chamber","percent":0..100}}
+//   {"printer_ctl":{"speed":1..4}}
+//
+// Named for what it controls rather than tucked inside "printer", which is
+// where the binding lives: a message that changes which printer this vent
+// talks to and a message that spins that printer's fan are not the same kind
+// of thing, and putting them under one key is how one gets sent by mistake
+// while aiming at the other.
+//
+// The answer is a plain success or failure. What the fan actually ends up
+// doing arrives in the next report, from the printer, which is the only
+// source that knows.
+static void apply_printer_ctl(cJSON *o)
+{
+    cJSON *e;
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "fan")) && cJSON_IsString(e)) {
+        cJSON *p = cJSON_GetObjectItemCaseSensitive(o, "percent");
+        if (!cJSON_IsNumber(p)) { ESP_LOGW(TAG, "fan: no percent"); return; }
+        int which = 0;
+        if      (!strcmp(e->valuestring, "part"))    which = PV_FAN_PART;
+        else if (!strcmp(e->valuestring, "aux"))     which = PV_FAN_AUX;
+        else if (!strcmp(e->valuestring, "chamber")) which = PV_FAN_CHAMBER;
+        else { ESP_LOGW(TAG, "fan: unknown \"%s\"", e->valuestring); return; }
+        bool ok = pv_bambu_set_fan(which, p->valueint);
+        pv_ws_broadcast(pv_json_response("printer_fan", ok ? 1 : 0));
+        return;
+    }
+    if ((e = cJSON_GetObjectItemCaseSensitive(o, "speed")) && cJSON_IsNumber(e)) {
+        bool ok = pv_bambu_set_speed(e->valueint);
+        pv_ws_broadcast(pv_json_response("printer_speed", ok ? 1 : 0));
+        return;
+    }
+}
+
+// NOT a stock message. {"calibrate":{"go":1}} re-seats both endstops and
+// reports what the hall sensor read at each. The answer is not in the reply,
+// it is in the state document, because the check takes seconds and the page
+// has to be able to show it progressing rather than freezing on a reply that
+// has not come yet.
+static void apply_calibrate(cJSON *o)
+{
+    cJSON *g = cJSON_GetObjectItemCaseSensitive(o, "go");
+    if (!cJSON_IsTrue(g) && !(cJSON_IsNumber(g) && g->valueint)) return;
+    bool started = pv_motor_calibrate_start();
+    ESP_LOGI(TAG, "endstop check %s", started ? "started" : "refused");
+    pv_ws_broadcast(pv_json_response("calibrate", started ? 1 : 0));
+}
+
 // ring. NOT a stock message. The button's ring LED.
 //   {"ring":{"mode":0..4}}    PV_RING_*
 //   {"ring":{"blink":0|1}}    blink while in MANUAL, or hold steady
@@ -556,6 +651,8 @@ void pv_apply_message(const char *json, int len)
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "rgb_mode")))   apply_rgb_mode(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "vent_policy"))) apply_vent_policy(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "vent")))       apply_vent(o);
+    if ((o = cJSON_GetObjectItemCaseSensitive(root, "calibrate")))  apply_calibrate(o);
+    if ((o = cJSON_GetObjectItemCaseSensitive(root, "printer_ctl"))) apply_printer_ctl(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "ring")))       apply_ring(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "leds")))       apply_leds(o);
     if ((o = cJSON_GetObjectItemCaseSensitive(root, "logs")))       apply_logs(o);

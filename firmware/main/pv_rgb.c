@@ -162,7 +162,22 @@ static esp_err_t strip_push(int i, const rgb_t *px, int n)
     rmt_transmit_config_t tc = { .loop_count = 0 };
     esp_err_t err = rmt_transmit(s_chan[i], s_enc[i], s_buf[i], (size_t)n * 3, &tc);
     if (err != ESP_OK) return err;
-    return rmt_tx_wait_all_done(s_chan[i], pdMS_TO_TICKS(100));
+    // 500 ms, not 100.
+    //
+    // Sixteen WS2812 pixels is 384 bits at 1.25 us: the transfer itself takes
+    // under half a millisecond, so this wait normally returns at once and the
+    // number here only decides how long to tolerate the RMT peripheral being
+    // starved. It gets starved: serving the 340 KB page reads it out of flash,
+    // and every flash read disables the instruction cache, which delays any
+    // ISR not resident in IRAM. At 100 ms the device logged an rmt flush
+    // timeout and counted a dropped frame each time somebody loaded the page.
+    //
+    // A frame arriving 200 ms late is invisible. A frame skipped is a visible
+    // stutter, and a counter that ticks up on every page load makes the one
+    // statistic that would reveal a genuinely dead strip useless. The only
+    // thing this guards against is the peripheral hanging outright, and half a
+    // second is still three orders of magnitude longer than the transfer.
+    return rmt_tx_wait_all_done(s_chan[i], pdMS_TO_TICKS(500));
 }
 
 
@@ -739,6 +754,30 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
     // variant as its own loop is how you end up with the two halves a pixel
     // out of step at one speed and not another.
     // -----------------------------------------------------------------
+    // NOT STOCK. The bed temperature, as a colour.
+    //
+    // The whole strip is one colour, mixed between the effect's INACTIVE
+    // colour at the cold end and its ACTIVE colour at the hot end. Not a bar:
+    // a bar says "how far through", and this says "how hot", and drawing the
+    // second as the first is how a glance gets the wrong answer.
+    //
+    // Below the cold point it is the cold colour exactly, above the hot point
+    // the hot colour exactly, so the ends are readable rather than asymptotic.
+    // With no temperature reported at all it holds the cold colour, because
+    // "not reported" is not "cold" but it is the honest thing to show.
+    case PV_FX_TEMP_GRADIENT: {
+        int lo = g_cfg.rgb.grad_min_c ? g_cfg.rgb.grad_min_c : PV_GRAD_MIN_C_DEFAULT;
+        int hi = g_cfg.rgb.grad_max_c ? g_cfg.rgb.grad_max_c : PV_GRAD_MAX_C_DEFAULT;
+        if (hi <= lo) hi = lo + 1;         // a zero-width range divides by zero
+        int tC = g_live.bed_temp;
+        float f = (tC < lo) ? 0.0f : (tC >= hi) ? 1.0f
+                : (float)(tC - lo) / (float)(hi - lo);
+        for (int i = 0; i < n; ++i) px[i] = mix3(color, bright100, f);
+        // Temperature moves in seconds, not in frames. Sampling it four times
+        // a second is more than enough and leaves the CPU alone.
+        return 250;
+    }
+
     // NOT STOCK. Three ways to draw the same number.
     //
     //   PROGRESS       a plain bar. Stock's, and the honest default.
@@ -1338,6 +1377,22 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
     if (r->warning_sw && fx_state() == PV_ST_ERROR) {
         if (r->light_mode != PV_MODE_H2D) {
             // 0x400dcc9d: mode != 1 routes to 0x400ddeac, solid red 127.
+            //
+            // NOT STOCK: unless the owner has said otherwise. Red is the one
+            // colour a red-green colourblind owner cannot pick out, and a
+            // fault that does not move is a fault that gets walked past. With
+            // err_set clear this is stock's override byte for byte, including
+            // the 127 that is written without brightness scaling.
+            if (r->err_set) {
+                *fx = r->err_strobe ? PV_FX_STROBING : PV_FX_STATIC;
+                *color = (rgb_t){ r->err_rgb[0], r->err_rgb[1], r->err_rgb[2] };
+                *bg = (rgb_t){0, 0, 0};
+                *bright = r->err_bright > 100 ? 100 : r->err_bright;
+                *speed = 50;
+                *band = 3;
+                *flip = false;
+                return true;
+            }
             *fx = PV_FX_OVERRIDE_RED;
             *color = (rgb_t){127, 0, 0};
             *bright = 100; *speed = 0;
@@ -1405,8 +1460,12 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
         // hysteresis. This carried >= and 2 C of hysteresis until 2026-08-28,
         // which read hot across 50.0..50.9 where stock reads safe, and held
         // hot down to 48 on the way back.
-        bool hot = (PV_WARN_HOT_C < g_live.bed_temp)
-                || (PV_WARN_HOT_C < g_live.nozzle_temp);
+        // NOT STOCK: the threshold is a setting now. Zero means "never set",
+        // and never set is stock's fifty, so an untouched device compares the
+        // same number stock does, the same way.
+        int hot_c = g_cfg.rgb.warn_hot_c ? g_cfg.rgb.warn_hot_c : PV_WARN_HOT_C;
+        bool hot = (hot_c < g_live.bed_temp)
+                || (hot_c < g_live.nozzle_temp);
 
         int lvl = hot ? 1 : 0;
         // Each level offers Static or Strobing only.
@@ -1460,6 +1519,39 @@ void pv_rgb_stop(void)
 //
 // out, when given, receives PV_STRIP_COUNT_MAX rows of PV_LEDS_PER_STRIP
 // pixels. Returns the frame period the effect asked for.
+// NOT STOCK. What the renderer is actually doing.
+//
+// A strip that looks wrong and a strip that is not being drawn at all look the
+// same from across a room, and until now the only way to tell them apart was a
+// serial cable. These are counted where the work happens and reported on the
+// Status page: frames drawn, the effect being drawn, the interval it asked
+// for, and how many RMT pushes were refused by the driver.
+static uint32_t s_frames;
+static uint32_t s_push_fail;
+static int64_t  s_frames_since_us;
+static uint32_t s_frames_at_mark;
+static int      s_last_fx = -1;
+static uint32_t s_last_wait;
+
+void pv_rgb_stats(pv_rgb_stats_t *o)
+{
+    if (!o) return;
+    o->frames = s_frames;
+    o->push_failed = s_push_fail;
+    o->effect = s_last_fx;
+    o->interval_ms = s_last_wait;
+    // Frames per second over the window since the last time anyone asked,
+    // which is what makes it a rate rather than a lifetime average that can
+    // never move again.
+    int64_t now = esp_timer_get_time();
+    int64_t span = now - s_frames_since_us;
+    o->fps = (s_frames_since_us && span > 200000)
+           ? (int)(((int64_t)(s_frames - s_frames_at_mark) * 1000000 + span / 2) / span)
+           : -1;
+    if (span > 200000) { s_frames_since_us = now; s_frames_at_mark = s_frames; }
+    else if (!s_frames_since_us) { s_frames_since_us = now; s_frames_at_mark = s_frames; }
+}
+
 uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
 {
     static rgb_t px[PV_LEDS_PER_STRIP];
@@ -1489,11 +1581,45 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
     // all and the WS2812s simply hold their latched frame. Re-pushing an
     // identical buffer would look the same but is a different instruction
     // path and costs a transfer per frame, so skip it outright.
+    // NOT STOCK. One run, or two.
+    //
+    // The strips are separate outputs and every effect renders on each of them
+    // from its own start, so a marquee runs twice, side by side, which is what
+    // stock does and is not always what the hardware looks like. Contiguous
+    // renders ONE strip of leds[0] + leds[1] pixels and hands each output its
+    // own slice, so the light travels the whole length once.
+    static rgb_t joined[PV_LEDS_PER_STRIP * PV_STRIP_COUNT_MAX];
+    int total = 0;
+    bool joinup = g_cfg.rgb.contiguous && s_strips > 1;
+    if (joinup) {
+        for (int s2 = 0; s2 < s_strips; ++s2) {
+            int n2 = g_cfg.leds[s2];
+            if (n2 < 1 || n2 > PV_LEDS_PER_STRIP) n2 = PV_LEDS_PER_STRIP;
+            total += n2;
+        }
+        if (on) {
+            fx_phase_restore(&phase);
+            // The master flip only. A per-strip flag has no meaning for one
+            // run that happens to be delivered down two wires, and applying
+            // one of them to half of a joined effect would tear it in two.
+            bool rev = g_cfg.rgb.reverse ^ fx_flip;
+            wait_ms = render_effect(fx, color, bg, bright, speed, rev, joined, total);
+        } else {
+            memset(joined, 0, sizeof(joined));
+        }
+    }
+
     if (fx != PV_FX_HOLD) {
+        int taken = 0;
         for (int s = 0; s < s_strips; ++s) {
             int n = g_cfg.leds[s];
             if (n < 1 || n > PV_LEDS_PER_STRIP) n = PV_LEDS_PER_STRIP;
-            if (on) {
+            if (joinup) {
+                // This output's slice of the one long strip.
+                for (int i = 0; i < n; ++i) px[i] = joined[taken + i];
+                for (int i = n; i < PV_LEDS_PER_STRIP; ++i) px[i] = (rgb_t){0, 0, 0};
+                taken += n;
+            } else if (on) {
                 // Same instant for every strip: rewind the phase, then let
                 // this strip's pass advance it. The last pass leaves the
                 // phase advanced exactly once for the frame.
@@ -1532,9 +1658,13 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
             // Now a count that is too small only darkens the tail, which
             // is visible, obviously wrong, and instantly reversible.
             if (out) memcpy(out[s], px, sizeof(rgb_t) * PV_LEDS_PER_STRIP);
-                if (push) strip_push(s, px, PV_LEDS_PER_STRIP);
+                if (push && strip_push(s, px, PV_LEDS_PER_STRIP) != ESP_OK)
+                    ++s_push_fail;
         }
     }
+    ++s_frames;
+    s_last_fx = fx;
+    s_last_wait = wait_ms;
     return wait_ms;
 }
 
