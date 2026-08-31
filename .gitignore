@@ -30,3 +30,10 @@ tools/cfgmig/cfgmig
 # local pre-overwrite backups, never committed
 *.prev
 tools/cfgmig/migcheck
+
+# The web app's gzip is BUILT from firmware/main/ui.html, which is the source
+# of truth and is committed. The gzip is not: macOS gzip and GNU gzip produce
+# different bytes from identical input, so committing it means every developer
+# on the other platform shows a modified file they did not touch. CMake
+# regenerates it whenever ui.html is newer, before the embed reads it.
+firmware/main/factory_index.html.gz

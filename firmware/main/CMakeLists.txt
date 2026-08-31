@@ -28,6 +28,31 @@ idf_component_register(
         json
 )
 
+# The web app is ONE editable file, and the build makes the gzip.
+#
+# It used to be the other way round: the repository held only
+# factory_index.html.gz and the readable source lived nowhere the project could
+# see. Editing the UI meant having the un-gzipped copy from somewhere else,
+# which is not a thing a repository should require of anyone.
+#
+# Edit main/ui.html. This regenerates the gzip whenever it is newer, before the
+# embed reads it, so there is no second step to remember and no way to ship a
+# page that does not match its source.
+#
+# gzip -9 -n: -n leaves the source name and timestamp out of the header, so the
+# same input always produces byte-identical output and a rebuild that changed
+# nothing does not show up as a changed binary.
+find_program(GZIP_EXE gzip REQUIRED)
+add_custom_command(
+    OUTPUT  "${CMAKE_CURRENT_SOURCE_DIR}/factory_index.html.gz"
+    COMMAND "${GZIP_EXE}" -9 -n -c "${CMAKE_CURRENT_SOURCE_DIR}/ui.html"
+            > "${CMAKE_CURRENT_SOURCE_DIR}/factory_index.html.gz"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ui.html"
+    COMMENT "gzipping ui.html -> factory_index.html.gz"
+    VERBATIM)
+add_custom_target(pv_ui DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/factory_index.html.gz")
+add_dependencies(${COMPONENT_LIB} pv_ui)
+
 # Test-only instrumentation for the vent policy. OFF unless the environment
 # variable is set at configure time, which nothing in the tree does:
 #
