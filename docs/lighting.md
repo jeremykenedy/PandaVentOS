@@ -28,7 +28,7 @@ The mode picker chooses which set of settings is live. It is stock, unchanged.
 ## Effects
 
 Ids 0 to 6 are the factory's and render bit identical to the factory renderer.
-Ids 7 to 17 are added.
+Ids 7 to 21 are added.
 
 | Id | Effect | What it does |
 | :---: | --- | --- |
@@ -50,6 +50,10 @@ Ids 7 to 17 are added.
 | 15 | Bounce In | two pixels bounce inward |
 | 16 | Bounce Fill Out | bounce that leaves the strip filled behind it, outward |
 | 17 | Bounce Fill In | the same, inward |
+| 18 | Animated Progress | the completion fill, with a chase and a live tip |
+| 19 | Barber Pole | a two colour pole crawling through the fill |
+| 20 | Bed Temperature | the strip as a gradient driven by the bed temperature |
+| 21 | Animation | plays the frames of an uploaded image from RAM |
 
 Progress Bar reads `mc_percent` off the printer's own report, not a timer, so
 it is the printer's idea of progress and not an estimate.

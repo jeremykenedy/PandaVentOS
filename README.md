@@ -8,7 +8,7 @@
 
 <p align="center">
 Open firmware for the BIQU Panda Vent. An exact re-creation of the factory application,<br>
-then 18 lighting effects, material aware venting, printer control, and 24 languages on top of it.
+then 22 lighting effects, material aware venting, printer control, and 24 languages on top of it.
 </p>
 
 <p align="center">
@@ -50,7 +50,7 @@ upload puts BIQU's firmware back.
 
 | | Factory v1.0.0 | PandaVent OS |
 | --- | :---: | :---: |
-| **Lighting effects** | 7 | **18** |
+| **Lighting effects** | 7 | **22** |
 | **Colours per effect** | 1 | **4** |
 | **Vent aware colour** | :x: | :white_check_mark: separate open and closed colour |
 | **Unlit pixel colour** | always black | :white_check_mark: settable, per effect |
@@ -63,14 +63,14 @@ upload puts BIQU's firmware back.
 | **Warning temperature** | 50 °C, compiled in | :white_check_mark: yours |
 | **Warning gradient range** | compiled in | :white_check_mark: both ends settable |
 | **Vent modes** | Open, Closed, Auto | Open, Closed, Auto |
-| **AUTO rule** | open while printing | :white_check_mark: plus per material rules |
+| **AUTO rule** | open while printing or paused | :white_check_mark: plus per material rules |
 | **Reads the AMS** | :x: | :white_check_mark: 9 materials, each switchable |
 | **Residual heat hold** | :x: | :white_check_mark: bed temperature hysteresis |
 | **Live flap position** | :x: target only | :white_check_mark: target, actual and travelling |
 | **Endstop recalibration** | button only | :white_check_mark: from the web page |
 | **Vent button ring light** | 1 behaviour | :white_check_mark: 5 modes |
 | **Printer light control** | :x: | :white_check_mark: chamber and toolhead |
-| **Printer telemetry** | connection only | :white_check_mark: 18 readings |
+| **Printer telemetry** | connection only | :white_check_mark: 19 readings |
 | **AMS readout** | :x: | :white_check_mark: humidity, temperature, every spool |
 | **Fault codes** | :x: | :white_check_mark: decoded, in Bambu's own spelling |
 | **Languages** | 2 | **24**, Arabic RTL |
@@ -92,15 +92,15 @@ upload puts BIQU's firmware back.
 
 ### Lighting
 
-| | |
+| Setting | What it does |
 | --- | --- |
 | **Stock effects, unchanged ids** | Static, Breathing, Strobing, Wave, Marquee, Color Cycle, Rainbow |
-| **Added effects** | Cylon, Bounce, Progress Bar, Marquee Out, Marquee In, Fill Out, Fill In, Bounce Out, Bounce In, Bounce Fill Out, Bounce Fill In |
+| **Added effects** | Cylon, Bounce, Progress Bar, Marquee Out, Marquee In, Fill Out, Fill In, Bounce Out, Bounce In, Bounce Fill Out, Bounce Fill In, Animated Progress, Barber Pole, Bed Temperature, Animation |
 | **Progress Bar** | driven by the printer's own `mc_percent`, not a timer |
 | **Four colours per effect** | active and inactive, for vent open and vent closed, with sync buttons |
 | **Inactive colour** | optional; unset renders bit identical to the stock renderer |
 | **Per strip length** | each of the two strips has its own count, one shared animation phase |
-| **Direction** | forward, reversed, or mirrored, per strip |
+| **Direction** | forward or reversed: a device flip, a per strip flip, and a per effect flip, combined |
 | **Temperature warning** | stock Mode 3 preserved |
 | **H2D advanced mode** | stock Mode 2 preserved, six state blobs |
 | **Custom animation** | upload frames and play them from RAM |
@@ -110,11 +110,11 @@ upload puts BIQU's firmware back.
 
 ### Venting
 
-| | |
+| Setting | What it does |
 | --- | --- |
 | **Manual** | Open and Closed from the page or the button |
 | **Auto** | the factory rule: open while printing or paused |
-| **Material aware** | optional layer on top of Auto, off by default preserves stock exactly |
+| **Material aware** | optional layer on top of Auto, on by default; switching it off restores stock exactly |
 | **Vents** | PLA, PETG, PET, TPU |
 | **Seals** | ABS, ASA, PC, PA, HIPS |
 | **Unmatched filament** | falls back to the stock answer, never guesses |
@@ -125,7 +125,7 @@ upload puts BIQU's firmware back.
 
 ### Printer
 
-| | |
+| Setting | What it does |
 | --- | --- |
 | **Link** | Bambu LAN MQTT over TLS, scan and bind or enter by hand |
 | **Reads** | state, progress, layer, ETA, nozzle, bed and chamber temperature, the fitted nozzle, filament runout, door, fan speeds, speed level, lights, Wi-Fi signal, AMS humidity and temperature, every spool with its colour and remaining, HMS fault codes, waiting firmware updates |
@@ -149,10 +149,10 @@ every one of those commands; only the web page stopped drawing them.
 
 ### Device
 
-| | |
+| Setting | What it does |
 | --- | --- |
 | **Name** | set your own, used for mDNS and the page title |
-| **Wi-Fi** | STA with static IP option, plus the setup hotspot |
+| **Wi-Fi** | STA, plus the setup hotspot |
 | **Backup** | `GET /backup` streams the whole 4 MB image over the network |
 | **Restart** | plain restart, and factory reset |
 | **OTA** | one upload, no cable, settings carried forward |
@@ -163,8 +163,8 @@ every one of those commands; only the web page stopped drawing them.
 ## Languages
 
 Twenty four, every one of them at full coverage. There is no partial
-translation and no English fallback hiding in a corner: a language ships when
-all 437 strings are in it, and a build check fails if one is missing.
+translation: a language ships when all 599 strings are in it. A string that is
+somehow missing falls back to English rather than showing a raw key.
 
 | Language | Native name | Code | |
 | --- | --- | :---: | --- |
@@ -213,7 +213,7 @@ Pick a language on first boot, or change it any time from the Settings page.
 
 ## Requirements
 
-| | |
+| Requirement | Detail |
 | --- | --- |
 | **Hardware** | BIQU Panda Vent, ESP32-U4WDH, 4 MB flash |
 | **Toolchain** | ESP-IDF v5.3.1, target ESP32 |
@@ -230,7 +230,7 @@ cd PandaVentOS
 tools/install.sh
 ```
 
-| It does | |
+| Step | It does |
 | :---: | --- |
 | 1 | finds your device on USB, or takes `--port` |
 | 2 | reads the **whole 4 MB** off it and verifies the size |
@@ -302,7 +302,7 @@ thing that recovers a device that will not boot.
 
 ## First Time Setup
 
-| Step | |
+| Step | What to do |
 | :---: | --- |
 | 1 | Power the vent. It raises a hotspot named `Panda_Vent_<MAC>`. |
 | 2 | Join it and open `http://192.168.4.1`. |
@@ -329,10 +329,10 @@ Every setting, what it does, and why it is there.
 
 | Document | Covers |
 | --- | --- |
-| [`docs/lighting.md`](docs/lighting.md) | Modes, all 18 effects, the four colours, brightness ramps, direction, strip length |
+| [`docs/lighting.md`](docs/lighting.md) | Modes, all 22 effects, the four colours, brightness ramps, direction, strip length |
 | [`docs/venting.md`](docs/venting.md) | Vent modes, the nine material rules, residual heat hold, the ring light, endstop |
 | [`docs/printer.md`](docs/printer.md) | Binding, LAN Only Mode, what it reads, what it can change |
-| [`docs/network.md`](docs/network.md) | Wi-Fi, static IP, mDNS, the setup hotspot, what it talks to |
+| [`docs/network.md`](docs/network.md) | Wi-Fi, mDNS, the setup hotspot, what it talks to |
 | [`docs/backup.md`](docs/backup.md) | Full image, settings snapshot, restore, going back to stock |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | It does not do the thing. Start here |
 | [`firmware/SAFETY.md`](firmware/SAFETY.md) | What will brick the device, and what will not |
@@ -340,7 +340,7 @@ Every setting, what it does, and why it is there.
 
 ## Project Layout
 
-| Path | |
+| Path | What it is |
 | --- | --- |
 | `factory/` | the stock firmware, its web UI and BIQU's documentation, kept as the reference this project is measured against |
 | `firmware/` | the ESP-IDF application |
@@ -351,12 +351,11 @@ Every setting, what it does, and why it is there.
 
 ## Testing
 
-| Harness | |
+| Harness | What it does |
 | --- | --- |
 | `tools/fxdump` | compiles the real `pv_rgb.c` and prints frames as ASCII |
 | `tools/cfgmig` | runs a real stored NVS blob through the real migration |
 | `tools/uicmp` | compares the served page against the factory page |
-| headless suite | the web app driven against a mock replaying captured device state |
 
 ## License
 

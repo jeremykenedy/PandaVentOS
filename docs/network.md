@@ -15,11 +15,10 @@ choose your network, enter its password.
 
 ## Station settings
 
-| Setting | |
+| Setting | Detail |
 | --- | --- |
 | **SSID** | pick from a scan, or type it |
 | **Password** | WPA2 |
-| **Static IP** | optional. Leave it blank for DHCP |
 | **Hostname** | what it answers to over mDNS |
 
 A scan takes a few seconds and the page stays usable while it runs.
