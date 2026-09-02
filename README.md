@@ -12,6 +12,7 @@ then 22 lighting effects, material aware venting, printer control, and 24 langua
 </p>
 
 <p align="center">
+    <a href="https://github.com/jeremykenedy/PandaVentOS/actions/workflows/ci.yml"><img src="https://github.com/jeremykenedy/PandaVentOS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
     <a href="https://github.com/jeremykenedy/PandaVentOS/releases"><img src="https://img.shields.io/github/v/release/jeremykenedy/PandaVentOS?display_name=tag&amp;sort=semver&amp;color=2e7d32" alt="Latest Release"></a>
     <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
     <a href="#requirements"><img src="https://img.shields.io/badge/ESP--IDF-v5.3.1-informational" alt="ESP-IDF v5.3.1"></a>
@@ -277,7 +278,7 @@ That takes a fresh backup over the network first, then uploads, then waits for
 the device to come back. By hand it is:
 
 ```bash
-curl -X POST -H 'X-OTA-Type: ota_fw' \
+curl -X POST -H 'OTA-Type: ota_fw' \
   --data-binary @firmware/build/panda_vent.bin \
   http://<device>/ota
 ```

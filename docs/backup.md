@@ -32,8 +32,7 @@ the bootloader, no upload can put it back, because there is nothing running to
 receive the upload. The 4 MB image is the only thing that recovers that, and it
 needs a cable either way.
 
-It takes about three and a half minutes at 230400, during which the vent is off
-the network.
+It takes a few minutes at 115200, during which the vent is off the network.
 
 **Flash the same image twice before taking a golden.** An OTA writes only the
 inactive slot, so a single flash leaves the other slot holding something else.
@@ -75,7 +74,7 @@ your own changes, not for surviving an update.
 The partition layout is BIQU's, unchanged, which is the point of keeping it.
 
 ```bash
-curl -X POST -H 'X-OTA-Type: ota_fw' \
+curl -X POST -H 'OTA-Type: ota_fw' \
   --data-binary @factory/firmware/panda_vent_v1.0.0.bin \
   http://<device>/ota
 ```

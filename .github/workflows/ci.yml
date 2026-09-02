@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  firmware:
+    name: Firmware build (ESP-IDF v5.3.1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Builds firmware/ exactly as a developer does: CMake regenerates
+      # factory_index.html.gz from the committed firmware/main/ui.html, then
+      # the app is compiled and its size checked against the app partition.
+      - name: Build
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.3.1
+          target: esp32
+          path: firmware
+
+  harnesses:
+    name: Host harnesses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Compiles the real pv_rgb.c against stubs and checks every effect's
+      # per-frame output against 172 assertions.
+      - name: Effect frame check
+        working-directory: tools/fxdump
+        run: |
+          cc -I stub -I ../../firmware/main -o framecheck \
+             framecheck.c ../../firmware/main/pv_anim.c -lm
+          ./framecheck
+      # Runs a real stored NVS blob through the real pv_cfg.c migration chain.
+      - name: Config migration check
+        working-directory: tools/cfgmig
+        run: |
+          cc -I stub -I ../../firmware/main -o migcheck migcheck.c
+          ./migcheck

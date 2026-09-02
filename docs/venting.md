@@ -37,7 +37,8 @@ spinning. It still tells you.
 
 ## Material aware venting
 
-An addition. **Off by default**, and off means the behaviour is stock, exactly.
+An addition. **On by default**; turn the master switch off and the behaviour
+is stock, exactly.
 
 Turned on, it sits on top of Auto and reads the filament the printer says is
 loaded.

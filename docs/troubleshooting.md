@@ -37,7 +37,7 @@ is no state to follow. Check the Printer page.
 **Material aware venting does nothing.**
 | Check | |
 | --- | --- |
-| Master switch | it ships off |
+| Master switch | confirm it is on (it ships on) |
 | Printer | it needs the AMS report, so it needs a bound, connected printer |
 | Material | the loaded filament needs a rule, and the rule needs to be on |
 | State | rules apply during a print, not between prints |
