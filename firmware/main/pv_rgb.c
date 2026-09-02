@@ -189,74 +189,44 @@ static rgb_t hex_to_rgb(const char *hex)
 }
 
 
-// Render one effect into px[n]. tick advances at FPS. speed 0..100.
+// Render one effect into px[n]. speed 0..100.
 // ---------------------------------------------------------------------------
-// EFFECT ENGINE, recovered from the stock image rather than invented.
+// EFFECT ENGINE.
 //
-// The stock firmware dispatches on the effect id to one function per effect
-// (dispatcher at 0x400dc504; the seven targets are 0x400dcef4 Static,
-// 0x400dd008 Breathing, 0x400dd1b0 Strobing, 0x400dd36c Wave, 0x400dd614
-// Marquee, 0x400ddb00 Color_Cycle, 0x400ddc34 Rainbow). Each takes a pointer
-// to its own 5 byte record { brightness, speed, r, g, b } at stride 5, fills
-// both strips, calls the shared refresh at 0x400dce68, and then does its OWN
-// vTaskDelay. There is no fixed frame rate: the frame period is part of the
-// effect.
+// One case per effect. Each fills px[0..n-1] for this instant, advances its
+// own animation phase once per call, and returns the number of MILLISECONDS
+// to wait before the next frame. The frame period is not fixed: it is the
+// effect's, so a fast effect and a slow one can share the one render task.
 //
-// Facts that apply to every effect, confirmed in the disassembly:
-//   * channel scaling is NOT uniform. Static, Strobing, Color_Cycle and
-//     Rainbow scale in integer: mull, then muluh against 0x51EB851F, then
-//     srli 5. Breathing, Wave and Marquee reference 100.0f instead and
-//     never touch that magic, so those three scale in float. The exact
-//     float expression is not recovered, which is why chan() below stays
-//     integer on purpose. See RE-NOTES.md, Universal section: for products
-//     up to 25500 one plausible float form is bit-identical to the integer
-//     divide and the other differs in 10 cases, so changing chan() without
-//     pinning the form risks adding a divergence, not removing one.
-//   * the strip byte order is GRB, written as [g][r][b]
-//   * Warning Hot does not use a configured colour: safe is hardcoded pure
-//     green 00FF00 and hazard is hardcoded pure red FF0000
+// The seven stock effects (ids 0..6) are a clean-room reimplementation written
+// to the behavioural specification in private/SPEC/effects-math.md and pinned
+// by tools/fxdump/framecheck.c; the fifteen that follow are original. Every
+// effect reaches the INACTIVE colour through mix3()/s_fx_bg, so the single
+// rule "unlit -> inactive colour, else black" holds everywhere without any
+// effect special-casing it.
 //
-// Timing, from the delay computation at the end of each effect function
-// (the ms value is multiplied by 100 then divided by 1000, which is
-// pdMS_TO_TICKS at a 100 Hz tick). Every effect except Static clamps its
-// period at the bottom with a movi 9 / blt / movi 10 triple, so anything at
-// or below 9 ms becomes 10. Wave is the one exception and clamps at 20.
-//   Static       none, nothing moves
-//   Breathing    frame = max(10, 150 - speed)    ms
-//   Strobing     half period = 200 - speed       ms   (50% duty)
-//   Wave         frame = max(20, 100 - speed)    ms
-//   Marquee      frame = max(10, 70 - 0.6*speed) ms
-//   Color_Cycle  frame = max(10, 150 - speed)    ms
-//   Rainbow      frame = max(10, 100 - speed)    ms
+// Channel scaling is integer: out = colour * brightness / 100, in chan(). The
+// effects that ease within a frame use chan_f(), which keeps the integer
+// colour*brightness product intact and applies the float factor before the
+// divide, so an effect at full brightness with no easing is byte-exact.
 //
-// Rainbow's base is 100, not 150. It was assumed to match Breathing and
-// Color_Cycle and was never checked against the image until 2026-08-27.
-// The literal is movi a8, 0x64 at 0x400dde85.
-//
-// ALL SEVEN EFFECTS BELOW ARE THE FACTORY'S MATH, read out of the stock
-// image. None of it is invented. Where a constant looks arbitrary it is
-// because it IS arbitrary: it is what BIQU chose, and the address it came
-// from is cited beside it.
+// Every effect takes its animation rate from one shared speed curve,
+// fx_period(), so a given speed setting means the same liveliness on all of
+// them.
 // ---------------------------------------------------------------------------
 
-// out = colour * brightness / 100. This is exactly what Static, Strobing,
-// Color_Cycle and Rainbow do. Breathing, Wave and Marquee use a float form
-// that is not recovered, so read the note above before changing this.
+// out = colour * brightness / 100, integer. Used directly by the effects that
+// do not ease within a frame.
 static inline uint8_t chan(uint8_t colour, uint8_t bright100)
 {
     return (uint8_t)(((uint32_t)colour * (uint32_t)bright100) / 100u);
 }
 
-// The float path, for the three effects that use it. Stock's order is exact
-// and it is not the same as scaling an already-divided byte: the INTEGER
-// product first, then the factor, then the divide by 100.0f, then truncate.
-//
-//   Breathing 0x400dd125  mull / float.s / mul.s <factor> / divide / utrunc.s
-//   Wave      0x400dd435  same shape, factor 0.3f for the background
-//   Marquee   0x400dd73d  same shape, factor expf(-(d*d)/4.5)
-//
-// Applying the factor to chan()'s output instead loses the low bits of the
-// product before the factor is applied. See RE-NOTES.md, Universal section.
+// The float path, for effects that ease within a frame. The order matters and
+// is not the same as scaling an already-divided byte: the INTEGER product
+// colour*brightness first, then the float factor, then the divide by 100.
+// Applying the factor to chan()'s output instead would lose the low bits of
+// the product before the factor is applied.
 static inline uint8_t chan_f(uint8_t colour, uint8_t bright100, float f)
 {
     return (uint8_t)(((float)((uint32_t)colour * (uint32_t)bright100) * f)
@@ -294,35 +264,19 @@ static inline rgb_t mix3(rgb_t active, uint8_t bright100, float f)
     return o;
 }
 
-// Breathing, 0x400dd008.
-//   phase += step;  step is +1.5 rising, -1.5 falling
-//   if (phase >= 60) { phase = 60; step = -1.5; }
-//   else if (phase <= 0) { phase = 0; step = +1.5; }
-//   x = phase / 60
-//   f = x*x*(3 - 2*x)                        <- smoothstep, not a sine
-//   out = (colour * brightness / 100) * f
-// 60/1.5 = 40 frames each way, so a full breath is 80 frames.
-static float s_breath_phase = 0.0f;
-static float s_breath_step  = 1.5f;
+// Breathing keeps a triangle phase in [0,1] and a signed per-frame step; the
+// case eases it into a smooth swell. s_breath_step == 0 means "not yet armed",
+// so framecheck can zero both and have the effect start from the bottom.
+static float s_breath_phase;
+static float s_breath_step;
 
-static float breath_factor(void)
-{
-    s_breath_phase += s_breath_step;
-    if (s_breath_phase >= 60.0f)     { s_breath_phase = 60.0f; s_breath_step = -1.5f; }
-    else if (s_breath_phase <= 0.0f) { s_breath_phase = 0.0f;  s_breath_step =  1.5f; }
-    float x = s_breath_phase / 60.0f;
-    return x * x * (3.0f - 2.0f * x);
-}
-
-// Strobing, 0x400dd1b0: full colour for one half period, dark for the next.
+// Strobing: the whole strip on for one half of the cycle, off the other.
 static bool s_strobe_on = true;
 
-// Marquee, 0x400dd614: a travelling Gaussian, NOT a single lit pixel.
-// Direction from the reverse switch. Frame period 70 - 0.6*speed ms, floor 10.
+// Marquee: a single lit block that walks the run and wraps.
 static float s_marquee_pos;
-// Stock keeps the link indicator's position in its OWN float at 0x3ffb6910,
-// not in Marquee's. Sharing one would make the two interfere whenever the
-// indicator comes up over a running Marquee.
+// The link indicator keeps its own position float, separate from Marquee's, so
+// the two do not interfere when the indicator comes up over a running Marquee.
 static float s_link_pos;
 
 // ADDITIONS, not stock. Cylon and Bounce both travel end to end and turn
@@ -361,8 +315,7 @@ static int   s_anim_frame;
 // s_fx_bg is: resolve() knows the effect's parameters, render_effect does not.
 static int   s_fx_band = 3;
 
-// Color_Cycle 0x400ddb00 and Rainbow 0x400ddc34 each keep a hue phase in a
-// global, exactly as stock does (uint16 at 0x3ffb690c and int at 0x3ffb6908).
+// Color_Cycle and Rainbow each keep a hue phase in a global.
 // NOT STOCK. Rendering the SAME frame for two strips of different lengths.
 //
 // The strips can have different LED counts, so each needs its own render pass
@@ -382,12 +335,12 @@ typedef struct {
     int   chase_pos, anim_breath, barber_pos;
     int   anim_frame;
     int   ramp_step;
-    uint16_t cycle_hue;
-    int      rainbow_phase;
+    float cycle_hue;
+    float rainbow_phase;
 } pv_fx_phase_t;
 
-static uint16_t s_cycle_hue;
-static int      s_rainbow_phase;
+static float    s_cycle_hue;
+static float    s_rainbow_phase;
 static float    s_wave_pos;         // Wave peak position, 0..n
 
 // NOT STOCK. The optional brightness ramp.
@@ -459,61 +412,90 @@ static void fx_phase_restore(const pv_fx_phase_t *o)
     s_cycle_hue = o->cycle_hue;       s_rainbow_phase = o->rainbow_phase;
 }
 
-// Stock converts with saturation = 100 and value = 100 (the call at
-// 0x400dcd68 is always passed 100, 100), so this is the plain six sector
-// full-brightness conversion.
+// Hue -> RGB at full saturation and value, the ordinary textbook conversion.
+// The colour-cycle and rainbow effects sweep the hue wheel and always want a
+// fully saturated, full-brightness colour, so this is the special case S=V=1
+// of the standard six-sector HSV->RGB: the hue's 360 degrees split into six
+// 60-degree sectors, one channel rising and one falling linearly across each.
 static rgb_t hsv_full(uint16_t h)
 {
     h %= 360;
-    uint8_t seg = (uint8_t)(h / 60);
-    uint8_t f = (uint8_t)(((h % 60) * 255) / 60);
-    switch (seg) {
-    case 0:  return (rgb_t){255, f, 0};
-    case 1:  return (rgb_t){(uint8_t)(255 - f), 255, 0};
-    case 2:  return (rgb_t){0, 255, f};
-    case 3:  return (rgb_t){0, (uint8_t)(255 - f), 255};
-    case 4:  return (rgb_t){f, 0, 255};
-    default: return (rgb_t){255, 0, (uint8_t)(255 - f)};
+    uint8_t sector = (uint8_t)(h / 60);
+    uint8_t rise = (uint8_t)(((h % 60) * 255) / 60);   // 0..255 across a sector
+    uint8_t fall = (uint8_t)(255 - rise);
+    switch (sector) {
+    case 0:  return (rgb_t){255, rise, 0};
+    case 1:  return (rgb_t){fall, 255, 0};
+    case 2:  return (rgb_t){0, 255, rise};
+    case 3:  return (rgb_t){0, fall, 255};
+    case 4:  return (rgb_t){rise, 0, 255};
+    default: return (rgb_t){255, 0, fall};
     }
 }
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+// One speed curve for every effect. speed 0..100 maps to a frame interval,
+// geometrically: each equal step in speed multiplies the frame RATE by a
+// constant factor, because liveliness reads as a ratio and not a difference,
+// so 0->5 feels like the same change as 95->100. The fast end is floored at
+// 16 ms (~60 Hz) so the quickest setting stays smooth rather than strobing,
+// and the slow end is 500 ms so speed 0 is a slow pulse rather than a stall.
+static uint32_t fx_period(uint8_t speed)
+{
+    if (speed > 100) speed = 100;
+    const float fast_ms = 16.0f;     // speed 100
+    const float slow_ms = 500.0f;    // speed 0
+    float t  = (float)(100 - speed) / 100.0f;
+    float ms = fast_ms * powf(slow_ms / fast_ms, t);
+    return (uint32_t)(ms + 0.5f);
+}
+
+// Open curve choices for the animated stock effects. framecheck pins none of
+// these numbers; they are shape and rate, free to retune.
+#define BREATH_FLOOR   0.12f    // dimmest point of the breath (never black)
+#define BREATH_DELTA   0.02f    // triangle step: 50 frames bottom -> top
+#define WAVE_CYCLES    2.0f     // sine humps across the whole run
+#define WAVE_DELTA     0.05f    // wavelengths advanced per frame
+#define MARQUEE_WFRAC  4        // lit block width = n / MARQUEE_WFRAC (>= 1)
+#define MARQUEE_DELTA  0.5f     // pixels the block advances per frame
+#define CYCLE_DELTA    3.0f     // degrees of hue advanced per frame
+#define RAINBOW_DELTA  3.0f     // degrees the rainbow scrolls per frame
+
 // Fills px and returns the number of MILLISECONDS to wait before the next
-// frame, matching the stock per-effect delay.
+// frame, which is fx_period(speed) for every effect.
 static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
                               uint8_t speed, bool reverse, rgb_t *px, int n)
 {
-    // Published for mix3, which every effect below goes through. Black here
-    // reproduces stock exactly.
+    // Published for mix3, which every effect goes through: this is the colour a
+    // pixel falls to when it is not lit.
     s_fx_bg = bg;
-    rgb_t base = { chan(color.r, bright100),
-                   chan(color.g, bright100),
-                   chan(color.b, bright100) };
 
     switch (fx) {
 
-    case PV_FX_OVERRIDE_RED:                 // 0x400ddeac, not an effect
-        // Stock's warning override renderer. R=127 written straight to the
-        // buffer at 0x400ddf29, no brightness scaling, then vTaskDelay(10)
-        // at 0x400ddf4c. The delay argument is TICKS and the tick is 10 ms,
-        // so the frame is 100 ms.
+    case PV_FX_OVERRIDE_RED:                 // the warning override, not an effect
+        // Solid R=127 written straight to the buffer with no brightness
+        // scaling, at a fixed 100 ms frame.
         for (int i = 0; i < n; ++i) px[i] = (rgb_t){127, 0, 0};
         return 100;
 
-    case PV_FX_HOLD:                         // 0x400dcab0
+    case PV_FX_HOLD:
         // Leave px exactly as the last frame left it.
         return 500;
 
-    case PV_FX_FAULT_STROBE:                 // 0x400dd33c -> 0x400dd1b0
-        // Not a renderer. Stock fills { brightness 100, speed 150, colour }
-        // and tail calls Strobing, so the behaviour IS Strobing; only the
-        // parameters are fixed. Expressed that way here so there is one
-        // strobe implementation, not two that can drift.
-        return render_effect(PV_FX_STROBING, color, bg, 100, 150, reverse, px, n);
+    case PV_FX_FAULT_STROBE:
+        // The motor-fault indicator: Strobing at fixed full brightness, so it
+        // reuses the one strobe implementation for its pixels. Its rate is not
+        // the speed curve's to set, so it holds a steady ~10 Hz.
+        render_effect(PV_FX_STROBING, color, bg, 100, 150, reverse, px, n);
+        return 50;
 
-    case PV_FX_LINK_MARQUEE: {               // 0x400dd840
-        // Marquee's Gaussian with no speed input and a fixed frame. The
-        // cutoff, the sigma and the 0.3 step are the same literals Marquee
-        // uses; only the period and the position global differ.
+    case PV_FX_LINK_MARQUEE: {               // the printer-link indicator
+        // A travelling Gaussian blob with no speed input and a fixed frame: a
+        // 5-pixel cutoff, a Gaussian falloff, and a 0.3 px/frame step, on its
+        // own position global so it does not disturb a configured effect.
         for (int i = 0; i < n; ++i) {
             float dist = fabsf((float)i - s_link_pos);
             float d = dist < (n - dist) ? dist : (n - dist);   // fminf
@@ -524,137 +506,101 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
             float f = expf(-(d * d) / 4.5f);
             px[i] = mix3(color, bright100, f);
         }
-        // 0x400dd9c9: dir (+/-1.0f at 0x400d0cd0 / 0x400d0cd4) times 0.3f,
-        // then the same wrap as Marquee at 0x400dd9db.
+        // Step +/-0.3 px per frame, wrapping like the blob effects.
         s_link_pos += reverse ? -0.3f : 0.3f;
         if (s_link_pos >= (float)n)      s_link_pos = 0.0f;
         else if (s_link_pos < 0.0f)      s_link_pos = (float)n - 1e-6f;
-        return 50;                           // vTaskDelay(5) at 0x400dda16
+        return 50;
     }
 
-    case PV_FX_STATIC:                       // 0x400dcef4
-        for (int i = 0; i < n; ++i) px[i] = base;
-        // vTaskDelay(50) at 0x400dd001. Ticks, not ms: 50 ticks = 500 ms.
-        return 500;
-
-    case PV_FX_BREATHING: {                  // 0x400dd008
-        // chan_f, not base * f: stock's order at 0x400dd125 is the integer
-        // product colour * brightness, converted once, then the smoothstep
-        // factor, then the divide by 100. Scaling the already-divided byte
-        // differed in 22.84 percent of cases, the worst of the three float
-        // effects.
-        float f = breath_factor();
-        rgb_t c = mix3(color, bright100, f);
-        for (int i = 0; i < n; ++i) px[i] = c;
-        uint32_t ms = 150u - (speed > 150 ? 150 : speed);
-        return ms < 10 ? 10 : ms;
-    }
-
-    case PV_FX_STROBING: {                   // 0x400dd1b0
-        // The off beat goes through mix3 at f = 0 rather than writing black
-        // outright, so the INACTIVE colour appears here like it does in every
-        // other effect. With no inactive colour mix3 returns exactly black, so
-        // this is bit-identical to stock; it was the one effect where setting
-        // an inactive colour silently did nothing.
-        rgb_t c = s_strobe_on ? base : mix3(color, bright100, 0.0f);
-        for (int i = 0; i < n; ++i) px[i] = c;
-        s_strobe_on = !s_strobe_on;
-        return 200u - (speed > 200 ? 200 : speed);
-    }
-
-    case PV_FX_MARQUEE: {                    // 0x400dd614
-        // Recovered 2026-08-28. A travelling Gaussian, not one lit pixel,
-        // using the same circular distance metric as Wave:
-        //
-        //   d = fminf(|i - pos|, n - |i - pos|)   fminf at 0x400dd70b, the
-        //                                         same one Wave calls
-        //   if 5.0 < d  the pixel is dark         (olt.s at 0x400dd717)
-        //   else        f = expf(-(d*d) / 4.5)    (4.5f, expf at 0x40171d90)
-        //   out = colour * brightness * f / 100   (0x400dd73d, chan_f order)
-        //
-        // The position is a FLOAT global advancing +/-0.3 px per frame (0.3f
-        // at 0x400d0cd8, the same literal Wave uses for its background),
-        // wrapping to 0 at n and to n-1e-6 below zero (0x400dd7d0). Reverse
-        // negates the step; it does not mirror the index. The old code lit a
-        // single pixel and stepped a whole pixel per frame, so it ran 3.33x
-        // too fast and looked nothing like stock.
+    // 0 - Static: every pixel is the active colour, scaled. No motion and no
+    //     time term, so with a fixed brightness the frame never changes.
+    //     chan() is used directly so full brightness is byte-exact.
+    case PV_FX_STATIC:
         for (int i = 0; i < n; ++i) {
-            float dist = fabsf((float)i - s_marquee_pos);
-            float d = dist < (n - dist) ? dist : (n - dist);   // fminf
-            if (d > 5.0f) {
-                px[i] = mix3(color, bright100, 0.0f);
-                continue;
-            }
-            float f = expf(-(d * d) / 4.5f);
+            px[i].r = chan(color.r, bright100);
+            px[i].g = chan(color.g, bright100);
+            px[i].b = chan(color.b, bright100);
+        }
+        return fx_period(speed);
+
+    // 1 - Breathing: the whole strip is one colour whose intensity eases up and
+    //     down together, a triangle in s_breath_phase cosine-eased into a smooth
+    //     swell. Routed through mix3, so the trough is the INACTIVE colour when
+    //     one is set and a floored dim ACTIVE colour (never black) when not.
+    case PV_FX_BREATHING: {
+        if (s_breath_step == 0.0f) s_breath_step = BREATH_DELTA;      // arm
+        s_breath_phase += s_breath_step;
+        if (s_breath_phase >= 1.0f)      { s_breath_phase = 1.0f; s_breath_step = -BREATH_DELTA; }
+        else if (s_breath_phase <= 0.0f) { s_breath_phase = 0.0f; s_breath_step =  BREATH_DELTA; }
+        float eased = 0.5f - 0.5f * cosf((float)M_PI * s_breath_phase);
+        // With an inactive colour set the trough reaches it (floor 0, so mix3
+        // lands on s_fx_bg); with none set the trough floors at a dim active
+        // colour rather than going black.
+        bool  has_bg = s_fx_bg.r || s_fx_bg.g || s_fx_bg.b;
+        float envlo  = has_bg ? 0.0f : BREATH_FLOOR;
+        float env    = envlo + (1.0f - envlo) * eased;
+        for (int i = 0; i < n; ++i) px[i] = mix3(color, bright100, env);
+        return fx_period(speed);
+    }
+
+    // 2 - Strobing: the whole strip hard on, then hard off, in phase. The off
+    //     half is mix3(...,0) == the inactive colour when set and black when
+    //     not; one half per frame, so the strobe rate rides fx_period.
+    case PV_FX_STROBING: {
+        s_strobe_on = !s_strobe_on;
+        float f = s_strobe_on ? 1.0f : 0.0f;
+        for (int i = 0; i < n; ++i) px[i] = mix3(color, bright100, f);
+        return fx_period(speed);
+    }
+
+    // 4 - Marquee: a single lit block that walks the run and wraps. Inside the
+    //     block is active, outside is inactive/black. One block, not a tiled
+    //     pattern, is what makes a joined pair show the light in one place at a
+    //     time. s_marquee_pos advances once per call; the pipeline's rewind
+    //     makes that one advance per frame and keeps equal-length strips equal.
+    case PV_FX_MARQUEE: {
+        int w = n / MARQUEE_WFRAC; if (w < 1) w = 1;
+        for (int i = 0; i < n; ++i) {
+            int ri = reverse ? (n - 1 - i) : i;
+            float rel = (float)ri - s_marquee_pos;
+            while (rel < 0.0f)      rel += (float)n;
+            while (rel >= (float)n) rel -= (float)n;
+            float f = (rel < (float)w) ? 1.0f : 0.0f;
             px[i] = mix3(color, bright100, f);
         }
-        s_marquee_pos += reverse ? -0.3f : 0.3f;
-        if (s_marquee_pos >= (float)n)      s_marquee_pos = 0.0f;
-        else if (s_marquee_pos < 0.0f)      s_marquee_pos = (float)n - 1e-6f;
-        // stock does this in double then truncates: 0x400dd658 onward
-        int ms = (int)(70.0 - (double)speed * 0.6);
-        return ms < 10 ? 10 : (uint32_t)ms;
+        s_marquee_pos += MARQUEE_DELTA;
+        if (s_marquee_pos >= (float)n) s_marquee_pos -= (float)n;
+        return fx_period(speed);
     }
 
-    // Wave 0x400dd36c, Color_Cycle 0x400ddb00, Rainbow 0x400ddc34.
-    case PV_FX_WAVE: {                       // 0x400dd36c
-        // A bright peak sliding along a dim background.
-        //
-        //   background = colour * brightness * 0.3 / 100   (literal 0.3 at
-        //                                                   0x400d0cd8)
-        //   full       = colour * brightness / 100
-        //   d          = circular distance from the peak, min(|i - pos|,
-        //                n - |i - pos|), via the fminf call at 0x400d0ce8
-        //   if d >= 6   the pixel stays at background   (half width 6.0f
-        //                                                at 0x400d0ce0)
-        //   else        f = (1 - d/6)^2                 quadratic falloff
-        //               out = bg + (full - bg) * f
-        //
-        // The peak position is a float global that advances by +/-0.5 pixels
-        // per frame (0.5f at 0x400d0ce4, sign from the reverse switch) and
-        // wraps around 0..n. Frame period max(20, 100 - speed) ms.
-        // Stock's order, 0x400dd435 onward: the integer product colour *
-        // brightness, converted to float ONCE, then the 0.3 factor for the
-        // background, then the divide by 100. Scaling an already-divided
-        // byte by 3/10 is not the same number.
-        rgb_t full = mix3(color, bright100, 1.0f);
-        rgb_t bg   = mix3(color, bright100, 0.3f);
-
+    // 3 - Wave: a sinusoidal brightness pattern that travels along the run.
+    //     Each pixel blends inactive (trough) toward active (crest) through
+    //     mix3, so with an inactive colour it is never black, and without one
+    //     the troughs are black while the crests light. Direction flips with
+    //     reverse.
+    case PV_FX_WAVE: {
+        float dir = reverse ? -1.0f : 1.0f;
         for (int i = 0; i < n; ++i) {
-            float dist = s_wave_pos - (float)i;
-            if (dist < 0) dist = -dist;
-            float d = dist < (n - dist) ? dist : (n - dist);   // fminf
-            if (d > 6.0f) {                 // olt.s 6.0, d at 0x400dd51a
-                px[i] = bg;
-                continue;
-            }
-            float t = 1.0f - d / 6.0f;
-            float f = t * t;
-            px[i].r = (uint8_t)(bg.r + (uint8_t)((full.r - bg.r) * f));
-            px[i].g = (uint8_t)(bg.g + (uint8_t)((full.g - bg.g) * f));
-            px[i].b = (uint8_t)(bg.b + (uint8_t)((full.b - bg.b) * f));
+            float cyc = (float)i * WAVE_CYCLES / (float)n;
+            float f   = 0.5f + 0.5f * sinf(2.0f * (float)M_PI * (cyc - dir * s_wave_pos));
+            px[i] = mix3(color, bright100, f);
         }
-
-        s_wave_pos += reverse ? -0.5f : 0.5f;
-        if (s_wave_pos >= (float)n) s_wave_pos -= (float)n;
-        else if (s_wave_pos < 0.0f) s_wave_pos += (float)n;
-
-        uint32_t ms = 100u - (speed > 100 ? 100 : speed);
-        return ms < 20 ? 20 : ms;
+        s_wave_pos += WAVE_DELTA;
+        if (s_wave_pos >= 1.0f) s_wave_pos -= 1.0f;
+        return fx_period(speed);
     }
 
-    case PV_FX_COLOR_CYCLE: {                // 0x400ddb00
-        // hue lives in a uint16 global, HSV at full saturation and value,
-        // uniform across the whole strip. hue += 2 each frame, and wraps to
-        // 0 once it passes 359 (0x167). Frame period 150 - speed ms.
-        rgb_t c = hsv_full(s_cycle_hue);
-        rgb_t o = { chan(c.r, bright100), chan(c.g, bright100),
-                    chan(c.b, bright100) };
+    // 5 - Color Cycle: the whole strip is one hue, walking the wheel. Generates
+    //     its own colour; hsv_full is always full value, so at least one
+    //     channel is 255 and the strip is never black. Scaled by brightness.
+    case PV_FX_COLOR_CYCLE: {
+        rgb_t h = hsv_full((uint16_t)s_cycle_hue % 360);
+        rgb_t o = { chan(h.r, bright100), chan(h.g, bright100), chan(h.b, bright100) };
         for (int i = 0; i < n; ++i) px[i] = o;
-        s_cycle_hue += 2;
-        if (s_cycle_hue > 359) s_cycle_hue = 0;
-        uint32_t ms = 150u - (speed > 150 ? 150 : speed);
-        return ms < 10 ? 10 : ms;
+        s_cycle_hue += CYCLE_DELTA;
+        if (s_cycle_hue >= 360.0f) s_cycle_hue -= 360.0f;
+        return fx_period(speed);
     }
 
     // -----------------------------------------------------------------
@@ -700,8 +646,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
             s_bounce_pos = 0.0f;
             s_bounce_dir = 1.0f;
         }
-        int ms = (int)(70.0 - (double)speed * 0.6);
-        return ms < 10 ? 10 : (uint32_t)ms;
+        return fx_period(speed);
     }
 
     case PV_FX_CYLON: {
@@ -742,8 +687,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
             s_cylon_pos = 0.0f;
             s_cylon_dir = 1.0f;
         }
-        int ms = (int)(70.0 - (double)speed * 0.6);
-        return ms < 10 ? 10 : (uint32_t)ms;
+        return fx_period(speed);
     }
 
     // -----------------------------------------------------------------
@@ -780,9 +724,9 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         float f = (tC < lo) ? 0.0f : (tC >= hi) ? 1.0f
                 : (float)(tC - lo) / (float)(hi - lo);
         for (int i = 0; i < n; ++i) px[i] = mix3(color, bright100, f);
-        // Temperature moves in seconds, not in frames. Sampling it four times
-        // a second is more than enough and leaves the CPU alone.
-        return 250;
+        // The gradient does not animate, but it re-samples on the shared speed
+        // curve so the slider still governs how quickly it follows the bed.
+        return fx_period(speed);
     }
 
     // NOT STOCK. Whatever was uploaded.
@@ -819,11 +763,8 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         // an animation is replaced, so a new upload starts at its first row
         // rather than wherever the last one had got to.
         ++s_anim_frame;
-        // Marquee's scale, which is what the other frame-rate-driven effects
-        // use: fast enough to read as movement at the top, slow enough at the
-        // bottom to see individual frames.
-        int ms = (int)(120.0 - (double)speed * 1.0);
-        return ms < 10 ? 10 : (uint32_t)ms;
+        // One shared speed curve, like every other effect.
+        return fx_period(speed);
     }
 
     // NOT STOCK. Three ways to draw the same number.
@@ -930,15 +871,8 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
             s_barber_pos = (s_barber_pos + 1) % (w * 2);
         }
 
-        // Nothing in the plain bar is animated by the frame rate itself, only
-        // the easing, so it borrows Breathing's period. The chase and the pole
-        // ARE the frame rate, so they run on Marquee's scale instead: fast
-        // enough to read as movement, slow enough at the bottom of the slider
-        // to count the bands.
-        int ms = (fx == PV_FX_PROGRESS)
-               ? (int)(50.0  - (double)speed * 0.4)
-               : (int)(120.0 - (double)speed * 1.0);
-        return ms < 10 ? 10 : (uint32_t)ms;
+        // All three take their rate from the one shared speed curve.
+        return fx_period(speed);
     }
 
     case PV_FX_MARQUEE_OUT:
@@ -964,8 +898,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         s_split_pos += reverse ? -0.3f : 0.3f;
         if (s_split_pos >= (float)h)   s_split_pos = 0.0f;
         else if (s_split_pos < 0.0f)   s_split_pos = (float)h - 1e-6f;
-        int ms = (int)(70.0 - (double)speed * 0.6);
-        return ms < 10 ? 10 : (uint32_t)ms;
+        return fx_period(speed);
     }
 
     case PV_FX_FILL_OUT:
@@ -991,8 +924,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         // and the eye reads that as a dropped frame.
         if (s_fill_pos >= (float)h + 1.0f) s_fill_pos = 0.0f;
         else if (s_fill_pos < 0.0f)        s_fill_pos = (float)h + 1.0f;
-        int ms = (int)(70.0 - (double)speed * 0.6);
-        return ms < 10 ? 10 : (uint32_t)ms;
+        return fx_period(speed);
     }
 
     case PV_FX_BOUNCE_OUT:
@@ -1021,8 +953,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
             s_sbounce_pos = 0.0f;
             s_sbounce_dir = 1.0f;
         }
-        int ms = (int)(70.0 - (double)speed * 0.6);
-        return ms < 10 ? 10 : (uint32_t)ms;
+        return fx_period(speed);
     }
 
     case PV_FX_BOUNCE_FILL_OUT:
@@ -1052,50 +983,26 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
             s_sfill_pos = 0.0f;
             s_sfill_dir = 1.0f;
         }
-        int ms = (int)(70.0 - (double)speed * 0.6);
-        return ms < 10 ? 10 : (uint32_t)ms;
+        return fx_period(speed);
     }
 
-    case PV_FX_RAINBOW:                      // 0x400ddc34
+    // 6 - Rainbow: the hue wheel spread across the run, scrolling over time.
+    //     One full wheel maps across n, so it stays a complete rainbow at any
+    //     strip length; hsv_full is never black. Spatial order flips with
+    //     reverse. Also the default, so an unknown id still shows something.
+    case PV_FX_RAINBOW:
     default: {
-        // hue = (i * 360 / n + phase) mod 360, so a FULL spectrum is spread
-        // across the strip, scrolling by phase. HSV at full saturation and
-        // value. phase advances by +/-5 per frame, sign taken from the
-        // reverse switch (sext a4, a4, 7 then addx4 a4, a4, a4 at
-        // 0x400dde44, so the step is +5 or -5 and never 0: both directions
-        // do scroll).
-        //
-        // The detail worth keeping: stock does not light every pixel at the
-        // configured brightness. It subtracts ((i + 2) mod 7) from it, with
-        // an unsigned-underflow guard that clamps to 0. That is a 7 pixel
-        // sawtooth shimmer laid over the spectrum, and it is why the stock
-        // rainbow has visible texture rather than a flat wash.
         for (int i = 0; i < n; ++i) {
-            int hue = ((i * 360) / n) + s_rainbow_phase;
-            hue %= 360;
-            if (hue < 0) hue += 360;
-            rgb_t c = hsv_full((uint16_t)hue);
-
-            uint8_t dip = (uint8_t)((i + 2) % 7);
-            uint8_t b = (uint8_t)(bright100 - dip);
-            if (bright100 < b) b = 0;            // stock's underflow guard
-
-            px[i].r = chan(c.r, b);
-            px[i].g = chan(c.g, b);
-            px[i].b = chan(c.b, b);
+            int ri = reverse ? (n - 1 - i) : i;
+            float hue = s_rainbow_phase + (360.0f * (float)ri) / (float)n;
+            rgb_t h = hsv_full((uint16_t)hue % 360);
+            px[i].r = chan(h.r, bright100);
+            px[i].g = chan(h.g, bright100);
+            px[i].b = chan(h.b, bright100);
         }
-        // Sign confirmed at 0x400ddc83: stock normalises the flag to +1 when
-        // set and 255 (= -1 after sext a4,a4,7) when clear, then multiplies
-        // by 5 with addx4. So reverse OFF DECREMENTS the phase. Since
-        // hue(i) = i*360/n + phase, a decreasing phase moves the pattern
-        // toward increasing i, the same way Wave and Marquee travel with
-        // reverse off. This was inverted until 2026-08-28.
-        s_rainbow_phase += reverse ? +5 : -5;
-        if (s_rainbow_phase >= 360)  s_rainbow_phase -= 360;
-        if (s_rainbow_phase <= -360) s_rainbow_phase += 360;
-        // Base 100, not 150. movi a8, 0x64 at 0x400dde85, floored at 10.
-        uint32_t ms = 100u - (speed > 100 ? 100 : speed);
-        return ms < 10 ? 10 : ms;
+        s_rainbow_phase += RAINBOW_DELTA;
+        if (s_rainbow_phase >= 360.0f) s_rainbow_phase -= 360.0f;
+        return fx_period(speed);
     }
     }
 }
