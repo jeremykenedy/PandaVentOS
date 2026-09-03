@@ -236,6 +236,8 @@ const char *pv_json_state_part(int part)
     cJSON_AddStringToObject(se, "os_version", PV_OS_VERSION);
     // NOT STOCK. Non-zero means the last save did not reach flash.
     cJSON_AddNumberToObject(se, "cfg_save_failed", g_live.cfg_save_failed ? 1 : 0);
+    cJSON_AddNumberToObject(se, "cfg_save_err",  pv_cfg_save_err());
+    cJSON_AddNumberToObject(se, "cfg_save_keys", pv_cfg_save_keys());
     cJSON_AddStringToObject(se, "language", g_cfg.language);
     // NOT a stock key. What the Control Panel's Device row shows; stock has
     // the same string baked into the web app as a translation entry.

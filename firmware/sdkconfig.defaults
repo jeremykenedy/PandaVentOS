@@ -51,3 +51,18 @@ CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
 # which made a factory-reset vent impossible to put back on Wi-Fi. The AP
 # records are heap-allocated now; this is the second belt.
 CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
+
+# The RF calibration blob is not kept in NVS.
+#
+# Measured 2026-09-03 from a /backup flash image: the nvs partition is 12 KB,
+# 378 entries in three pages, and NVS holds one page back for compaction, so
+# 252 are usable. The phy namespace took 66 of them, cal_data alone being 61.
+# With the Wi-Fi stack's own 86 on top, a complete config (the main blob plus
+# six per-state lighting tables) needed 259 and two of the six could never be
+# written: every save of them returned ESP_ERR_NVS_NOT_ENOUGH_SPACE and the
+# device warned that settings would be lost on restart, which they were.
+#
+# Turning this off frees the whole phy namespace. The cost is a full RF
+# calibration at each boot instead of a cached one; the measurement either
+# side of the change is in private/PHASE2-RECORD.md.
+CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE=n

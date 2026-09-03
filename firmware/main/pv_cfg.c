@@ -872,9 +872,16 @@ static void h2d_key(int st, char out[8])
 #define SAVE_CFG    0x01
 #define SAVE_H2D0   0x02        /* .. shifted left by the state index */
 static uint16_t s_save_failed;
+/* The last error a save actually returned, and the keys it was for. The page
+   used to be told only that "a save failed", which is true of a full NVS, a
+   read-only handle and a corrupt page alike, and the three want different
+   answers from whoever reads the banner. */
+static int      s_save_err;
 
-static void save_failed_set(uint16_t bit, bool failed)
+static void save_failed_set_err(uint16_t bit, bool failed, int err)
 {
+    if (failed) s_save_err = err;
+    else if (!(s_save_failed & ~bit)) s_save_err = 0;   /* the last one cleared */
     uint16_t was = s_save_failed;
     if (failed) s_save_failed |= bit;
     else        s_save_failed &= (uint16_t)~bit;
@@ -908,7 +915,7 @@ static void h2d_save_state(int st)
     }
     if (err == ESP_OK) err = nvs_commit(h);
     nvs_close(h);
-    save_failed_set(SAVE_H2D0 << st, err != ESP_OK);
+    save_failed_set_err(SAVE_H2D0 << st, err != ESP_OK, (int)err);
     if (err != ESP_OK)
         ESP_LOGE(TAG, "h2d[%d] save failed: %d", st, err);
 }
@@ -1529,6 +1536,11 @@ void pv_cfg_load(void)
              err, (unsigned)size);
 }
 
+/* What the last failing save returned, and which keys are unstored. Zero and
+   zero when everything is stored. */
+int      pv_cfg_save_err(void)  { return s_save_err; }
+uint16_t pv_cfg_save_keys(void) { return s_save_failed; }
+
 void pv_cfg_save(void)
 {
     nvs_handle_t h;
@@ -1575,7 +1587,7 @@ void pv_cfg_save(void)
     // itself is worse than no warning, because the next real one is ignored.
     if (err != ESP_OK)
         ESP_LOGE(TAG, "CONFIG SAVE FAILED (%d)", err);
-    save_failed_set(SAVE_CFG, err != ESP_OK);
+    save_failed_set_err(SAVE_CFG, err != ESP_OK, (int)err);
 }
 
 void pv_factory_reset_and_reboot(void)

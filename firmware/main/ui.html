@@ -3054,15 +3054,18 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 <!-- Settings that would not save. This is not a toast: it stays until the
      device says a save succeeded, because a message that vanishes is no
      use for a condition that persists. -->
-<div class="banner error-container" id="id_cfg_alert" hidden>
+<!-- It carried a close X for a while. It should not: this reports a fault that
+     is still happening, and a banner you can dismiss is one you stop reading.
+     It withdraws itself when the device reports a save that worked, and not
+     before. The second line names what actually failed, because "a save
+     failed" is equally true of a full NVS, a read-only handle and a corrupt
+     page, and those want different answers from whoever is reading it. -->
+<div class="banner error-container" id="id_cfg_alert" role="alert" hidden>
   <svg class="i"><use href="#i-warning"/></svg>
-  <span class="max" data-str="ui_settings_could_not_be_saved_the_de">Settings could not be saved. The device will forget them on restart.</span>
-  <!-- A close X has to close something. This one dismisses the banner until
-       the device reports a save that worked and then fails again. -->
-  <button class="circle transparent" id="id_cfg_alert_close" aria-label="Dismiss"
-          title="Dismiss" data-str-title="ui_dismiss">
-    <svg class="i"><use href="#i-close"/></svg>
-  </button>
+  <div class="max">
+    <div data-str="ui_settings_could_not_be_saved_the_de">Settings could not be saved. The device will forget them on restart.</div>
+    <div class="small-text" id="id_cfg_alert_detail"></div>
+  </div>
 </div>
 
 <!-- Something happened and you do not need to do anything about it. -->
@@ -8024,12 +8027,14 @@ function render_chrome() {
     badge.setAttribute('title', (s.os_name || 'PandaVent OS') + (s.os_version ? ' ' + s.os_version : ''));
   }
 
-  /* Config-save-failed banner. Dismissing it hides it until the device
-     reports a save that worked, so a push a second later cannot bring back
-     a banner the reader has just closed. */
+  /* Config-save-failed banner. It cannot be dismissed: the fault is still
+     happening while it shows, and it withdraws itself the moment the device
+     reports a save that worked. The detail line names the error the device
+     actually got and which keys are unstored, so the reader can tell a full
+     NVS from a corrupt page. */
   var cfgFailed = !!s.cfg_save_failed;
-  if (!cfgFailed) g_cfg_alert_dismissed = false;
-  setHidden('id_cfg_alert', !cfgFailed || g_cfg_alert_dismissed);
+  setHidden('id_cfg_alert', !cfgFailed);
+  if (cfgFailed) setText('id_cfg_alert_detail', cfg_save_detail(s));
 }
 
 /* ---------------------------------------------------------------------
@@ -8676,6 +8681,34 @@ function render_light_extras(rm) {
   if (eb && document.activeElement !== eb && isNum(ef.bright)) eb.value = ef.bright;
   if (isNum(ef.bright)) setText('id_err_bright_value', fmtPct(ef.bright));
   setChecked('id_err_strobe', ef.strobe, true);
+}
+
+/* Which keys the device could not store, and what the write returned.
+   ESP_ERR_NVS_* are 0x1100-based; the two that actually happen here are
+   "not enough space" and "not enough space for a new page", and they mean
+   different things to whoever has to fix it. */
+var NVS_ERRS = {
+  4353: 'the store is not initialised',
+  4354: 'the key was not found',
+  4355: 'the handle is invalid',
+  4356: 'the value is too long',
+  4357: 'the store is full',
+  4358: 'the key is invalid',
+  4359: 'the store is out of pages',
+  4360: 'the value does not fit the page'
+};
+
+function cfg_save_detail(s) {
+  var bits = isNum(s.cfg_save_keys) ? s.cfg_save_keys : 0;
+  var which = [];
+  if (bits & 1) which.push(tr('cfg_key_main', 'the main settings'));
+  var states = [];
+  for (var i = 0; i < 6; i++) if (bits & (2 << i)) states.push(device_state_name(i));
+  if (states.length) which.push(tr('cfg_key_lighting', 'the lighting for') + ' ' + states.join(', '));
+  var err = isNum(s.cfg_save_err) ? s.cfg_save_err : 0;
+  var why = NVS_ERRS[err] || (tr('cfg_err_code', 'error') + ' ' + err);
+  if (!which.length) return why;
+  return which.join('; ') + ' \u2014 ' + why;
 }
 
 /* Slider + its label, guarding focus. */
@@ -9364,16 +9397,6 @@ function clear_ota_progress() {
    19. Boot
    ------------------------------------------------------------------- */
 
-var g_cfg_alert_dismissed = false;
-
-function wire_cfg_alert() {
-  var x = byId('id_cfg_alert_close');
-  if (x) x.addEventListener('click', function () {
-    g_cfg_alert_dismissed = true;
-    setHidden('id_cfg_alert', true);
-  });
-}
-
 function wire_dialog_close() {
   var x = byId('id_dialog_close');
   if (x) x.addEventListener('click', dialog_dismiss);
@@ -9394,7 +9417,6 @@ function init_ui() {
   apply_translations();
   wire_navigation();
   wire_dialog_close();
-  wire_cfg_alert();
 
   /* Open on the Status card by default; landing may move it once (§0.4). */
   show_card('status');

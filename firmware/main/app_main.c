@@ -24,6 +24,7 @@
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "nvs.h"
 #include "nvs_flash.h"
 
 static const char *TAG = "pandavent";
@@ -88,6 +89,30 @@ void app_main(void)
         err = nvs_flash_init();
     }
     if (err != ESP_OK) ESP_LOGE(TAG, "nvs_flash_init: %s", esp_err_to_name(err));
+
+#if !CONFIG_ESP_PHY_CALIBRATION_AND_DATA_STORAGE
+    // Reclaim the RF calibration blob, once.
+    //
+    // Turning the sdkconfig option off stops ESP-IDF WRITING cal_data; it does
+    // not remove what an earlier build already stored, and on this device that
+    // was 61 of the 252 usable NVS entries -- a quarter of the partition held
+    // by something nothing reads any more. Without this the option frees
+    // nothing at all, which is what the flash image showed after the first
+    // build with it disabled.
+    //
+    // Idempotent by construction: once the namespace is gone nvs_open returns
+    // ESP_ERR_NVS_NOT_FOUND and this is a no-op, so it costs one failed open
+    // per boot forever after and needs no flag of its own.
+    {
+        nvs_handle_t ph;
+        esp_err_t pe = nvs_open("phy", NVS_READWRITE, &ph);
+        if (pe == ESP_OK) {
+            if (nvs_erase_all(ph) == ESP_OK && nvs_commit(ph) == ESP_OK)
+                ESP_LOGW(TAG, "reclaimed the stored RF calibration; it is not written any more");
+            nvs_close(ph);
+        }
+    }
+#endif
 
     pv_cfg_load();
     pv_policy_load();   // separate NVS key, so it cannot disturb the config blob

@@ -529,6 +529,12 @@ extern pv_live_t g_live;
 // pv_cfg.c
 void pv_cfg_load(void);
 void pv_cfg_save(void);
+// What the last failing config save actually returned (an esp_err_t, 0 when
+// none), and a bit per unstored key: 0x01 the main config, 0x02 << state for
+// each per-state lighting table. "A save failed" alone cannot tell a full NVS
+// from a corrupt page, and those need different answers.
+int      pv_cfg_save_err(void);
+uint16_t pv_cfg_save_keys(void);
 void pv_cfg_factory_defaults(pv_cfg_t *c);          // whole config
 void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode); // one mode's defaults
 void pv_factory_reset_and_reboot(void);
