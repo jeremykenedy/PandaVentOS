@@ -294,86 +294,151 @@ static bool error_now(void)
 //
 // 0x400d9178 turns gcode_state into the internal state at 0x3ffb5690, and
 // 0x400dc400 maps that to the H2D state the renderer indexes with.
-#define FINISH_HOLD_MS 30015          // literal at 0x400d0898
 
-// 0x400dc300. Splits a RUNNING print into PREPARE or PRINTING using stg_cur
-// (0x3ffb5620, report index 4) and layer_num (0x3ffb561c, index 3).
-static int stage_split(int stg, int layer)
+/* ===========================================================================
+   PLACEHOLDER VALUES, PENDING MEASUREMENT.  See private/POST-PRINT-SESSION.md.
+
+   Three numbers below came from the stock image and are being replaced with
+   measured ones, not re-derived on paper. They are gathered here, named, and
+   shaped so that the measurement is a CONSTANT CHANGE and not another rewrite:
+
+     PREPARE_STAGES / PREPARE_STAGES_IF_NO_LAYER   which stg_cur codes mean the
+                                                   printer is still preparing
+     FINISH_HOLD_MS                                how long a finished job is
+                                                   held before it stops being
+                                                   the current state
+     COMPLETE_HOLD_US                              how long the page is shown
+                                                   Completed afterwards
+
+   `stg_cur` and `layer_num` are printer report fields that this firmware
+   already republishes, and `device_state` is published beside them, so every
+   input AND the output of the split are on the wire. A state logger is running
+   against a real print (private/observations/statepoll.py); when it has been
+   through the end of one job and the start of the next, the lists below are
+   replaced with what the printer actually emitted.
+
+   A printer only emits the stages it passes through, so the measurement will
+   cover the codes that matter on this hardware and leave the rest unseen.
+   DELIBERATE CHOICE, Jeremy 2026-09-03: an unobserved stage code means
+   PRINTING. That is recorded as a decision, not left as a gap.
+   =========================================================================== */
+
+/* stg_cur values that mean the printer is preparing rather than printing. */
+static const uint8_t PREPARE_STAGES[] = {
+    1, 2, 3, 7, 8, 11, 13, 14, 19, 24, 29, 39, 51, 54,
+};
+
+/* These two mean preparing only while no layer has been laid down yet. */
+static const uint8_t PREPARE_STAGES_IF_NO_LAYER[] = { 0, 4 };
+
+/* A job that has finished stays the current state this long. */
+#define FINISH_HOLD_MS    30000
+
+/* And the page keeps showing Completed for this long after that. */
+#define COMPLETE_HOLD_US  (30 * 1000000)
+
+static bool in_list(const uint8_t *set, size_t n, int v)
 {
-    if (stg == -1) return PV_ST_PREPARE;                    // 0x400dc309
-    if (stg > 54)                                           // 0x400dc314
-        return (stg == 255) ? (layer ? PV_ST_PRINTING : PV_ST_PREPARE)
-                            : PV_ST_PRINTING;               // 0x400dc350
-    if (stg >= 24)                                          // 0x400dc319
-        return ((0x48008021u >> (stg - 24)) & 1u)           // 0x400d0c04
-               ? PV_ST_PREPARE : PV_ST_PRINTING;            // 0x400dc32f
-    if (stg > 19) return PV_ST_PRINTING;                    // 0x400dc31e
-    if (stg < 0)  return PV_ST_PRINTING;                    // 0x400dc321
-    uint32_t bit = 1u << stg;                               // 0x400dc338
-    if (bit & 0x0008698Eu) return PV_ST_PREPARE;            // 0x400d0c00
-    if (bit & 0x00000011u)                                  // 0x400dc346
-        return layer ? PV_ST_PRINTING : PV_ST_PREPARE;      // 0x400dc35c
-    return PV_ST_PRINTING;                                  // 0x400dc34b
+    if (v < 0 || v > 255) return false;
+    for (size_t i = 0; i < n; ++i) if (set[i] == (uint8_t)v) return true;
+    return false;
 }
 
-// 0x400d9178. Produces the internal state at 0x3ffb5690.
+/* Split a running job into Preparation or Printing.
+
+   Specified by private/SPEC/printer-states.md: `stg_cur` is the printer's own
+   stage code and `layer_num` its current layer, and the two together say
+   whether a job that is RUNNING is still getting ready or actually laying
+   plastic down. -1 means the printer has not reported a stage yet, which is
+   the earliest part of getting ready. */
+static int stage_split(int stg, int layer)
+{
+    if (stg < 0) return PV_ST_PREPARE;
+    if (in_list(PREPARE_STAGES, sizeof PREPARE_STAGES, stg))
+        return PV_ST_PREPARE;
+    if (in_list(PREPARE_STAGES_IF_NO_LAYER, sizeof PREPARE_STAGES_IF_NO_LAYER, stg))
+        return layer ? PV_ST_PRINTING : PV_ST_PREPARE;
+    if (stg == 255)                       /* no stage reported on this frame */
+        return layer ? PV_ST_PRINTING : PV_ST_PREPARE;
+    return PV_ST_PRINTING;                /* the deliberate default */
+}
+
+/* The internal state, from the printer's gcode_state and the error predicate.
+
+   printer-states.md, independently sourced: gcode_state is 0 IDLE, 1 RUNNING,
+   2 PREPARE, 3 PAUSE, 4 FINISH, 5 FAILED, and Error does NOT come from
+   gcode_state -- a FAILED job on its own is not Error, and a fault raised
+   during a RUNNING one is. So the predicate is asked first and outranks
+   everything.
+
+   The hold exists because a job that reaches FINISH would otherwise stop being
+   the current state the instant the printer moved on, and nobody would see it.
+   It is armed on the RUNNING -> FINISH edge only, and any state that is not
+   FINISH disarms it. */
 static int internal_state_now(void)
 {
-    static int  prev = 0;
-    static bool armed, fired;
-    static int64_t t0;
+    static int     prev_gcode;
+    static bool    holding, hold_expired;
+    static int64_t hold_from;
 
     int gs = g_live.gcode_state;
 
-    if (gs == 4 && prev == 1 && !armed) {        // 0x400d9189
-        armed = true;
-        t0 = esp_timer_get_time();
-        fired = false;
-    } else if (gs != 4) {                        // 0x400d91b0
-        armed = false;
+    if (gs == 4 && prev_gcode == 1 && !holding) {
+        holding = true;
+        hold_expired = false;
+        hold_from = esp_timer_get_time();
+    } else if (gs != 4) {
+        holding = false;
     }
-    prev = gs;                                   // 0x400d91b8
+    prev_gcode = gs;
 
-    if (error_now()) { armed = false; return 1; }             // 0x400d91c7
-    if (gs == 2) return 3;                                    // 0x400d91d8
-    if (gs == 3) return 4;                                    // 0x400d91e5
-    if (gs == 1) return 2;                                    // 0x400d91f4
-    if (armed && !fired) {                                    // 0x400d9207
-        if ((esp_timer_get_time() - t0) / 1000 <= FINISH_HOLD_MS)
-            return 5;                                         // 0x400d9225
-        fired = true;                                         // 0x400d9230
+    if (error_now()) { holding = false; return 1; }   /* Error outranks all */
+    if (gs == 2) return 3;                            /* Prepare            */
+    if (gs == 3) return 4;                            /* Paused             */
+    if (gs == 1) return 2;                            /* Running            */
+
+    if (holding && !hold_expired) {
+        if ((esp_timer_get_time() - hold_from) / 1000 <= FINISH_HOLD_MS)
+            return 5;                                 /* just finished      */
+        hold_expired = true;
     }
-    return 0;                                                 // 0x400d9238
+    return 0;                                         /* Idle               */
 }
 
-// 0x400dc400.
-//
-// Internal 5 does NOT map straight to COMPLETE: it goes through 0x400dc3a8,
-// which is a SECOND 30 second hold with its own latch byte at 0x3ffb68e8 and
-// its own timestamp pair at 0x3ffb68e0, measured in microseconds against
-// 29999999 (0x400d0c14). Internals 1, 2 and 4 each clear that latch on the way
-// past. The two timers are chained, not duplicated, so both are modelled.
+/* The device state the page and the per-state lighting are indexed by.
+
+   The six ids and their order are the wire contract, from printer-states.md:
+   0 Idle, 1 Preparation, 2 Printing, 3 Paused, 4 Completed, 5 Error.
+
+   Completed gets its own hold, chained after the one above rather than
+   duplicating it: the first decides how long a finished job remains the
+   current job, this one how long the page keeps saying so. Every other state
+   clears it on the way past, so a new job always starts from a clean latch. */
 static int h2d_state_now(void)
 {
-    static bool fin_latched;          // 0x3ffb68e8
-    static int64_t fin_t0;            // 0x3ffb68e0
+    static bool    complete_latched;
+    static int64_t complete_from;
 
     switch (internal_state_now()) {
-    case 1: fin_latched = false; return PV_ST_ERROR;      // 0x400dc424
-    case 2: fin_latched = false;                          // 0x400dc431
-            return stage_split(g_live.stg_cur, g_live.layer_num);
-    case 3: return PV_ST_PREPARE;                         // 0x400dc448
-    case 4: fin_latched = false; return PV_ST_PAUSED;     // 0x400dc455
-    case 5:                                               // 0x400dc462
-        if (!fin_latched) {                               // 0x400dc3b1
-            fin_t0 = esp_timer_get_time();
-            fin_latched = true;
-            return PV_ST_COMPLETE;                        // 0x400dc3c8
+
+    case 1:  complete_latched = false; return PV_ST_ERROR;
+    case 3:  return PV_ST_PREPARE;
+    case 4:  complete_latched = false; return PV_ST_PAUSED;
+
+    case 2:
+        complete_latched = false;
+        return stage_split(g_live.stg_cur, g_live.layer_num);
+
+    case 5:
+        if (!complete_latched) {
+            complete_from = esp_timer_get_time();
+            complete_latched = true;
+            return PV_ST_COMPLETE;
         }
-        if (esp_timer_get_time() - fin_t0 > 29999999)     // 0x400d0c14
-            return PV_ST_IDLE;                            // 0x400dc3f5
-        return PV_ST_COMPLETE;                            // 0x400dc3fa
-    default: return PV_ST_IDLE;                           // 0x400dc414
+        return (esp_timer_get_time() - complete_from > COMPLETE_HOLD_US)
+             ? PV_ST_IDLE : PV_ST_COMPLETE;
+
+    default: return PV_ST_IDLE;
     }
 }
 
