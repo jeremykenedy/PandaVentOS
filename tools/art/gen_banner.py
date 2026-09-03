@@ -86,7 +86,7 @@ def leds(p, x, y, gap, rr):
 def build(p):
     W, H = 880, 215
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}"
-     viewBox="0 0 {W} {H}" role="img" aria-label="PandaVent OS">
+     viewBox="0 0 {W} {H}" role="img" aria-label="VentOS">
   <rect width="{W}" height="{H}" rx="28" fill="{p['surface']}"/>
   <rect x="1" y="1" width="{W - 2}" height="{H - 2}" rx="27" fill="none"
         stroke="{p['outline']}" stroke-width="1" opacity=".35"/>

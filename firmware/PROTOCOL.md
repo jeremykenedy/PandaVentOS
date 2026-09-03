@@ -295,7 +295,7 @@ Vent, then the error override, then the selected mode.
 
 ---
 
-# PandaVent OS extensions
+# VentOS extensions
 
 Everything above is the factory protocol and is spoken unchanged. What
 follows is added by this firmware. A stock device sends none of it, and the
@@ -308,7 +308,7 @@ Under `settings`:
 
 | key | type | meaning |
 |---|---|---|
-| `os_name` | string | `"PandaVent OS"` |
+| `os_name` | string | `"VentOS"` |
 | `os_version` | string | this project's own semantic version, distinct from `fw_version`, which stays `"V1.0.0"` because it names the FACTORY protocol revision on the wire |
 | `device_name` | string | what the Control Panel shows on its Device row |
 | `cfg_save_failed` | 0/1 | 1 means the last attempt to persist the configuration did not reach flash. The settings are live in RAM and will be lost at the next reboot. See the NVS budget note in `pv_cfg.c` |

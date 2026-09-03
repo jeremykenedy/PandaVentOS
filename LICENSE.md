@@ -1,6 +1,6 @@
 # License
 
-## PandaVent OS
+## VentOS
 
 MIT License
 
@@ -33,6 +33,8 @@ cannot, cover the following, which have their own terms.
 | --- | --- | --- |
 | BIQU Panda Vent firmware image, web UI, manuals and 3D models | `factory/` | CC BY-NC-ND 4.0, see `factory/docs/BIQU-LICENSE.md` |
 | Heroicons | icon sprite in the web UI | MIT, Tailwind Labs |
+| iro.js 5.5.2 | `firmware/main/vendor/iro/` | MPL-2.0, text at `firmware/main/vendor/iro/LICENSE.txt` |
+| Beer CSS | stylesheet and script in the web UI | MIT |
 | ESP-IDF | build dependency, not vendored | Apache 2.0, Espressif |
 | cJSON | via ESP-IDF | MIT |
 
@@ -45,9 +47,11 @@ here for reference and for the ability to put the stock firmware back on a
 device. Nothing in `factory/` is under the MIT grant above, and no adapted or
 modified copy of BIQU's work is redistributed by this project.
 
-PandaVent OS is not affiliated with, endorsed by, or supported by BIQU or
-BigTreeTech. Panda Vent is their product name. Bambu Lab, AMS and P2S are
-Bambu Lab's.
+VentOS is independent firmware for the BIQU Panda Vent. It is not affiliated
+with, endorsed by, or supported by Shenzhen BIGTREE Technology Co., Ltd., BIQU
+or BIGTREETECH. It is a reimplementation, not a modification of their firmware.
+"Panda Vent" is their product name and is used here only to identify the
+hardware this runs on. Bambu Lab, AMS and P2S are Bambu Lab's.
 
 ### Warranty and risk
 

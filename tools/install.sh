@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# PandaVent OS installer.
+# VentOS installer.
 #
 # Takes a full 4 MB backup of your device FIRST, verifies it, and only then
 # writes anything. The backup is not optional and there is no flag to skip it:

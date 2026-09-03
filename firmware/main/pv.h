@@ -1,5 +1,5 @@
 #pragma once
-// PandaVent: a from-scratch re-creation of the BIQU Panda Vent factory
+// VentOS: a from-scratch re-creation of the BIQU Panda Vent factory
 // application. The contract is the FACTORY web UI (served byte-exact from
 // this firmware) and the factory WebSocket protocol captured from a running
 // stock device; see PROTOCOL.md. Anything the factory app does, this app
@@ -22,7 +22,7 @@
 // PV_OS_VERSION is THIS project's own version, semantic, and is what a user
 // reads in the corner of the page and matches against a GitHub release.
 #define PV_FW_VERSION  "V1.0.0"
-#define PV_OS_NAME     "PandaVent OS"
+#define PV_OS_NAME     "VentOS"
 #define PV_OS_VERSION  "0.1.0"
 
 // ---------------------------------------------------------------------------

@@ -2,18 +2,24 @@
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="screenshots/banner-dark.svg">
         <source media="(prefers-color-scheme: light)" srcset="screenshots/banner-light.svg">
-        <img src="screenshots/banner-light.svg" alt="PandaVent OS" width="820">
+        <img src="screenshots/banner-light.svg" alt="VentOS" width="820">
     </picture>
 </p>
 
 <p align="center">
-Open firmware for the BIQU Panda Vent. An exact re-creation of the factory application,<br>
+Independent firmware for the BIQU Panda Vent. A reimplementation of the factory
+application from observed behaviour,<br>
 then 22 lighting effects, material aware venting, printer control, and 24 languages on top of it.
 </p>
 
 <p align="center">
-    <a href="https://github.com/jeremykenedy/PandaVentOS/actions/workflows/ci.yml"><img src="https://github.com/jeremykenedy/PandaVentOS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://github.com/jeremykenedy/PandaVentOS/releases"><img src="https://img.shields.io/github/v/release/jeremykenedy/PandaVentOS?display_name=tag&amp;sort=semver&amp;color=2e7d32" alt="Latest Release"></a>
+<sub>VentOS is not affiliated with, endorsed by, or supported by BIQU or BIGTREETECH.<br>
+It is a reimplementation, not a modification of their firmware. "Panda Vent" is used only to name the hardware it runs on.</sub>
+</p>
+
+<p align="center">
+    <a href="https://github.com/jeremykenedy/VentOS/actions/workflows/ci.yml"><img src="https://github.com/jeremykenedy/VentOS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://github.com/jeremykenedy/VentOS/releases"><img src="https://img.shields.io/github/v/release/jeremykenedy/VentOS?display_name=tag&amp;sort=semver&amp;color=2e7d32" alt="Latest Release"></a>
     <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
     <a href="#requirements"><img src="https://img.shields.io/badge/ESP--IDF-v5.3.1-informational" alt="ESP-IDF v5.3.1"></a>
     <a href="#requirements"><img src="https://img.shields.io/badge/target-ESP32-blue" alt="Target ESP32"></a>
@@ -49,7 +55,7 @@ The factory application is re-created first, exactly, and everything below is
 added on top of that copy. The stock partition layout is untouched, so one
 upload puts BIQU's firmware back.
 
-| | Factory v1.0.0 | PandaVent OS |
+| | Factory v1.0.0 | VentOS |
 | --- | :---: | :---: |
 | **Lighting effects** | 7 | **22** |
 | **Colours per effect** | 1 | **4** |
@@ -226,8 +232,8 @@ Pick a language on first boot, or change it any time from the Settings page.
 There is a script, and it takes a backup before it writes anything.
 
 ```bash
-git clone https://github.com/jeremykenedy/PandaVentOS.git
-cd PandaVentOS
+git clone https://github.com/jeremykenedy/VentOS.git
+cd VentOS
 tools/install.sh
 ```
 
