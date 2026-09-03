@@ -171,7 +171,7 @@ every one of those commands; only the web page stopped drawing them.
 ## Languages
 
 Twenty four, every one of them at full coverage. There is no partial
-translation: a language ships when all 599 strings are in it. A string that is
+translation: a language ships when all 402 strings are in it. A string that is
 somehow missing falls back to English rather than showing a raw key.
 
 | Language | Native name | Code | |
@@ -225,9 +225,11 @@ Pick a language on first boot, or change it any time from the Settings page.
   printer's `print` command namespace is signature checked and refused, which
   its own firmware confirms; only the chamber and work lights are accepted. So
   no print speed, no fan control, no pause or resume from here.
-- **It reads the printer over the LAN only.** Developer Mode under LAN Only
-  Mode must be on, and the printer must be reachable on the same network. There
-  is no cloud path.
+- **It reads the printer over the LAN only.** The printer has to be in LAN
+  Only Mode and reachable on the same network. There is no cloud path.
+  Reading itself is never gated: every value arrives whatever mode the printer
+  is in. Developer Mode is only about what the printer will *accept*, and the
+  one write that gets through without it is the lights.
 - **It does not know where the flap is.** There is no position encoder. The
   hall sensor's end bands are the limit switches, the same as stock, so the
   vent knows "open" and "closed" and nothing between them.
