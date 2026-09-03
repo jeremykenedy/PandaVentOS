@@ -361,6 +361,16 @@ extern pv_policy_cfg_t g_pol;
 #ifndef PV_POLICY_TEST_HOOK
 #define PV_POLICY_TEST_HOOK 0
 #endif
+
+// TEST BUILD ONLY, same rule as the hook above: nothing in the tree sets it and
+// a shipping image contains none of it. It writes each rendered frame to the
+// log as hex so the effects can be checked against private/SPEC/
+// effects-math.md from what the DEVICE actually painted, rather than from a
+// host build of the same source. Off by default; a build that wants it passes
+// -DPV_FXDUMP=1 at configure time.
+#ifndef PV_FXDUMP
+#define PV_FXDUMP 0
+#endif
 #if PV_POLICY_TEST_HOOK
 extern bool g_test_live_lock;
 void pv_test_feed_report(const char *json, int len);

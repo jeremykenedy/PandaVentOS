@@ -67,3 +67,18 @@ if(DEFINED ENV{PV_POLICY_TEST_HOOK})
     target_compile_definitions(${COMPONENT_LIB} PRIVATE PV_POLICY_TEST_HOOK=1)
     message(WARNING "PV_POLICY_TEST_HOOK is ON: this is a TEST image, do not ship it")
 endif()
+
+# Test-only frame dump, same rule and the same switch shape as the hook above:
+#
+#   PV_FXDUMP=1 idf.py fullclean build     # instrumented
+#   idf.py fullclean build                 # shipping
+#
+# It writes every rendered frame to the log as hex, so an effect can be checked
+# against private/SPEC/effects-math.md from what the DEVICE painted rather than
+# from a host build of the same source. Verify a shipping image with:
+#
+#   strings build/panda_vent.bin | grep -c "FXD %d"            -> 0
+if(DEFINED ENV{PV_FXDUMP})
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE PV_FXDUMP=1)
+    message(WARNING "PV_FXDUMP is ON: this is a TEST image, do not ship it")
+endif()

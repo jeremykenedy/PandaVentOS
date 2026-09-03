@@ -1507,6 +1507,10 @@ void pv_rgb_stats(pv_rgb_stats_t *o)
     else if (!s_frames_since_us) { s_frames_since_us = now; s_frames_at_mark = s_frames; }
 }
 
+#if PV_FXDUMP
+static rgb_t s_fxdump0[PV_LEDS_PER_STRIP];
+#endif
+
 uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
 {
     static rgb_t px[PV_LEDS_PER_STRIP];
@@ -1613,10 +1617,37 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
             // Now a count that is too small only darkens the tail, which
             // is visible, obviously wrong, and instantly reversible.
             if (out) memcpy(out[s], px, sizeof(rgb_t) * PV_LEDS_PER_STRIP);
+#if PV_FXDUMP
+            // Strip 0's pixels as they go out, kept because px is reused by
+            // the next strip and the device passes out = NULL.
+            if (s == 0) memcpy(s_fxdump0, px, sizeof(s_fxdump0));
+#endif
                 if (push && strip_push(s, px, PV_LEDS_PER_STRIP) != ESP_OK)
                     ++s_push_fail;
         }
     }
+#if PV_FXDUMP
+    // One line per frame: the effect, the frame number, the interval it is
+    // about to wait, and strip 0's sixteen pixels as hex. The log ring is 64
+    // lines and 128 bytes each, which is 16 pixels exactly; at a slow speed
+    // the ring holds several seconds of frames and the reader stitches them
+    // by frame number.
+    {
+        // Two lines of eight pixels. Sixteen at six characters each is 96, and
+        // with the level prefix and the colour escapes ESP_LOG wraps around it
+        // does not fit LOG_LINE's 128; the first attempt lost four pixels off
+        // every frame silently. The reader pairs A and B by frame number.
+        char hx[8 * 6 + 1];
+        for (int half = 0; half < 2; ++half) {
+            for (int i = 0; i < 8; ++i) {
+                const rgb_t *q = &s_fxdump0[half * 8 + i];
+                snprintf(hx + i * 6, 7, "%02X%02X%02X", q->r, q->g, q->b);
+            }
+            ESP_LOGI(TAG, "FXD %d %u %c %s", fx,
+                     (unsigned)(s_frames % 100000u), half ? 'B' : 'A', hx);
+        }
+    }
+#endif
     ++s_frames;
     s_last_fx = fx;
     s_last_wait = wait_ms;
