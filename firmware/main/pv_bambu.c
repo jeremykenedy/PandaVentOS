@@ -71,7 +71,7 @@ static bool bambu_send_top(const char *top, const char *cmd_json_body)
         return false;
     }
     // No invented user_id.
-    //
+//
     // Bambu Studio sends one, so it was tried here: a made-up value, on the
     // theory that the printer only checks for the field's presence. It changed
     // nothing, on either command, which makes it a guess that happened not to
@@ -171,15 +171,15 @@ bool pv_bambu_set_speed(int level)
 // ---------- report parsing ----------
 
 // ---------------------------------------------------------------------------
-// THE ERROR PREDICATE, recovered 2026-08-29 from 0x400d9158.
+// THE ERROR PREDICATE, recovered 2026-08-29.
 //
 // Stock does not derive its ERROR state from gcode_state. The chain is:
 //
 //   error = classify(print_error) || hms_has_pair()
-//   error -> internal 1 at 0x400d91c7
-//         -> H2D state 5 at 0x400dc424   (5 is reachable ONLY from internal 1:
-//            0x400dc300 returns only 1 or 2 across all eleven of its exits and
-//            0x400dc3a8 returns only 4 or 0)
+//   error -> internal 1
+//         -> H2D state 5   (5 is reachable ONLY from internal 1:
+// returns only 1 or 2 across all eleven of its exits and
+// returns only 4 or 0)
 //         -> the warning override red
 //
 // The clone gated on gcode_state == "FAILED" until now, which is a different
@@ -245,8 +245,8 @@ static const uint32_t ERR_IGNORE[42] = {        // table C
     0x0C008002, 0x05004001, 0x0300800C, 0x03008013, 0x12FF8007, 0x12FFC003,
 };
 
-// The single hms pair stock matches at 0x400d9015. Entry field 0 is compared
-// against the literal at 0x400d087c and field 4 against 0x400d0878.
+// The single hms pair stock matches. Entry field 0 is compared
+// against the literal and field 4 against.
 //
 // INFERRED, and the only inferred thing here: which of the two JSON members is
 // which. The pair itself is exact. Bambu reports hms entries as
@@ -256,22 +256,22 @@ static const uint32_t ERR_IGNORE[42] = {        // table C
 #define HMS_FAULT_ATTR  0x03001200u
 #define HMS_FAULT_CODE  0x00020001u
 
-// 0x400d9158: classify(print_error) first, and only if that says no does the
+//: classify(print_error) first, and only if that says no does the
 // hms pair get consulted.
 static bool error_now(void);
 
 static bool print_error_is_fault(uint32_t code)
 {
-    if (code == 0) return false;                        // 0x400d8fa7
-    for (int i = 0; i < 4; ++i)                         // 0x400d8fb0
+    if (code == 0) return false;
+    for (int i = 0; i < 4; ++i)
         if (ERR_FORCE[i] == code) return true;
-    for (int i = 0; i < 3; ++i) {                       // 0x400d8fc5
+    for (int i = 0; i < 3; ++i) {
         uint32_t diff = ERR_MASKED[i].value ^ code;
         if ((diff & ~ERR_MASKED[i].mask) == 0) return false;
     }
-    for (int i = 0; i < 42; ++i)                        // 0x400d8fe0
+    for (int i = 0; i < 42; ++i)
         if (ERR_IGNORE[i] == code) return false;
-    return true;                                        // 0x400d8ff2
+    return true;
 }
 
 static bool error_now(void)
@@ -280,20 +280,21 @@ static bool error_now(void)
 }
 
 // ---------------------------------------------------------------------------
-// THE H2D STATE MACHINE, recovered 2026-08-29 from 0x400d9178 and 0x400dc400.
+// THE H2D STATE MACHINE, recovered 2026-08-29.
 //
 // The discriminant is gcode_state, stored by stock as an int at REPORT BASE
-// + 124 = 0x3ffb568c (writers 0x400d9300 through 0x400d9379):
+// + 124 = (writers through):
 //
 //     IDLE 0    RUNNING 1    PREPARE 2    PAUSE 3    FINISH 4    FAILED 5
 //
 // That address was invisible to three earlier scans because they were anchored
-// on the printer block base with offset 20, or on addmi from 0x3ffb4a78. Same
-// address, different base and offset. A scan that found only two writers, both
-// zero, and concluded the machine was dead was wrong for exactly that reason.
+// on the printer block base with an offset, or on a pre-biased pointer with a
+// different one. Same field, two ways of naming it. A scan that found only two
+// writers, both zero, and concluded the machine was dead was wrong for exactly
+// that reason: it recognised one addressing form and not the other.
 //
-// 0x400d9178 turns gcode_state into the internal state at 0x3ffb5690, and
-// 0x400dc400 maps that to the H2D state the renderer indexes with.
+// One step turns gcode_state into the internal state, and a second maps that
+// to the H2D state the renderer indexes with.
 
 /* ===========================================================================
    PLACEHOLDER VALUES, PENDING MEASUREMENT.  See private/POST-PRINT-SESSION.md.
@@ -531,12 +532,12 @@ static void parse_status(cJSON *print)
     cJSON *e;
 
     // Chamber temperature, from EITHER shape.
-    //
+//
     // The P2S does not send chamber_temper at all. It sends
     // device.ctc.info.temp, where ctc is the chamber temperature controller,
     // and it is an integer in Celsius. The Status page was showing a dash for
     // the chamber on a machine that was reporting 33 C the whole time.
-    //
+//
     // Both are read, newest first, because the older flat field is what a P1
     // and an X1 send and this firmware has to be right on all of them.
     bool got_chamber = false;
@@ -762,7 +763,7 @@ static void handle_report(const char *data, int len)
 #endif
     if (print) {
         // NOT STOCK. The printer's answer to a command we sent.
-        //
+//
         // A command that is refused looks exactly like one that was never
         // sent: nothing changes and nothing is said. The printer DOES answer,
         // on this same topic, echoing the command name and a result, so the
@@ -808,7 +809,7 @@ static void handle_report(const char *data, int len)
         cJSON *pe = cJSON_GetObjectItemCaseSensitive(print, "print_error");
         if (cJSON_IsNumber(pe)) g_live.print_error = pe->valueint;
 
-        // 0x400d900c walks the array looking for one exact pair. A report
+        // walks the array looking for one exact pair. A report
         // that omits hms leaves the previous verdict standing, matching
         // stock, whose list and count are only ever overwritten by a parse.
         cJSON *hms = cJSON_GetObjectItemCaseSensitive(print, "hms");
@@ -861,9 +862,9 @@ static void handle_report(const char *data, int len)
             g_live.print_percent = v;
         }
 
-        // Stock runs the machine on EVERY report pass: 0x400d91c1 and the
+        // Stock runs the machine on EVERY report pass: and the
         // branches after it are reached unconditionally, including down the
-        // 0x400d91b0 path.
+        // path.
         int ds = h2d_state_now();
         if (ds != g_live.device_state) {
             g_live.device_state = ds;
@@ -1000,18 +1001,16 @@ void pv_bambu_disconnect(void)
         esp_mqtt_client_destroy(s_client);
         s_client = NULL;
     }
-    // printer_state is NOT reset. Every writer of stock's link word at
-    // 0x3ffb4a7c was enumerated 2026-08-28 and the only values ever stored
-    // are 3, 7, 5, 5, 2, 4, 4, 6 (0x400d9584, 0x400d95bc, 0x400d95f4,
-    // 0x400d960a, 0x400d9632, 0x400d9645, 0x400d964e, 0x400d965f). Nothing
-    // stores 0 after boot, so stock leaves the last state standing on
+    // printer_state is NOT reset. Every writer of stock's link word was
+    // enumerated 2026-08-28 and the only values ever stored are 2, 3, 4, 5, 6
+    // and 7. Nothing stores 0 after boot, so stock leaves the last state on
     // disconnect and so do we. Setting it to 0 here was an invented reset,
     // and it also cleared the level 3 yellow marquee that stock keeps up.
     g_live.device_state = PV_ST_IDLE;
     // Deliberately NOT reset. Stock's report array is written only by the
-    // parser at 0x400d9244 and nothing in the image ever clears it: not on
+    // parser and nothing in the image ever clears it: not on
     // disconnect, not on unbind, and a report that omits a key leaves the
-    // slot alone (the loop just continues, 0x400d92bd). So stock keeps the
+    // slot alone (the loop just continues). So stock keeps the
     // last temperature it ever saw, and stays hot on a dropped printer.
     // Resetting here made the vent go green where stock stays red.
     g_live.printer_light = false;

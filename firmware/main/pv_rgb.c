@@ -32,28 +32,28 @@ typedef struct { uint8_t r, g, b; } rgb_t;
 //
 // Every constant below is read out of the shipping image, not from an example.
 //
-//   channel config, built on the stack in rgb_init at 0x400dc46f:
-//       gpio_num          per-strip table at DRAM 0x3ffb031c field +16 = 14, 4
+//   channel config, built on the stack in rgb_init:
+//       gpio_num          per-strip table at DRAM field +16 = 14, 4
 //       clk_src           4 = SOC_MOD_CLK_APB = RMT_CLK_SRC_DEFAULT
-//       resolution_hz     0x400d0c30 = 10000000
+//       resolution_hz = 10000000
 //       mem_block_symbols 64
 //       trans_queue_depth 4
 //       intr_priority     0, flags 0 (so invert_out is NOT set)
 //
 //   bit timings, doubles split across the literal pool and recombined from
 //   the (low, high) pairs the code actually loads into a12/a13:
-//       T_short = (0x400d0cec, 0x400d0d58) = 0.3 us -> 3 ticks at 10 MHz
-//       T_long  = (0x400d03fc, 0x400d0d60) = 0.9 us -> 9 ticks
-//       divisor = (0x400d0cc4, 0x400d0d5c) = 1e6, i.e. ticks = res * T / 1e6
-//   giving, at 0x400de105 / 0x400de143 / 0x400de181 / 0x400de1bc:
+//       T_short = = 0.3 us -> 3 ticks at 10 MHz
+//       T_long  = = 0.9 us -> 9 ticks
+//       divisor = = 1e6, i.e. ticks = res * T / 1e6
+//   giving / / /:
 //       bit0 = { 3 ticks high, 9 ticks low }
 //       bit1 = { 9 ticks high, 3 ticks low }
 //
-//   reset code, computed at 0x400de254 as (resolution / 1000000) * 25 per
+//   reset code, computed as (resolution / 1000000) * 25 per
 //   half, both halves low: 250 + 250 ticks = 50 us at 10 MHz.
 //
 // An earlier note in this file said 0.6 us. That was wrong: it paired
-// 0x400d0cec with the following pool word instead of the high half the code
+// with the following pool word instead of the high half the code
 // actually loads. The correct value is 0.3.
 #define RMT_RES_HZ        10000000u
 #define WS_T_SHORT_TICKS  3       // 0.3 us
@@ -129,9 +129,9 @@ static esp_err_t ws_encoder_new(rmt_encoder_handle_t *out)
                   .level1 = 0, .duration1 = WS_T_LONG_TICKS  },
         .bit1 = { .level0 = 1, .duration0 = WS_T_LONG_TICKS,
                   .level1 = 0, .duration1 = WS_T_SHORT_TICKS },
-        .flags.msb_first = 1,          // 0x400de1f2 sets the msb_first bit
+        .flags.msb_first = 1,          // sets the msb_first bit
     };
-    esp_err_t err = rmt_new_bytes_encoder(&bc, &e->bytes);   // 0x400f2834
+    esp_err_t err = rmt_new_bytes_encoder(&bc, &e->bytes);
     if (err != ESP_OK) { free(e); return err; }
     rmt_copy_encoder_config_t cc = {};
     err = rmt_new_copy_encoder(&cc, &e->copy);
@@ -163,7 +163,7 @@ static esp_err_t strip_push(int i, const rgb_t *px, int n)
     esp_err_t err = rmt_transmit(s_chan[i], s_enc[i], s_buf[i], (size_t)n * 3, &tc);
     if (err != ESP_OK) return err;
     // 500 ms, not 100.
-    //
+//
     // Sixteen WS2812 pixels is 384 bits at 1.25 us: the transfer itself takes
     // under half a millisecond, so this wait normally returns at once and the
     // number here only decides how long to tolerate the RMT peripheral being
@@ -171,7 +171,7 @@ static esp_err_t strip_push(int i, const rgb_t *px, int n)
     // and every flash read disables the instruction cache, which delays any
     // ISR not resident in IRAM. At 100 ms the device logged an rmt flush
     // timeout and counted a dropped frame each time somebody loaded the page.
-    //
+//
     // A frame arriving 200 ms late is invisible. A frame skipped is a visible
     // stutter, and a counter that ticks up on every page load makes the one
     // statistic that would reveal a genuinely dead strip useless. The only
@@ -606,12 +606,12 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         // wrapping. Same sigma, same five pixel cutoff, same frame period, so
         // at any speed the blob crosses the strip at exactly the marquee's
         // pace and only the turn at each end is different.
-        //
+//
         // Distance is LINEAR here, not circular. Marquee measures
         // min(|i-p|, n-|i-p|) because it wraps; a bouncing blob that did that
         // would bleed off one end and glow faintly at the other just before
         // it turns, which reads as a bug.
-        //
+//
         // The reverse switch mirrors the strip rather than negating the step.
         // Negating it would fight the turnaround logic and stick the blob at
         // an end. Mirroring is also the more useful behaviour on a two strip
@@ -641,14 +641,14 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
 
     case PV_FX_CYLON: {
         // A bright head sweeping end to end with a tail fading out behind it.
-        //
+//
         // The tail is the whole point, and it is what separates this from
         // Bounce. Bounce's blob is symmetric, so a still photograph of it
         // cannot tell you which way it is going. This one is asymmetric, so
         // it reads as motion even frozen, and the asymmetry flips when the
         // head turns around, which is the effect people picture when they say
         // Cylon.
-        //
+//
         // Ahead of the head: a short Gaussian, so the leading edge stays
         // crisp. Behind it: a linear fade over TAIL pixels, squared, because
         // a linear ramp in duty cycle looks top heavy to the eye.
@@ -682,13 +682,13 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
 
     // -----------------------------------------------------------------
     // ADDITIONS 2026-08-30. Nine effects, none of them stock.
-    //
+//
     // Shared vocabulary for the eight centre-referenced ones:
     //   h        half the strip, rounded up: pixel h-1 is the last one on the
     //            first half, pixel n-h the first one on the second
     //   depth    how far from the ORIGIN a pixel sits, in pixels
     //   origin   the middle for the *_OUT effects, the two ends for *_IN
-    //
+//
     // depth_of() converts a pixel index into that distance once, so every
     // effect below is written as a function of depth alone and an out/in pair
     // differs by one subtraction. Anything else drifts: writing the inward
@@ -696,12 +696,12 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
     // out of step at one speed and not another.
     // -----------------------------------------------------------------
     // NOT STOCK. The bed temperature, as a colour.
-    //
+//
     // The whole strip is one colour, mixed between the effect's INACTIVE
     // colour at the cold end and its ACTIVE colour at the hot end. Not a bar:
     // a bar says "how far through", and this says "how hot", and drawing the
     // second as the first is how a glance gets the wrong answer.
-    //
+//
     // Below the cold point it is the cold colour exactly, above the hot point
     // the hot colour exactly, so the ends are readable rather than asymptotic.
     // With no temperature reported at all it holds the cold colour, because
@@ -720,14 +720,14 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
     }
 
     // NOT STOCK. Whatever was uploaded.
-    //
+//
     // One row of the uploaded image per frame, scaled by the effect's own
     // brightness so it sits under the same control as everything else. The
     // upload is in RAM and is gone after a reboot, so the common case for
     // this effect is "nothing loaded": that renders as Static in the effect's
     // own colour rather than as darkness, because a strip that goes black
     // when you pick an effect reads as a fault, and this is not one.
-    //
+//
     // A frame shorter than the strip leaves the tail on the effect's colour
     // rather than dark, for the same reason.
     case PV_FX_ANIM: {
@@ -758,12 +758,12 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
     }
 
     // NOT STOCK. Three ways to draw the same number.
-    //
+//
     //   PROGRESS       a plain bar. Stock's, and the honest default.
     //   PROGRESS_ANIM  the bar, plus a chase sweeping it and a breathing tip,
     //                  so a print in progress reads as one from across a room.
     //   BARBER         a two-colour pole crawling through the bar.
-    //
+//
     // They share the fill, the easing and the reversal, because they ARE the
     // same number: writing them as three loops is how two of them end up
     // rounding a percentage differently from the third.
@@ -774,7 +774,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         // pixel straddling the boundary is lit PARTIALLY, so a 16 pixel strip
         // still resolves single percent steps instead of stepping in chunks
         // of 6.25%.
-        //
+//
         // The shown value chases the reported one instead of snapping to it.
         // mc_percent arrives once a second at best and jumps whole points at
         // a time on a fast print; easing turns that into a crawl. The rate is
@@ -870,7 +870,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         // Marquee's travelling Gaussian, mirrored about the centre so there
         // are two of them. Same sigma and same five pixel cutoff as Marquee
         // and Bounce, so all three read as the same light at the same speed.
-        //
+//
         // The blob wraps rather than turning around: it leaves one end and
         // reappears at the origin, which is what "marquee" means here and is
         // what separates this pair from the BOUNCE_* pair below.
@@ -895,7 +895,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
     case PV_FX_FILL_IN: {
         // Solid, not a blob: every pixel from the origin out to the head is
         // fully lit and stays lit until the bar completes and restarts.
-        //
+//
         // The head pixel is fractional for the same reason the progress bar's
         // is. Without it a 16 pixel strip fills in 8 visible steps per half
         // and the motion looks like a stutter rather than a sweep.
@@ -951,7 +951,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         // The FILL_* pair that unfills instead of resetting. Filling to full
         // and then dropping to black is a hard cut; retreating the way it came
         // is continuous, and it is the difference the name is asking for.
-        //
+//
         // The limits are 0 and h, not h-1: the bar has to reach COMPLETELY
         // full before it turns, and full means the head is past the last
         // pixel, not on it.
@@ -1017,19 +1017,18 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
 // ---------------------------------------------------------------------------
 // THE INDICATOR LEVELS AHEAD OF THE CONFIGURED EFFECT
 //
-// Recovered 2026-08-28. The rgb task is stock's 0x400dcab8, created as
-// xTaskCreatePinnedToCore(0x400dcab8, "rgb", ..., prio 15, tskNO_AFFINITY) at
-// 0x400d8cc2. Its loop top is 0x400dcad6 and it tests FOUR things before it
-// ever reaches the gate chain this file used to start at:
+// Recovered 2026-08-28. The rgb task runs at priority 15 with no core
+// affinity. At the top of its loop it tests FOUR things before it ever
+// reaches the gate chain this file used to start at:
 //
-//   level 0  0x400dcae2  task notification, value 255 stops the task
-//   level 1  0x400dcb2d  factory test mode
-//   level 2  0x400dcc1c  motor fault      -> red strobe
-//   level 3  0x400dcc44  printer link     -> yellow / blue marquee
-//   level 4  0x400dcc84  the gate chain in resolve() below
+//   level 0  task notification, value 255 stops the task
+//   level 1  factory test mode
+//   level 2  motor fault      -> red strobe
+//   level 3  printer link     -> yellow / blue marquee
+//   level 4  the gate chain in resolve() below
 //
 // Only level 4 existed here before. The most visible consequence was at boot:
-// the task's very first instruction, 0x400dcabd, arms the level 3 word to 2,
+// the task's very first instruction, arms the level 3 word to 2,
 // so a stock vent shows a blue 50 ms marquee from power-on and leaves it when
 // the link settles. The clone went straight to the configured effect.
 // ---------------------------------------------------------------------------
@@ -1038,29 +1037,28 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
 // the link layer's first evaluation.
 static int s_link_ind = 2;
 
-// Stock's level 3 evaluation, 0x400d986b onward.
+// Stock's level 3 evaluation onward.
 //
-// RECOVERED: the link half. The word at 0x3ffb4a7c takes exactly 2, 3, 4, 5,
-// 6, 7 across every writer in the image (0x400d9632, 0x400d9584, 0x400d964e,
-// 0x400d9645, 0x400d95f4, 0x400d960a, 0x400d965f, 0x400d95bc), which is the
-// factory printer.state enum. 0x400d986b raises the indicator for 2 and 4..7,
-// so yellow means trying to reach the printer, or failing to.
+// RECOVERED: the link half. The word takes exactly 2, 3, 4, 5, 6 and 7
+// across every writer, which is the factory printer.state enum. The
+// indicator is raised for 2 and for 4 through 7, so yellow means trying to
+// reach the printer, or failing to.
 //
 // NOT RECOVERED, and previously claimed closed IN ERROR: the fallback. When
-// the link half is false stock consults the word at +44 of the printer block
-// (0x3ffb56a4), 1 -> yellow, 2 -> blue, 3 -> normal. On 2026-08-28 this was
+// the link half is false stock consults a second word in the printer block:
+// 1 -> yellow, 2 -> blue, 3 -> normal. On 2026-08-28 this was
 // reported here as a constant 3 on the strength of a scan that found no
 // writers. That scan was broken: it split objdump output on tabs and took the
 // last field, which is the OPERAND list, so its "is this a store" test could
 // never match and it returned zero hits by construction. Re-run correctly on
-// 2026-08-29 the field has THREE writers: 0x400d9854 (init, 3), 0x400d9985
-// (0), and 0x400d9056, which stores its caller's argument and is reached with
-// 1 from at least 0x400d9905, 0x400d9acd and 0x400d9ae6.
+// 2026-08-29 the field has THREE writers: (init, 3)
+// (0), and, which stores its caller's argument and is reached with
+// 1 from at least.
 //
 // The conditions behind those three "= 1" sites are not yet traced, so this
 // function implements the link half only. That means the clone misses some
 // yellow the vent shows. It does NOT affect the boot blue, which comes from
-// the 2 the render task arms at 0x400dcabd.
+// the 2 the render task arms.
 static void link_indicator_update(void)
 {
     int ps = g_live.printer_state;
@@ -1396,7 +1394,7 @@ static void strip_blank(void)
 
 void pv_rgb_stop(void)
 {
-    // 0x400dcae5 tests the notification for 255. Anything else is ignored and
+    // tests the notification for 255. Anything else is ignored and
     // the frame proceeds normally.
     TaskHandle_t t = s_render;
     if (t) xTaskNotify(t, 255, eSetValueWithOverwrite);
@@ -1478,7 +1476,7 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
     // Nothing skips the push any more. The one effect that did was the test
     // mode's hold, removed 2026-09-03 with the mode itself.
     // NOT STOCK. One run, or two.
-    //
+//
     // The strips are separate outputs and every effect renders on each of them
     // from its own start, so a marquee runs twice, side by side, which is what
     // stock does and is not always what the hardware looks like. Contiguous
@@ -1521,11 +1519,11 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
                 // phase advanced exactly once for the frame.
                 fx_phase_restore(&phase);
                 // Three independent flips, combined by exclusive-or:
-                //
+//
                 //   the master switch     everything turns around
                 //   this strip's flag     one run is mounted backwards
                 //   this effect's flag    this look reads better the other way
-                //
+//
                 // Exclusive-or is the only composition that lets all three
                 // mean the same thing. Two of them set is back where you
                 // started, which is what "turn it around, twice" means.
@@ -1539,14 +1537,14 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
                     px[i] = (rgb_t){0, 0, 0};
             }
             // ALWAYS push the full sixteen, whatever the configured count.
-            //
+//
             // Pushing only n was a real fault, found on the hardware: a
             // WS2812 latches its last frame and holds it, so a run that is
             // physically longer than the configured count keeps its final
             // LEDs lit at whatever colour they happened to be showing when
             // the count changed, forever. On Jeremy's vent that froze a
             // whole light bar while the others followed the effect.
-            //
+//
             // The count cannot be measured (WS2812 is write-only), so it
             // is a number a person types, and a wrong number must not be
             // able to strand pixels. Sending sixteen always costs nothing:
@@ -1595,14 +1593,14 @@ static void render_task(void *arg)
 {
     // The pixel buffer moved into pv_rgb_render_frame with the rest of the
     // frame body; the task holds no state of its own now.
-    // 0x400dcabd, the task's first act: arm the link indicator to 2 so the
-    // strip is blue from power-on until the link settles.
+    // The task's first act: arm the link indicator to 2 so the strip is
+    // blue from power-on until the link settles.
     s_link_ind = 2;
     for (;;) {
-        // ---- Level 0: 0x400dcae2, a NON-BLOCKING poll (xTicksToWait 0) ----
+        // ---- Level 0:, a NON-BLOCKING poll (xTicksToWait 0) ----
         uint32_t note = 0;
         if (xTaskNotifyWait(0, UINT32_MAX, &note, 0) == pdTRUE && note == 255) {
-            // 0x400dcaf0 through 0x400dcb08: brightness to 0, everything off,
+            // through: brightness to 0, everything off,
             // then the task RETURNS. Stock does this so an OTA leaves the
             // strip dark and the RMT channels released.
             xSemaphoreTake(s_lock, portMAX_DELAY);
@@ -1631,9 +1629,8 @@ void pv_rgb_start(void)
     static const int pins[PV_STRIP_COUNT_MAX] = { PV_PIN_STRIP0, PV_PIN_STRIP1 };
     for (int i = 0; i < PV_STRIP_COUNT_MAX; ++i) {
         // Stock's three calls, in stock's order: rmt_new_tx_channel,
-        // rmt_new_led_strip_encoder, rmt_enable (0x400f3010, 0x400de088,
-        // 0x400f2730). Nothing else is called per strip, and stock calls
-        // nothing we do not.
+        // rmt_new_led_strip_encoder, rmt_enable. Nothing else is called per
+        // strip, and stock calls nothing we do not.
         rmt_tx_channel_config_t tx = {
             .gpio_num          = pins[i],
             .clk_src           = RMT_CLK_SRC_DEFAULT,   // stock's 4 = APB
@@ -1653,8 +1650,8 @@ void pv_rgb_start(void)
         }
     }
     ESP_LOGI(TAG, "%d strip(s) up", s_strips);
-    // Stock's rgb task runs at priority 15, not 4 (0x400d8cb6 passes 15 to
-    // xTaskCreatePinnedToCore at 0x400d8cc2).
+    // Stock's rgb task runs at priority 15, not 4 ( passes 15 to
+    // xTaskCreatePinnedToCore).
     if (s_strips)
         xTaskCreate(render_task, "pv_rgb", 4096, NULL, 15, &s_render);
 }
