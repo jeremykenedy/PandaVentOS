@@ -187,35 +187,43 @@ static void group_drive(int i, bool open_dir)
     s_grp_target[i] = want;
 }
 
-// BIQU's hall_get_state, 0x400deb24. Not a plateau detector: a four band
-// classifier over the raw ADC value, with the bands hardcoded in the image.
-//
-//   raw == 0                      -> 0   (nothing on the channel)
-//   1360 <= raw <= 1680           -> 2
-//    640 <= raw <=  960           -> 1
-//   2080 <= raw <= 2450           -> 3
-//   anything else                 -> 4
-//
-// All three range tests are the same unsigned idiom. The third one is BLTU,
-// not a signed compare:
-//
-//     movi   a8, -2080
-//     add.n  a2, a2, a8      ; a2 = raw - 2080
-//     movi   a8, 370
-//     bltu   a8, a2, +       ; 370 <u (raw-2080)  ->  return 4
-//     movi.n a2, 3           ; else               ->  return 3
-//
-// Because it is unsigned, any raw below 2080 that misses both bands wraps to
-// a huge value and returns 4, not 3. This was written as a signed compare
-// with the last two bands inverted until 2026-08-27, which was wrong for raw
-// in 1..639, 961..1359 and 1681..2079.
-static int hall_state_from_raw(int raw)
+/* Where the flap is, from the hall sensor's millivolts.
+
+   There is no position encoder. The sensor reads a level, and two windows of
+   that level are the limit switches: one means the flap is at the open stop,
+   the other that it is at the closed stop. Everything else means "not at a
+   stop", which is either mid travel, a disconnected sensor, or a flap that has
+   drifted out of its window.
+
+   The window boundaries are facts about this hardware and stay as facts. Two
+   of them are confirmed by measurement rather than by inheritance: the endstop
+   check on 2026-09-03 drove to both stops and read 1484 mV closed and 746 mV
+   open, each inside its window with room either side.
+
+   Only HALL_OPEN and HALL_CLOSED carry meaning. The other three answers are
+   distinguished for the diagnostic log and nowhere else: a driver that asks
+   this function anything asks whether the flap has reached the window it was
+   sent to. */
+#define HALL_OPEN_MV_LO      640
+#define HALL_OPEN_MV_HI      960
+#define HALL_CLOSED_MV_LO   1360
+#define HALL_CLOSED_MV_HI   1680
+#define HALL_MID_MV_LO      2080     /* a third window, diagnostic only */
+#define HALL_MID_MV_HI      2450
+
+#define HALL_NO_CHANNEL     0        /* nothing on the ADC at all */
+#define HALL_MID            3        /* inside the third window */
+#define HALL_NOWHERE        4        /* in none of them */
+
+static bool within(int mv, int lo, int hi) { return mv >= lo && mv <= hi; }
+
+static int hall_state_from_raw(int mv)
 {
-    if (raw == 0) return 0;
-    if ((unsigned)(raw - 1360) <= 320u) return 2;
-    if ((unsigned)(raw -  640) <= 320u) return 1;
-    if ((unsigned)(raw - 2080) <= 370u) return 3;
-    return 4;
+    if (mv == 0)                                        return HALL_NO_CHANNEL;
+    if (within(mv, HALL_CLOSED_MV_LO, HALL_CLOSED_MV_HI)) return HALL_CLOSED;
+    if (within(mv, HALL_OPEN_MV_LO,   HALL_OPEN_MV_HI))   return HALL_OPEN;
+    if (within(mv, HALL_MID_MV_LO,    HALL_MID_MV_HI))    return HALL_MID;
+    return HALL_NOWHERE;
 }
 
 // Stock does NOT classify raw ADC counts. At 0x400deb45 it takes the raw
@@ -740,8 +748,8 @@ static void hall_probe_task(void *arg)
             int cnt = hall_raw_counts(&GROUPS[i]);
             int mv  = hall_raw(&GROUPS[i]);
             int st  = hall_state_from_raw(mv);
-            const char *n = st == 0 ? "zero" : st == 1 ? "OPEN" :
-                            st == 2 ? "CLOSED" : st == 3 ? "mid3" : "none4";
+            const char *n = st == HALL_NO_CHANNEL ? "zero" : st == HALL_OPEN ? "OPEN" :
+                            st == HALL_CLOSED ? "CLOSED" : st == HALL_MID ? "mid" : "nowhere";
             o += snprintf(line + o, sizeof(line) - o,
                           "g%d cnt=%4d mv=%4d st=%d(%s)  ", i, cnt, mv, st, n);
         }
