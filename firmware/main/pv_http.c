@@ -19,8 +19,8 @@
 
 static const char *TAG = "pv_http";
 
-extern const uint8_t index_gz_start[] asm("_binary_factory_index_html_gz_start");
-extern const uint8_t index_gz_end[]   asm("_binary_factory_index_html_gz_end");
+extern const uint8_t index_gz_start[] asm("_binary_ui_html_gz_start");
+extern const uint8_t index_gz_end[]   asm("_binary_ui_html_gz_end");
 
 static httpd_handle_t s_server;
 static volatile bool s_up;

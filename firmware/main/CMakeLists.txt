@@ -13,7 +13,7 @@ idf_component_register(
         "pv_log.c"
         "pv_anim.c"
     INCLUDE_DIRS "."
-    EMBED_FILES "factory_index.html.gz"
+    EMBED_FILES "ui.html.gz"
     PRIV_REQUIRES
         nvs_flash
         esp_wifi
@@ -30,10 +30,10 @@ idf_component_register(
 
 # The web app is ONE editable file, and the build makes the gzip.
 #
-# It used to be the other way round: the repository held only
-# factory_index.html.gz and the readable source lived nowhere the project could
-# see. Editing the UI meant having the un-gzipped copy from somewhere else,
-# which is not a thing a repository should require of anyone.
+# It used to be the other way round: the repository held only the gzip and the
+# readable source lived nowhere the project could see. Editing the UI meant
+# having the un-gzipped copy from somewhere else, which is not a thing a
+# repository should require of anyone.
 #
 # Edit main/ui.html. This regenerates the gzip whenever it is newer, before the
 # embed reads it, so there is no second step to remember and no way to ship a
@@ -44,13 +44,13 @@ idf_component_register(
 # nothing does not show up as a changed binary.
 find_program(GZIP_EXE gzip REQUIRED)
 add_custom_command(
-    OUTPUT  "${CMAKE_CURRENT_SOURCE_DIR}/factory_index.html.gz"
+    OUTPUT  "${CMAKE_CURRENT_SOURCE_DIR}/ui.html.gz"
     COMMAND "${GZIP_EXE}" -9 -n -c "${CMAKE_CURRENT_SOURCE_DIR}/ui.html"
-            > "${CMAKE_CURRENT_SOURCE_DIR}/factory_index.html.gz"
+            > "${CMAKE_CURRENT_SOURCE_DIR}/ui.html.gz"
     DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ui.html"
-    COMMENT "gzipping ui.html -> factory_index.html.gz"
+    COMMENT "gzipping ui.html -> ui.html.gz"
     VERBATIM)
-add_custom_target(pv_ui DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/factory_index.html.gz")
+add_custom_target(pv_ui DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/ui.html.gz")
 add_dependencies(${COMPONENT_LIB} pv_ui)
 
 # Test-only instrumentation for the vent policy. OFF unless the environment

@@ -34,4 +34,4 @@ tools/cfgmig/migcheck
 # different bytes from identical input, so committing it means every developer
 # on the other platform shows a modified file they did not touch. CMake
 # regenerates it whenever ui.html is newer, before the embed reads it.
-firmware/main/factory_index.html.gz
+firmware/main/ui.html.gz
