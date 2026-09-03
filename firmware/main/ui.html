@@ -669,6 +669,10 @@ button.vent-dial {
   padding: 0;
   border: none;
   min-inline-size: 0;
+  /* The dial is a ring, so the ground its hover and focus states paint has to
+     be a ring too. Beer's `no-round` squared it off, which drew a square
+     behind a circle on every hover. */
+  border-radius: 50%;
 }
 /* The word and its "VENT" caption stack, centred, so they sit as one block
    in the middle of the ring rather than running "OPEN VENT" across it and
@@ -780,9 +784,27 @@ button.vent-dial {
 :is(.switch, .checkbox, .radio),
 :is(.switch, .checkbox, .radio) > input,
 select,
-.field > select,
-.chip,
-[onclick] {
+.field > select {
+  cursor: pointer;
+}
+
+/* And it does NOT appear over things that do nothing. Beer's list row is
+   built for a row you can pick, so it offers the hand to everything in it;
+   most of the rows on this page only report a value, and a filament chip is
+   a label with a colour, not a button. A chip that IS a button -- the vent
+   mode pill -- keeps the hand, which is why this names the span. The rows that ARE pickable say so
+   themselves: the ring list below, and any row holding a link or a control. */
+.list > li,
+.list > li > *,
+span.chip {
+  cursor: default;
+}
+.list > li:has(> a),
+.list > li > a,
+.list > li > :is(.switch, .checkbox, .radio),
+.list > li > :is(.switch, .checkbox, .radio) > input,
+.list > li > button,
+.list > li > .field > select {
   cursor: pointer;
 }
 
@@ -930,6 +952,10 @@ footer.c_version {
      release line starts where the cards above it do. Hand-rolling the cap
      with margin-inline:auto instead shrank this grid item to its own text
      and floated it to the middle of the window. */
+  /* Beer's app footer is a grid, and a grid places a lone item in the middle
+     of the row however the text is aligned; the release line read as centred
+     under the cards. A block box puts it back on the text's own start edge. */
+  display: block;
   min-block-size: auto;
   text-align: start;
   padding: 0.75rem clamp(1rem, 2.5vw, 2rem) 1.25rem;
@@ -1125,6 +1151,11 @@ main article { background-color: var(--card); }
    lands in a column.
    ────────────────────────────────────────────────────────────────────── */
 [data-card] > article {
+  /* The gap between cards is the bottom margin alone. A top margin is dropped
+     on the first card of the second and third columns but kept on the first,
+     so the left column started a margin lower than the others under a
+     spanning card. */
+  margin-block-start: 0;
   margin: 0 0 var(--_cardgap, 1rem);
   break-inside: avoid;
   /* A column item that can shrink below its content tears a card in two at
@@ -1203,6 +1234,27 @@ main article:not(.no-padding) >
 }
 /* A button group is buttons on one line with room to breathe between them. */
 nav.btn-row { gap: 0.75rem; align-items: center; }
+
+/* Beer gives every .field a top margin of its own. Inside a list row that
+   margin is not shared by the icon, the label or the switch beside it, so the
+   row centres a box that is a margin taller at the top and the control lands
+   below the middle of its own row. */
+/* Beer's flow rule gives a top margin to any .field that follows a sibling,
+   wherever it sits. In a list row the icon, the label and the switch beside it
+   get no such margin, so the row centres a box that is 1rem taller at the top
+   and the control lands below the middle of its own row. The override is
+   marked important because the framework's own selector outranks any
+   reasonable one written here, and the row has to win. */
+[data-card] .list > li > :is(.field, .switch, .slider) {
+  margin-block: 0 !important;
+  align-self: center;
+}
+
+/* Same rule, same reason: a card is spaced by its bottom margin alone. The
+   top margin is dropped on the first card of the second and third columns but
+   kept on the first, so the left column started a margin lower than the others
+   under a spanning card. */
+[data-card] > article { margin-block-start: 0 !important; }
 
 
 /* ── 32  An AMS spool chip ───────────────────────────────────────────────
@@ -1336,7 +1388,8 @@ nav.bottom {
    to the card's edges instead. The title and a lead description sit above
    the first divider; a label or description that introduces a control stays
    grouped with it, and so does a control that follows a spacer. The Vent
-   hero is a no-padding card and never opts in, so it keeps its open look. */
+   hero is a no-padding card and never opts in, so it keeps its open look.
+
    Only full-width setting blocks are divided -- fields, labelled rows, sliders,
    button GROUPS (a nav), the segmented control. A lone action button (Save,
    Unbind) is not a setting and is not full width, so it takes a plain gap
@@ -1346,6 +1399,13 @@ nav.bottom {
   margin-block-start: 1rem;
   padding-block-start: 1rem;
 }
+/* A labelled field carries its label floating half a line ABOVE its own box,
+   so the divider drawn at the top of that box's margin cut through the label.
+   Padding does not help -- the label is positioned against the box, not the
+   content -- so the gap has to come from the margin, which is where the line
+   is drawn. */
+.card-divided > .field.label,
+.card-divided > nav:has(> .field.label) { margin-block-start: 1.5rem !important; }
 .card-divided > :is(.field, .slider, nav, .segmented, .grid, .small-text)::before {
   content: '';
   position: absolute;
@@ -1360,7 +1420,9 @@ nav.bottom {
 .card-divided > h6.card-title + :is(.field, .slider, nav, .segmented, .grid, .small-text),
 .card-divided > nav:has(> h6.card-title) + :is(.field, .slider, nav, .segmented, .grid, .small-text),
 .card-divided > :is(.small-text, .space) + :is(.field, .slider, nav, .segmented, .grid) {
-  margin-block-start: 0;
+  /* important because the labelled-field rule above is, and a block with no
+     line above it takes no gap from one. */
+  margin-block-start: 0 !important;
   padding-block-start: 0;
 }
 .card-divided > :first-child::before,
@@ -1435,6 +1497,26 @@ body.is-waiting .waiting-hide { visibility: hidden; }
      all, so a page loaded on a machine set to light paints light from the
      first frame instead of flashing dark and correcting itself. -->
 <body class="is-waiting">
+<!-- The theme is painted here, before anything else in the body is parsed,
+     because the module that owns it runs at the end of the document and the
+     page had already been painted in the other theme by then: a reload
+     flashed dark before settling on light. Light is the default; `auto`
+     follows the machine. The module below is still the owner of the
+     preference, this only gets the first paint right. -->
+<script>
+  (function () {
+    var pref = 'light';
+    try { var v = localStorage.getItem('pv_theme');
+          if (v === 'auto' || v === 'light' || v === 'dark') pref = v; } catch (e) {}
+    var cls = pref;
+    if (pref === 'auto') {
+      cls = '';
+      try { if (window.matchMedia('(prefers-color-scheme: dark)').matches) cls = 'dark';
+            else cls = 'light'; } catch (e) {}
+    }
+    if (cls) document.body.classList.add(cls);
+  })();
+</script>
 
 
 
@@ -1557,7 +1639,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <!-- The dial and the pill are two controls, not one: the firmware
            binds each of them to vent_mode_cycle separately, and a single
            wrapping button would swallow both. -->
-      <button class="vent-dial transparent no-round" id="id_hero_dial"
+      <button class="vent-dial transparent" id="id_hero_dial"
               title="Cycle the vent: auto, open, closed" data-translate-title="ui_cycle_the_vent_auto_open_closed">
         <span class="arc" id="id_hero_arc"></span>
         <span class="center-align">
@@ -2962,8 +3044,14 @@ body.is-waiting .waiting-hide { visibility: hidden; }
      device says a save succeeded, because a message that vanishes is no
      use for a condition that persists. -->
 <div class="banner error-container" id="id_cfg_alert" hidden>
-  <svg class="i"><use href="#i-close"/></svg>
+  <svg class="i"><use href="#i-warning"/></svg>
   <span class="max" data-translate="ui_settings_could_not_be_saved_the_de">Settings could not be saved. The device will forget them on restart.</span>
+  <!-- A close X has to close something. This one dismisses the banner until
+       the device reports a save that worked and then fails again. -->
+  <button class="circle transparent" id="id_cfg_alert_close" aria-label="Dismiss"
+          title="Dismiss" data-translate-title="ui_dismiss">
+    <svg class="i"><use href="#i-close"/></svg>
+  </button>
 </div>
 
 <!-- Something happened and you do not need to do anything about it. -->
@@ -3688,7 +3776,7 @@ var THEME_SEGMENT = { auto: 'id_theme_auto', light: 'id_theme_light', dark: 'id_
 var THEME_WORD_KEY = { auto: 'appearance_auto', light: 'appearance_light', dark: 'appearance_dark' };
 var THEME_WORD_EN = { auto: 'Auto', light: 'Light', dark: 'Dark' };
 
-var g_theme_pref = 'auto';
+var g_theme_pref = 'light';
 var g_theme_media = null;
 
 function theme_valid(pref) {
@@ -3698,7 +3786,10 @@ function theme_valid(pref) {
 /* The stored preference, or auto when nothing sensible is stored. */
 function theme_read_store() {
   var v = chrome_store_get(THEME_STORE_KEY);
-  return theme_valid(v) ? v : 'auto';
+  /* Light is this app's default. Auto is a choice, not the starting point:
+     a vent's page is read in a workshop, and the machine's own dark setting
+     is a poor guess at what the page should be. */
+  return theme_valid(v) ? v : 'light';
 }
 
 function theme_word(pref) {
@@ -3748,7 +3839,7 @@ function theme_paint(pref) {
 
 /* Pick a theme: remember it, then show it. */
 function theme_choose(pref) {
-  if (!theme_valid(pref)) pref = 'auto';
+  if (!theme_valid(pref)) pref = 'light';
   g_theme_pref = pref;
   chrome_store_set(THEME_STORE_KEY, pref);
   theme_paint(pref);
@@ -7894,8 +7985,12 @@ function render_chrome() {
     badge.setAttribute('title', (s.os_name || 'PandaVent OS') + (s.os_version ? ' ' + s.os_version : ''));
   }
 
-  /* Config-save-failed banner */
-  setHidden('id_cfg_alert', !s.cfg_save_failed);
+  /* Config-save-failed banner. Dismissing it hides it until the device
+     reports a save that worked, so a push a second later cannot bring back
+     a banner the reader has just closed. */
+  var cfgFailed = !!s.cfg_save_failed;
+  if (!cfgFailed) g_cfg_alert_dismissed = false;
+  setHidden('id_cfg_alert', !cfgFailed || g_cfg_alert_dismissed);
 }
 
 /* ---------------------------------------------------------------------
@@ -8424,6 +8519,16 @@ function render_policy_materials(vp) {
     var mat = mats[i];
     if (!mat) continue;
     var li = document.createElement('li');
+    /* A filament roll leads each rule, the way an icon leads every other
+       list row on the page, so the column reads as a set of filaments
+       rather than a list of words. */
+    var roll = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    roll.setAttribute('class', 'i');
+    roll.setAttribute('aria-hidden', 'true');
+    var ruse = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+    ruse.setAttribute('href', '#i-spool');
+    roll.appendChild(ruse);
+    li.appendChild(roll);
     var name = document.createElement('div');
     name.className = 'max';
     name.textContent = mat.name || ('#' + mat.index);
@@ -8689,16 +8794,24 @@ function repaint_h2d(rm) {
   var fxId = ds.active_effect_id;
   var p = (ds.effects && ds.effects[fxId]) ? ds.effects[fxId] : null;
 
-  /* Paint the active state button with the effect's colour (except the two
-     self-colouring effects, 5/6) (§3.5). */
+  /* Every state button wears the colour of its OWN state's effect, from the
+     first push. Painting only the selected one left the other five showing
+     whatever the markup shipped with until they were clicked (§3.5). The two
+     self-colouring effects (5, 6) get no colour, so their button keeps the
+     card's own surface. */
   for (var b = 1; b <= 6; b++) {
     var btn = byId('id_btn' + b);
-    if (btn) btn.classList.toggle('active', (b - 1) === stateId);
-  }
-  var active = byId('id_btn' + (stateId + 1));
-  if (active && p && fxId !== 5 && fxId !== 6) {
-    var hex = hexColour(p.color);
-    if (hex) active.style.background = hex;
+    if (!btn) continue;
+    btn.classList.toggle('active', (b - 1) === stateId);
+    var bds = null;
+    for (var k = 0; k < dstates.length; k++) {
+      if (dstates[k] && dstates[k].device_state_id === (b - 1)) { bds = dstates[k]; break; }
+    }
+    if (!bds) continue;
+    var bfx = bds.active_effect_id;
+    var bp = (bds.effects && isNum(bfx)) ? bds.effects[bfx] : null;
+    var bhex = (bp && bfx !== 5 && bfx !== 6) ? hexColour(bp.color) : null;
+    btn.style.background = bhex || '';
   }
 
   repaint_editor(p, fxId, H2D_SUFFIX);
@@ -9219,6 +9332,16 @@ function clear_ota_progress() {
    19. Boot
    ------------------------------------------------------------------- */
 
+var g_cfg_alert_dismissed = false;
+
+function wire_cfg_alert() {
+  var x = byId('id_cfg_alert_close');
+  if (x) x.addEventListener('click', function () {
+    g_cfg_alert_dismissed = true;
+    setHidden('id_cfg_alert', true);
+  });
+}
+
 function wire_dialog_close() {
   var x = byId('id_dialog_close');
   if (x) x.addEventListener('click', dialog_close);
@@ -9239,6 +9362,7 @@ function init_ui() {
   apply_translations();
   wire_navigation();
   wire_dialog_close();
+  wire_cfg_alert();
 
   /* Open on the Status card by default; landing may move it once (§0.4). */
   card_navigate('status');
