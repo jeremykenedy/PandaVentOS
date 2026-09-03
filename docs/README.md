@@ -8,8 +8,9 @@
 | [Network](network.md) | Wi-Fi, mDNS, the setup hotspot, what it talks to |
 | [Backup](backup.md) | Full image, settings snapshot, restore, going back to stock |
 | [Troubleshooting](troubleshooting.md) | It does not do the thing. Start here |
+| [Your private folder](private-folder.md) | Where your backups and credentials go, and why they stay out of git |
 
-Two more live beside the code they describe.
+One more lives beside the code it describes.
 
 | Document | Covers |
 | --- | --- |

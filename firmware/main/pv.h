@@ -330,8 +330,10 @@ void pv_cfg_h2d_save(int st);
 // own NVS key and defaults cleanly when absent.
 // ---------------------------------------------------------------------------
 #define PV_MAT_COUNT           9
-#define PV_BED_OPEN_C_DEFAULT  45      // DragonVent's BED_OPEN_C_DEFAULT
-#define PV_BED_CLOSE_C_DEFAULT 35      // DragonVent's BED_CLOSE_C_DEFAULT
+// Carried over from DragonVent, this author's earlier vent firmware, where
+// both numbers were arrived at by watching a P2S cool down. See pv_policy.c.
+#define PV_BED_OPEN_C_DEFAULT  45
+#define PV_BED_CLOSE_C_DEFAULT 35
 
 extern const char *const pv_material_name[PV_MAT_COUNT];
 extern const bool        pv_material_seal[PV_MAT_COUNT];

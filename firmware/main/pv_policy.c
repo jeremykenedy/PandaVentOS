@@ -6,7 +6,12 @@
 // Everything here sits on top of that and is off-by-switch, so turning the
 // master switch off restores stock behaviour exactly.
 //
-// Modelled on DragonVent's dv_policy, whose rules and thresholds these are:
+// The rules and thresholds come from DragonVent, an earlier vent firmware by
+// the same author. It is not a dependency, not third-party, and not published:
+// it is simply where this behaviour was worked out first, and it is named here
+// so that "why these nine materials, in this order, at these temperatures" has
+// an answer rather than looking arbitrary.
+//
 //   during a print   a sealing material closes the vent, a venting material
 //                    opens it, an unknown material leaves stock alone
 //   after a print    bed-temperature hysteresis holds the vent open until the
@@ -32,7 +37,7 @@ static const char *TAG = "pv_policy";
 
 // The filament families, in match order. First rule whose name matches the
 // front of the reported material wins, so PETG must be tested before PET. Same
-// list and the same order as DragonVent's DEFAULT_FILAMENT_RULES.
+// list and the same order DragonVent settled on.
 const char *const pv_material_name[PV_MAT_COUNT] = {
     "PLA", "PETG", "PET", "TPU", "ABS", "ASA", "PC", "PA", "HIPS",
 };
@@ -46,7 +51,7 @@ void pv_policy_defaults(pv_policy_cfg_t *p)
 {
     memset(p, 0, sizeof(*p));
     p->magic       = POL_MAGIC;
-    p->enable      = true;                  // DragonVent's policy is always on
+    p->enable      = true;                  // as in DragonVent, on by default
     p->rule_on     = (1u << PV_MAT_COUNT) - 1;   // all nine rules active
     p->heat_hold   = true;
     p->bed_open_c  = PV_BED_OPEN_C_DEFAULT;
