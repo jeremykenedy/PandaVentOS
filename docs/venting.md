@@ -128,11 +128,13 @@ Stock behaviour, unchanged.
 
 ## No travel timeout
 
-A jammed flap that never reaches its band will drive its motor until the target
-changes. That is stock's behaviour, and this is a clone, so it is ours. A stall
-guard was carried here for a while and was removed: a deliberate departure is
-still a departure, and the place to make one is not silently inside the motor
-path.
+There is no time-based timeout, but the flap is not driven forever either. A
+group that has not reached its band after four checks, about eight hundred
+milliseconds, is given up on: the motor stops and the group latches a fault,
+which is what turns the strip red. That matches the factory behaviour, which
+gives up the same way; what differs is the count, because the factory firmware
+gives up on the first check and so flashes red during every normal open and
+close.
 
 ## Related
 

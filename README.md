@@ -36,6 +36,7 @@ It is a reimplementation, not a modification of their firmware. "Panda Vent" is 
   - [Device](#device)
 - [Languages](#languages)
 - [Screenshots](#screenshots)
+- [What It Does Not Do](#what-it-does-not-do)
 - [Requirements](#requirements)
 - [Installation](#installation)
   - [Back Up First](#back-up-first)
@@ -51,9 +52,10 @@ It is a reimplementation, not a modification of their firmware. "Panda Vent" is 
 
 ## What Makes It Different
 
-The factory application is re-created first, exactly, and everything below is
-added on top of that copy. The stock partition layout is untouched, so one
-upload puts BIQU's firmware back.
+VentOS reimplements what the factory application does, from its observed
+behaviour, and then goes past it. It is not a modified copy of BIQU's firmware
+and shares no code with it. The stock partition layout is untouched, so one
+upload puts the factory firmware back whenever you want it.
 
 | | Factory v1.0.0 | VentOS |
 | --- | :---: | :---: |
@@ -217,6 +219,26 @@ Pick a language on first boot, or change it any time from the Settings page.
 | Settings | On a phone |
 | --- | --- |
 | <img src="screenshots/policy-light.png" alt="Settings"> | <img src="screenshots/mobile-dark.png" alt="On a phone"> |
+
+## What It Does Not Do
+
+- **It does not control the printer beyond its lights.** Everything under the
+  printer's `print` command namespace is signature checked and refused, which
+  its own firmware confirms; only the chamber and work lights are accepted. So
+  no print speed, no fan control, no pause or resume from here.
+- **It reads the printer over the LAN only.** Developer Mode under LAN Only
+  Mode must be on, and the printer must be reachable on the same network. There
+  is no cloud path.
+- **It does not know where the flap is.** There is no position encoder. The
+  hall sensor's end bands are the limit switches, the same as stock, so the
+  vent knows "open" and "closed" and nothing between them.
+- **It does not stop a jammed flap quickly.** A group that misses its band is
+  abandoned after about eight hundred milliseconds and latches a fault; there
+  is no travel timeout beyond that.
+- **It is one flap, up to four motor groups, and two LED strips.** Nothing here
+  scales past the hardware it was written for.
+- **No warranty of any kind.** Flashing third-party firmware can void yours.
+  Read `firmware/SAFETY.md` and take the full backup it asks for.
 
 ## Requirements
 

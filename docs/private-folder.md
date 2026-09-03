@@ -1,7 +1,12 @@
-# private/
+# Keeping your device's files out of the repository
 
-Nothing in this folder is committed. `.gitignore` keeps everything here out of
-the repository except this README and the `.gitkeep` beside it.
+`private/` is where anything tied to YOUR device goes. It is listed in
+`.gitignore`, and **nothing inside it is tracked** -- not even a README, which
+is why this document lives here in `docs/` instead.
+
+Create it when you need it:
+
+    mkdir -p private
 
 ## What belongs here
 

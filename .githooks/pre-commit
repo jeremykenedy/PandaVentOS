@@ -1,0 +1,43 @@
+#!/bin/sh
+# A file can be gitignored AND still tracked, and then it is invisible to every
+# check that trusts .gitignore.
+#
+# On 2026-09-03 two documents were moved into private/ with `git mv`. The move
+# does not untrack: .gitignore only governs files git is not already following.
+# Both stayed in the index, and both would have published from inside the
+# directory that exists to keep them out. They were the reverse-engineered wire
+# protocol and the clone verification record, the two most exposed files in the
+# tree. `git rm --cached` was the fix; this is the guard.
+#
+# Enable with:  git config core.hooksPath .githooks
+set -e
+
+tracked_private=$(git ls-files -- private/ .claude/ 2>/dev/null)
+if [ -n "$tracked_private" ]; then
+    echo "pre-commit: REFUSING. These are tracked but live under a directory"
+    echo "            that is supposed to be private:"
+    echo "$tracked_private" | sed 's/^/              /'
+    echo
+    echo "  Being in .gitignore does not untrack a file git already follows."
+    echo "  Fix with:  git rm --cached <path>"
+    exit 1
+fi
+
+# Anything gitignored yet tracked is the same class of problem, anywhere.
+ignored_tracked=$(git ls-files --cached -i --exclude-standard 2>/dev/null)
+if [ -n "$ignored_tracked" ]; then
+    echo "pre-commit: REFUSING. Tracked but matched by .gitignore, so every"
+    echo "            check that trusts .gitignore is blind to them:"
+    echo "$ignored_tracked" | sed 's/^/              /'
+    echo "  Fix with:  git rm --cached <path>"
+    exit 1
+fi
+
+# The secret scan lives under private/ and is absent in a fresh clone, so it
+# runs when it is there and is not required when it is not.
+if [ -x private/secret-scan.sh ]; then
+    private/secret-scan.sh >/dev/null || {
+        echo "pre-commit: REFUSING. private/secret-scan.sh failed."
+        exit 1
+    }
+fi
