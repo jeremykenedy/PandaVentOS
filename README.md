@@ -391,14 +391,26 @@ text is in [`LICENSE.md`](LICENSE.md).
 
 ### Third-party components
 
-Each ships with its own licence text, beside the code it covers.
+The page itself carries the notices for everything compiled into it, in a
+comment at the top of the served HTML, so the attribution reaches anyone
+holding a flashed device and not only anyone holding this repository.
 
-| component | where | terms |
+| component | what it is | licence, and where the text is |
 | --- | --- | --- |
-| iro.js 5.5.2 | `firmware/main/vendor/iro/` | [MPL-2.0](https://www.mozilla.org/en-US/MPL/2.0/), full text in `firmware/main/vendor/iro/LICENSE.txt` |
-| Beer CSS | the web UI's stylesheet and script | [MIT license](https://opensource.org/licenses/MIT) |
-| Heroicons | the icon sprite | [MIT license](https://opensource.org/licenses/MIT) |
+| iro.js 5.5.2 | the colour wheel | [MPL-2.0](https://www.mozilla.org/en-US/MPL/2.0/) -- `firmware/main/vendor/iro/LICENSE.txt` |
+| Beer CSS 5.0.3 | the stylesheet and its script | [MIT](https://opensource.org/licenses/MIT) -- `firmware/main/vendor/beercss/LICENSE.txt` |
+| Heroicons | the interface icons in the sprite | [MIT](https://opensource.org/licenses/MIT) -- `firmware/main/vendor/heroicons/LICENSE.txt` |
+| Roboto 3.015 | the embedded typeface, 5 subsets | **[SIL OFL 1.1](https://openfontlicense.org)** -- `firmware/main/vendor/roboto/OFL.txt` |
 | ESP-IDF | build dependency, not vendored | Apache 2.0 |
+
+Only iro.js is stored as a file. The other three are spliced into `ui.html` by
+the page build, because the device serves one file and a second copy on disk
+would be a second copy to keep in step. Each still has its own directory under
+`firmware/main/vendor/` holding the licence text and a note on what was taken.
+
+**The typeface is not under this repository's licence.** Roboto 3 is OFL-1.1,
+which is a different set of obligations from the MIT terms covering everything
+else here. If you reuse the font, read `vendor/roboto/OFL.txt` first.
 
 ### Not affiliated with BIQU or BIGTREETECH
 
