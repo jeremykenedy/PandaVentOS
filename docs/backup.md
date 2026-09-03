@@ -75,7 +75,7 @@ The partition layout is BIQU's, unchanged, which is the point of keeping it.
 
 ```bash
 curl -X POST -H 'OTA-Type: ota_fw' \
-  --data-binary @factory/firmware/panda_vent_v1.0.0.bin \
+  --data-binary @<BIQU-STOCK-IMAGE.bin> \
   http://<device>/ota
 ```
 

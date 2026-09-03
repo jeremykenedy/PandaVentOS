@@ -1030,7 +1030,7 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
 // Only level 4 existed here before. The most visible consequence was at boot:
 // the task's very first instruction, arms the level 3 word to 2,
 // so a stock vent shows a blue 50 ms marquee from power-on and leaves it when
-// the link settles. The clone went straight to the configured effect.
+// the link settles. This went straight to the configured effect.
 // ---------------------------------------------------------------------------
 
 // Level 3 state: armed to 2 by the render task before its loop, then driven by
@@ -1056,8 +1056,8 @@ static int s_link_ind = 2;
 // 1 from at least.
 //
 // The conditions behind those three "= 1" sites are not yet traced, so this
-// function implements the link half only. That means the clone misses some
-// yellow the vent shows. It does NOT affect the boot blue, which comes from
+// function implements the link half only. That means this misses some of the
+// yellow a stock vent shows. It does NOT affect the boot blue, which comes from
 // the 2 the render task arms.
 static void link_indicator_update(void)
 {

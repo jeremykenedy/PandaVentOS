@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Turn a video of the STOCK vent running capture-reference.py's sequence into
-the numbers the clone has to reproduce.
+the numbers this firmware's effects are built to reproduce.
 
     python3 analyse-reference.py <video> [reference-timeline.json]
 

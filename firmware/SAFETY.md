@@ -120,10 +120,12 @@ node appears. On macOS the vendor CH34x VCP driver
 is required, after which the port appears as `/dev/cu.wchusbserial*`.
 
     python -m esptool --chip esp32 --port <YOUR-PORT> -b 115200 \
-      write-flash 0x10000 factory/firmware/panda_vent_v1.0.0.bin
+      write-flash 0x10000 <BIQU-STOCK-IMAGE.bin>
 
-flashes `panda_vent_v1.0.0-STOCK.bin` to 0x10000 and returns the device to
-factory. If the app then reports NVS-full errors (`0x1105`,
+writes BIQU's stock application at 0x10000 and returns the device to factory.
+That image is theirs and is not shipped here; `tools/restore.sh --factory-bin
+FILE --factory` does the same thing with a size and hash check first, which is
+the safer way in. If the app then reports NVS-full errors (`0x1105`,
 `ESP_ERR_NVS_NOT_ENOUGH_SPACE`), the config area may still hold a previous
 firmware's data:
 
@@ -134,11 +136,22 @@ Erasing NVS also clears the saved Wi-Fi, so the owner has to redo setup
 through the hotspot. Say so before doing it.
 
 ## Wireless restore (works whenever the device still serves HTTP)
-    curl -X POST -H 'X-OTA-Type: ota_fw' \
-      --data-binary @factory/firmware/panda_vent_v1.0.0.bin \
+    curl -X POST -H 'OTA-Type: ota_fw' \
+      --data-binary @<BIQU-STOCK-IMAGE.bin> \
       http://<device>/ota
 
-resolves the host to an IP once (mDNS goes stale across a reboot), uploads
-the stock image to `/ota` with header `OTA-Type: ota_fw`, waits for the
-device to come back, then replays the saved settings and verifies them field
-by field. Proven end to end in about 60 seconds.
+uploads an application image to `/ota` and nothing else. It does not check
+what it is sending, does not wait for the device to come back, and does not
+preserve any settings: stock will replace them with its own defaults on first
+boot. Take a backup first if the settings matter.
+
+The header is `OTA-Type`, with no `X-` prefix -- that is the name the handler
+in `pv_http.c` reads. An `X-OTA-Type` header is simply not seen, and the
+upload proceeds on the handler's default, which today happens to be the same
+value. Relying on that is how a wrong header goes unnoticed until the default
+changes.
+
+Use an IP rather than a `.local` name: mDNS goes stale across the reboot.
+
+`tools/restore.sh --factory <host>` wraps this with the confirmation, the
+size check and the hash check, and is the recommended path.

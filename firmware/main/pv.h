@@ -14,10 +14,10 @@
 // release tag, so those three can never disagree.
 //
 // PV_FW_VERSION is what the FACTORY protocol's fw_version field carries. It
-// stays "V1.0.0" because the factory web app and anything else speaking that
-// protocol treat it as the Panda Vent firmware revision, and this project is a
-// clone of that firmware: reporting something else there would be lying about
-// which protocol revision is on the wire.
+// stays "V1.0.0" because anything speaking that protocol treats it as the
+// protocol's own revision, and this firmware speaks revision 1.0.0 of it.
+// Reporting something else there would be lying about what is on the wire.
+// It says nothing about which firmware is running; PV_OS_VERSION does that.
 //
 // PV_OS_VERSION is THIS project's own version, semantic, and is what a user
 // reads in the corner of the page and matches against a GitHub release.
@@ -322,7 +322,7 @@ void pv_cfg_h2d_save(int st);
 #define PV_DEVICE_NAME_DEFAULT "Panda Vent"
 
 // ---------------------------------------------------------------------------
-// Material-aware vent policy. AN ADDITION, NOT PART OF THE STOCK CLONE.
+// Material-aware vent policy. AN ADDITION. Stock has nothing like it.
 //
 // Deliberately NOT a member of pv_cfg_t: that blob is a fixed-size struct
 // guarded by a magic and a size equality test, so growing it would discard
@@ -798,7 +798,7 @@ void pv_rgb_anim_rewind(void);
 // sensor read at each of them.
 //
 // There is nothing to "calibrate" in the sense of writing a number: the hall
-// bands are constants in BIQU's image and this is a clone, so they stay
+// bands are fixed by the sensor and the magnet, not by firmware, so they stay
 // constants here. What goes wrong in practice is the other half of the
 // question. A vent that was unplugged mid-travel, or whose sensor has drifted,
 // sits at a reading that is in no band at all, and every symptom of that looks

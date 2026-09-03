@@ -273,7 +273,7 @@ static void stop_all(void)
 //
 // There is no travel timeout, because stock has none. A jammed vent that
 // never reaches its band will drive its motor until the target changes.
-// That is stock's behaviour and this is a clone, so it is ours. A stall
+// That is stock's behaviour and matching it here is deliberate. A stall
 // guard was carried here until 2026-08-28 and has been removed: a
 // deliberate departure is still a departure.
 

@@ -182,7 +182,7 @@ bool pv_bambu_set_speed(int level)
 // returns only 4 or 0)
 //         -> the warning override red
 //
-// The clone gated on gcode_state == "FAILED" until now, which is a different
+// This gated on gcode_state == "FAILED" until now, which is a different
 // signal entirely: an HMS fault during a RUNNING print showed red on stock and
 // the printing effect here.
 //
@@ -842,8 +842,8 @@ static void handle_report(const char *data, int len)
             else if (!strcmp(st, "FINISH"))  g_live.gcode_state = 4;
             else if (!strcmp(st, "FAILED"))  g_live.gcode_state = 5;
             // Stock matches these six strings and nothing else, so "INIT" and
-            // "SLICING", which the clone used to fold into IDLE and PREPARE,
-            // are not stock behaviour and are no longer matched.
+            // "SLICING", which this used to fold into IDLE and PREPARE, are
+            // not stock behaviour and are no longer matched.
         }
         cJSON *sc = cJSON_GetObjectItemCaseSensitive(print, "stg_cur");
         if (cJSON_IsNumber(sc)) g_live.stg_cur = sc->valueint;

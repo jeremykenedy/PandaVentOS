@@ -1,6 +1,6 @@
 // Material-aware vent policy.
 //
-// THIS IS NOT PART OF THE STOCK CLONE. Stock has no idea what filament is
+// NOTHING LIKE THIS EXISTS ON STOCK. Stock has no idea what filament is
 // loaded; its AUTO rule is one line, "open while PRINTING or PAUSED, closed
 // otherwise" (pv_motor_update, from the stock state machine).
 // Everything here sits on top of that and is off-by-switch, so turning the

@@ -1,17 +1,21 @@
 # Reference capture: measuring the factory animations
 
-The clone reproduces the factory UI byte for byte and the factory protocol and
-defaults exactly. The one thing that could not be recovered from the binary is
-the ANIMATION MATH: the Breathing curve, the Strobing duty, the Wave and
-Marquee spatial patterns, the hue rates, and how the 0..100 speed slider maps
-to an actual rate.
+This firmware is written to behave like the stock one where the two overlap,
+and the hardest part of that is the ANIMATION MATH: the Breathing curve, the
+Strobing duty, the Wave and Marquee spatial patterns, the hue rates, and how
+the 0..100 speed slider maps to an actual rate. None of it can be read out of
+a compiled image in any form worth trusting.
 
-BIQU ship no source. The render loop was not pinned in the image: the RGB
-literal pool is shared across all of IROM, so there is no clean anchor, and
-Xtensa's variable length encoding makes a blind scan unreliable. What IS
-available is the running factory firmware itself.
+BIQU ship no source, and the compiled image is not a usable substitute for
+one. What IS available is a running vent, which is a black box that can be
+driven and watched.
 
-So measure it.
+So measure it. Everything this directory produces is an OBSERVATION of a
+device's visible behaviour -- periods, duty cycles, intensity ranges, travel
+speeds, all read off a video -- and the effects here are fitted to those
+numbers. That is the whole method, and it is deliberately the whole method:
+what goes into this firmware is what a camera saw, not what a disassembler
+said.
 
 ## Do this while the vent is still on factory firmware
 
@@ -46,7 +50,7 @@ the period, the duty cycle, the intensity range and the pattern travel speed
 in pixels per second, and writes the raw per-frame intensity traces to
 `analysis/` for curve fitting.
 
-Those numbers are what the clone's `render_effect()` gets rebuilt against.
+Those numbers are what `render_effect()` is fitted to.
 
 ## What this does NOT do
 

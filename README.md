@@ -369,7 +369,6 @@ Every setting, what it does, and why it is there.
 
 | Path | What it is |
 | --- | --- |
-| `factory/` | the stock firmware, its web UI and BIQU's documentation, kept as the reference this project is measured against |
 | `firmware/` | the ESP-IDF application |
 | `tools/` | `install.sh`, `restore.sh`, and the host harnesses: effect renderer, config migration runner, UI comparison |
 | `docs/` | what every setting actually does |

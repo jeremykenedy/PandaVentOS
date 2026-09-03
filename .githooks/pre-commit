@@ -5,8 +5,8 @@
 # On 2026-09-03 two documents were moved into private/ with `git mv`. The move
 # does not untrack: .gitignore only governs files git is not already following.
 # Both stayed in the index, and both would have published from inside the
-# directory that exists to keep them out. They were the reverse-engineered wire
-# protocol and the clone verification record, the two most exposed files in the
+# directory that exists to keep them out. They were the wire-protocol notes and
+# the behavioural comparison record, the two most exposed files in the
 # tree. `git rm --cached` was the fix; this is the guard.
 #
 # Enable with:  git config core.hooksPath .githooks

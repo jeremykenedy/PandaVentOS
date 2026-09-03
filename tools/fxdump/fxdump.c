@@ -5,7 +5,8 @@
  * it #includes firmware/main/pv_rgb.c and drives render_effect directly. What
  * you are looking at is the shipping source, not a description of it.
  *
- *   cc -I stub -I ../../firmware/main -o fxdump fxdump.c -lm
+ *   cc -I stub -I ../../firmware/main -o fxdump \
+ *      fxdump.c ../../firmware/main/pv_anim.c -lm
  *   ./fxdump 8 40        # effect 8 (Bounce), 40 frames
  *   ./fxdump 7 40 ppm    # effect 7 (Cylon) as a PPM filmstrip on stdout
  *
