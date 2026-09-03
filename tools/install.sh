@@ -52,7 +52,7 @@ done
 # ---------------------------------------------------------------------------
 if [[ -n "$HOST" ]]; then
     command -v curl >/dev/null || die "curl not found"
-    [[ -n "$IMAGE" ]] || IMAGE="$ROOT/firmware/build/panda_vent.bin"
+    [[ -n "$IMAGE" ]] || IMAGE="$ROOT/firmware/build/ventos.bin"
     [[ -f "$IMAGE" ]] || die "no image at $IMAGE. Build first, or pass --image"
 
     say "Reaching the device"
@@ -160,7 +160,7 @@ printf '  \033[1;33mkeep it somewhere private. Never commit it, never post it.\0
 # Build, if we are not given an image.
 # ---------------------------------------------------------------------------
 if [[ -z "$IMAGE" ]]; then
-    IMAGE="$ROOT/firmware/build/panda_vent.bin"
+    IMAGE="$ROOT/firmware/build/ventos.bin"
     say "Building"
     command -v idf.py >/dev/null || die "idf.py not found. Source ESP-IDF v5.3.1's export.sh, or pass --image"
     ( cd "$ROOT/firmware" && idf.py build ) || die "build failed. Your device is untouched and your backup is at $OUT"

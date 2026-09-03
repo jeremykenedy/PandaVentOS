@@ -387,8 +387,24 @@ Every setting, what it does, and why it is there.
 
 ## License
 
-Released under the [MIT license](LICENSE.md).
+Released under the [MIT license](https://opensource.org/licenses/MIT). The full
+text is in [`LICENSE.md`](LICENSE.md).
 
-The contents of `factory/` are BIQU's, included for reference under the terms in
-`factory/docs/BIQU-LICENSE.md`. Icons are [Heroicons](https://heroicons.com),
-MIT. This project is not affiliated with or endorsed by BIQU or BigTreeTech.
+### Third-party components
+
+Each ships with its own licence text, beside the code it covers.
+
+| component | where | terms |
+| --- | --- | --- |
+| iro.js 5.5.2 | `firmware/main/vendor/iro/` | [MPL-2.0](https://www.mozilla.org/en-US/MPL/2.0/), full text in `firmware/main/vendor/iro/LICENSE.txt` |
+| Beer CSS | the web UI's stylesheet and script | [MIT license](https://opensource.org/licenses/MIT) |
+| Heroicons | the icon sprite | [MIT license](https://opensource.org/licenses/MIT) |
+| ESP-IDF | build dependency, not vendored | Apache 2.0 |
+
+### Not affiliated with BIQU or BIGTREETECH
+
+Independent firmware for the BIQU Panda Vent. Not affiliated with, endorsed by,
+or supported by Shenzhen BIGTREE Technology Co., Ltd., BIQU or BIGTREETECH, and
+a reimplementation rather than a modification of their firmware. "Panda Vent"
+is their product name, used here only to identify the hardware this runs on.
+Bambu Lab, AMS and P2S are Bambu Lab's.
