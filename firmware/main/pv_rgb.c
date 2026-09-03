@@ -1194,6 +1194,80 @@ static int fx_bright_end(const pv_fx_param_t *p)
     return (p->opt_set & PV_BRIGHT_END) ? (int)p->bright_end : -1;
 }
 
+/* ---------------------------------------------------------------------------
+   The gates of section 2 of private/SPEC/rgb-levels.md, one function each.
+
+   Splitting them out is not decoration: the order of these tests IS the
+   behaviour, and a reader checking this against the spec should be able to
+   read the sequence in resolve() without also reading their bodies.
+   --------------------------------------------------------------------------- */
+
+/* The override answers a printer in error, and only when the owner armed it. */
+static bool warning_override_applies(const pv_rgb_cfg_t *r)
+{
+    return r->warning_sw && fx_state() == PV_ST_ERROR;
+}
+
+/* What the override paints.
+
+   With err_set clear this is the factory behaviour byte for byte, including
+   the 127 written with no brightness scaling. With it set the owner has chosen
+   instead, which is NOT stock and is deliberate: red is the one colour a
+   red-green colourblind owner cannot pick out, and a fault that does not move
+   is a fault that gets walked past. */
+static void paint_error_override(const pv_rgb_cfg_t *r, int *fx, rgb_t *color,
+                                 rgb_t *bg, uint8_t *bright, uint8_t *speed,
+                                 int *band, bool *flip)
+{
+    if (!r->err_set) {
+        *fx = PV_FX_OVERRIDE_RED;
+        *color = (rgb_t){127, 0, 0};
+        *bright = 100;
+        *speed = 0;
+        return;
+    }
+    *fx     = r->err_strobe ? PV_FX_STROBING : PV_FX_STATIC;
+    *color  = (rgb_t){ r->err_rgb[0], r->err_rgb[1], r->err_rgb[2] };
+    *bg     = (rgb_t){0, 0, 0};
+    *bright = r->err_bright > 100 ? 100 : r->err_bright;
+    *speed  = 50;
+    *band   = 3;
+    *flip   = false;
+}
+
+/* Follow Printer and Follow Vent, in that order.
+
+   Follow Printer wins: when it is on, the vent is not consulted at all. Each
+   asks whether the thing it follows is currently dark, and the strip goes out
+   entirely rather than being painted in the inactive colour -- the difference
+   between "this effect is dark here" and "the lights are off". */
+static bool followed_source_is_dark(const pv_rgb_cfg_t *r)
+{
+    if (r->follow_printer) return !g_live.printer_light;
+    if (r->follow_vent)    return !g_live.vent_open;
+    return false;
+}
+
+/* Fill the answer from one stored effect.
+
+   The per-state table, the Simple table and a preview all store the same
+   shape, and all three used to write these seven assignments out for
+   themselves. One of the three quietly disagreeing with the others is the
+   failure this removes. */
+static void from_stored_effect(const pv_fx_param_t *p, int e, int n,
+                               int *fx, rgb_t *color, rgb_t *bg, uint8_t *bright,
+                               uint8_t *speed, int *bright_end, int *band, bool *flip)
+{
+    *fx         = e;
+    *color      = fx_colour(p);
+    *bg         = fx_bg(p);
+    *bright     = p->brightness;
+    *speed      = p->speed;
+    *bright_end = fx_bright_end(p);
+    *band       = fx_band(p, n);
+    *flip       = (p->opt_set & PV_FX_REVERSE) != 0;
+}
+
 static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
                     rgb_t *bg, int *bright_end, int *band, bool *flip, int n)
 {
@@ -1227,133 +1301,85 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
         return true;
     }
 
-    // ---- Level 4 ----
-    // Gate order is stock's, 0x400dcc87 through 0x400dcd08, outermost first:
-    // total_switch, then warning_overide, then follow_printer, then
-    // follow_vent. warning_overide used to be evaluated LAST here, which
-    // meant a printer in error with follow_printer on and the chamber light
-    // off showed nothing at all where stock shows red.
+    // ---- Level 4: the gates, outermost first ----
     //
-    // None of these gates consult a connection or bind state. Stock reads
-    // report bytes directly and has no notion of "bound" at this point, so
-    // the bound check that used to guard two of them is gone.
+    // Written from private/SPEC/rgb-levels.md section 2. The order is the
+    // whole of the behaviour here, so each gate is its own named test and the
+    // sequence below reads as the spec's list does.
+    //
+    // None of these consult a connection or a bind state. The report bytes are
+    // read directly and there is no notion of "bound" at this point.
 
-    // 1. total_switch, switch array +3, gate at 0x400dcc87.
+    // The master switch. Nothing below it runs.
     if (!r->light_on) return false;
 
-    // 2. warning_overide, switch array +4, gate at 0x400dcc90, and only when
-    //    the printer state byte reads ERROR (0x400dcc98 tests == 1).
-    if (r->warning_sw && fx_state() == PV_ST_ERROR) {
+    if (warning_override_applies(r)) {
+        // A printer in error, with the override armed. In per-state mode the
+        // owner has already chosen what Error looks like, so the mode switch
+        // below answers it; in the other two modes the override answers here.
         if (r->light_mode != PV_MODE_H2D) {
-            // 0x400dcc9d: mode != 1 routes to 0x400ddeac, solid red 127.
-            //
-            // NOT STOCK: unless the owner has said otherwise. Red is the one
-            // colour a red-green colourblind owner cannot pick out, and a
-            // fault that does not move is a fault that gets walked past. With
-            // err_set clear this is stock's override byte for byte, including
-            // the 127 that is written without brightness scaling.
-            if (r->err_set) {
-                *fx = r->err_strobe ? PV_FX_STROBING : PV_FX_STATIC;
-                *color = (rgb_t){ r->err_rgb[0], r->err_rgb[1], r->err_rgb[2] };
-                *bg = (rgb_t){0, 0, 0};
-                *bright = r->err_bright > 100 ? 100 : r->err_bright;
-                *speed = 50;
-                *band = 3;
-                *flip = false;
-                return true;
-            }
-            *fx = PV_FX_OVERRIDE_RED;
-            *color = (rgb_t){127, 0, 0};
-            *bright = 100; *speed = 0;
+            paint_error_override(r, fx, color, bg, bright, speed, band, flip);
             return true;
         }
-        // mode == 1 routes to 0x400dc59c, the ordinary H2D renderer, which
-        // lands on h2d[ERROR]. Fall through to the mode switch and let it.
-    } else {
-        // 3. follow_printer, +1, gate at 0x400dccd0, qualified by the
-        //    printer's own chamber-light byte at 0x3ffb5578+188.
-        if (r->follow_printer) {
-            if (!g_live.printer_light) return false;
-        }
-        // 4. follow_vent, +2, gate at 0x400dcd08, qualified by the vent-open
-        //    byte at 0x3ffb5678+19. Only reached when follow_printer is off.
-        else if (r->follow_vent) {
-            if (!g_live.vent_open) return false;
-        }
+        // fall through to the mode switch, which lands on h2d[ERROR]
+    } else if (followed_source_is_dark(r)) {
+        // Follow Printer wins over Follow Vent, and when it is on the vent is
+        // not consulted at all.
+        return false;
     }
 
-    // 4b. NOT STOCK. A live preview replaces the whole answer from here down.
+    // ---- Level 4b: a live preview replaces the answer from here down ----
     //
-    // It sits BELOW the fault and test gates, which are safety and diagnostics
-    // and must never be masked, and ABOVE the master switch and the follow
-    // gates, which would otherwise make a preview show nothing at all. See the
-    // comment on pv_preview_t.
+    // NOT STOCK. It sits BELOW the fault gate, which is diagnostics and must
+    // never be masked, and ABOVE the master switch and the follow gates, which
+    // would otherwise make a preview show nothing at all. The pinned state is
+    // felt at the warning gate above and in fx_percent(); it never reaches
+    // g_live, which is why the mode switch below reads the live state.
     if (s_preview.active) {
-        const pv_fx_param_t *p = &s_preview.p;
-        *fx = s_preview.fx;
-        *color = fx_colour(p);
-        *bg = fx_bg(p);
-        *bright = p->brightness;
-        *speed = p->speed;
-        *bright_end = fx_bright_end(p);
+        from_stored_effect(&s_preview.p, s_preview.fx, n,
+                           fx, color, bg, bright, speed, bright_end, band, flip);
         return true;
     }
 
-    // 5. The selected light mode.
+    // ---- Level 5: the selected mode picks the source ----
     switch (r->light_mode) {
+
     case PV_MODE_H2D: {
-        // The live state, not fx_state(): a pinned state cannot reach here,
-        // because the preview override above returns before it. Pinning is
-        // felt at the warning gate, which sits above that override, and in
-        // fx_percent(), which the progress effects read.
         int st = g_live.device_state;
         if (st < 0 || st >= PV_ST_COUNT) st = PV_ST_IDLE;
         int e = r->h2d_active[st];
         if (e < 0 || e >= PV_FX_COUNT) e = PV_FX_STATIC;
-        const pv_fx_param_t *p = &g_h2d[st][e];
-        *fx = e; *color = fx_colour(p); *bg = fx_bg(p);
-        *bright = p->brightness; *speed = p->speed;
-        *bright_end = fx_bright_end(p);
-        *band = fx_band(p, n);
-        *flip = (p->opt_set & PV_FX_REVERSE) != 0;
+        from_stored_effect(&g_h2d[st][e], e, n,
+                           fx, color, bg, bright, speed, bright_end, band, flip);
         return true;
     }
-    case PV_MODE_WARNING: {
-        // 0x400dc5d7 onward, exactly:
-        //     l32i a8, a8, 180      bed_temper
-        //     movi.n a9, 50
-        //     blt  a9, a8, HOT      50 < bed     -> hot
-        //     l32i a8, a8, 176      nozzle_temper
-        //     bge  a9, a8, SAFE     50 >= nozzle -> safe, else hot
-        // Strict >, on either temperature, on the truncated integer, and NO
-        // hysteresis. This carried >= and 2 C of hysteresis until 2026-08-28,
-        // which read hot across 50.0..50.9 where stock reads safe, and held
-        // hot down to 48 on the way back.
-        // NOT STOCK: the threshold is a setting now. Zero means "never set",
-        // and never set is stock's fifty, so an untouched device compares the
-        // same number stock does, the same way.
-        int hot_c = g_cfg.rgb.warn_hot_c ? g_cfg.rgb.warn_hot_c : PV_WARN_HOT_C;
-        bool hot = (hot_c < g_live.bed_temp)
-                || (hot_c < g_live.nozzle_temp);
 
-        int lvl = hot ? 1 : 0;
-        // Each level offers Static or Strobing only.
+    case PV_MODE_WARNING: {
+        // Two levels, safe and over the threshold, each offering Static or
+        // Strobing only and each carrying its own brightness and speed. The
+        // comparison is a STRICT greater-than on either temperature, against
+        // the truncated integer, with no hysteresis: 50.9 reads as 50 and so
+        // reads safe, and there is no band to fall back through.
+        //
+        // NOT STOCK: the threshold is a setting. Zero means never set, and
+        // never set is the factory fifty, so an untouched device compares the
+        // same number the factory does, the same way.
+        int hot_c = r->warn_hot_c ? r->warn_hot_c : PV_WARN_HOT_C;
+        int lvl = (hot_c < g_live.bed_temp || hot_c < g_live.nozzle_temp) ? 1 : 0;
         int sel = r->warnhot_current[lvl] ? PV_FX_STROBING : PV_FX_STATIC;
-        *fx = sel;
-        *color = hot ? (rgb_t){255, 0, 0} : (rgb_t){0, 255, 0};
+
+        *fx     = sel;
+        *color  = lvl ? (rgb_t){255, 0, 0} : (rgb_t){0, 255, 0};
         *bright = r->warnhot_bg[lvl][r->warnhot_current[lvl]];
-        *speed = r->warnhot_speed[lvl][r->warnhot_current[lvl]];
+        *speed  = r->warnhot_speed[lvl][r->warnhot_current[lvl]];
         return true;
     }
-    default: {   // PV_MODE_SIMPLE
+
+    default: {   /* PV_MODE_SIMPLE */
         int e = r->simple_current;
         if (e < 0 || e >= PV_FX_COUNT) e = PV_FX_STATIC;
-        const pv_fx_param_t *p = &r->simple[e];
-        *fx = e; *color = fx_colour(p); *bg = fx_bg(p);
-        *bright = p->brightness; *speed = p->speed;
-        *bright_end = fx_bright_end(p);
-        *band = fx_band(p, n);
-        *flip = (p->opt_set & PV_FX_REVERSE) != 0;
+        from_stored_effect(&r->simple[e], e, n,
+                           fx, color, bg, bright, speed, bright_end, band, flip);
         return true;
     }
     }
