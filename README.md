@@ -7,9 +7,8 @@
 </p>
 
 <p align="center">
-Independent firmware for the BIQU Panda Vent. A reimplementation of the factory
-application from observed behaviour,<br>
-then 22 lighting effects, material aware venting, printer control, and 24 languages on top of it.
+Open source firmware for the BIQU Panda Vent for Bambu P2S that has all the original features<br>
+plus many more to truly customize your vent system. 24 languages supported.
 </p>
 
 <p align="center">
