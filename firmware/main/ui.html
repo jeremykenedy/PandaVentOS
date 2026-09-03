@@ -963,10 +963,11 @@ footer.c_version {
      and floated it to the middle of the window. */
   /* Beer's app footer is a grid, and a grid places a lone item in the middle
      of the row however the text is aligned; the release line read as centred
-     under the cards. A block box puts it back on the text's own start edge. */
+     under the cards. A block box puts it on the text's own edge, and the
+     alignment below decides which one. */
   display: block;
   min-block-size: auto;
-  text-align: start;
+  text-align: end;
   padding: 0.75rem clamp(1rem, 2.5vw, 2rem) 1.25rem;
   color: var(--on-surface-variant);
 }
@@ -1577,23 +1578,23 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <a tabindex="0" role="link" class="active" id="id_btn_status" data-nav="status">
     <svg class="i"><use href="#i-status"/></svg>
-    <span data-translate="ui_dashboard">Dashboard</span>
+    <span data-str="ui_dashboard">Dashboard</span>
   </a>
   <a tabindex="0" role="link" id="id_btn_theme" data-nav="theme">
     <svg class="i"><use href="#i-lighting"/></svg>
-    <span data-translate="ui_lighting">Lighting</span>
+    <span data-str="ui_lighting">Lighting</span>
   </a>
   <a tabindex="0" role="link" id="id_btn_settings" data-nav="settings">
     <svg class="i"><use href="#i-settings"/></svg>
-    <span data-translate="card_settings">Settings</span>
+    <span data-str="card_settings">Settings</span>
   </a>
   <a tabindex="0" role="link" id="id_btn_printer" data-nav="printer">
     <svg class="i"><use href="#i-printer"/></svg>
-    <span data-translate="card_printer">Printer</span>
+    <span data-str="card_printer">Printer</span>
   </a>
   <a tabindex="0" role="link" id="id_btn_camera" data-nav="camera">
     <svg class="i"><use href="#i-image"/></svg>
-    <span data-translate="card_camera">Camera</span>
+    <span data-str="card_camera">Camera</span>
   </a>
   <a tabindex="0" role="link" id="id_btn_sta" data-nav="sta">
     <svg class="i"><use href="#i-network"/></svg>
@@ -1601,23 +1602,23 @@ body.is-waiting .waiting-hide { visibility: hidden; }
   </a>
   <a tabindex="0" role="link" id="id_btn_ap" data-nav="ap">
     <svg class="i"><use href="#i-hotspot"/></svg>
-    <span data-translate="ui_hotspot">Hotspot</span>
+    <span data-str="ui_hotspot">Hotspot</span>
   </a>
   <a tabindex="0" role="link" id="id_btn_logs" data-nav="logs">
     <svg class="i"><use href="#i-info"/></svg>
-    <span data-translate="card_logs">Logs</span>
+    <span data-str="card_logs">Logs</span>
   </a>
 </nav>
 
 <nav class="bottom s">
-  <a tabindex="0" role="link" class="active" data-nav="status"><svg class="i"><use href="#i-status"/></svg><span data-translate="ui_dashboard">Dashboard</span></a>
-  <a tabindex="0" role="link" data-nav="theme"><svg class="i"><use href="#i-lighting"/></svg><span data-translate="ui_lighting">Lighting</span></a>
-  <a tabindex="0" role="link" data-nav="settings"><svg class="i"><use href="#i-settings"/></svg><span data-translate="card_settings">Settings</span></a>
-  <a tabindex="0" role="link" data-nav="printer"><svg class="i"><use href="#i-printer"/></svg><span data-translate="card_printer">Printer</span></a>
-  <a tabindex="0" role="link" data-nav="camera"><svg class="i"><use href="#i-image"/></svg><span data-translate="card_camera">Camera</span></a>
+  <a tabindex="0" role="link" class="active" data-nav="status"><svg class="i"><use href="#i-status"/></svg><span data-str="ui_dashboard">Dashboard</span></a>
+  <a tabindex="0" role="link" data-nav="theme"><svg class="i"><use href="#i-lighting"/></svg><span data-str="ui_lighting">Lighting</span></a>
+  <a tabindex="0" role="link" data-nav="settings"><svg class="i"><use href="#i-settings"/></svg><span data-str="card_settings">Settings</span></a>
+  <a tabindex="0" role="link" data-nav="printer"><svg class="i"><use href="#i-printer"/></svg><span data-str="card_printer">Printer</span></a>
+  <a tabindex="0" role="link" data-nav="camera"><svg class="i"><use href="#i-image"/></svg><span data-str="card_camera">Camera</span></a>
   <a tabindex="0" role="link" data-nav="sta"><svg class="i"><use href="#i-network"/></svg><span>Wi-Fi</span></a>
-  <a tabindex="0" role="link" data-nav="ap"><svg class="i"><use href="#i-hotspot"/></svg><span data-translate="ui_hotspot">Hotspot</span></a>
-  <a tabindex="0" role="link" data-nav="logs"><svg class="i"><use href="#i-info"/></svg><span data-translate="card_logs">Logs</span></a>
+  <a tabindex="0" role="link" data-nav="ap"><svg class="i"><use href="#i-hotspot"/></svg><span data-str="ui_hotspot">Hotspot</span></a>
+  <a tabindex="0" role="link" data-nav="logs"><svg class="i"><use href="#i-info"/></svg><span data-str="card_logs">Logs</span></a>
 </nav>
 
 <!-- ══════════════════════════════════════════════════════════════════════
@@ -1657,7 +1658,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
          active, so it is a readout as much as a control. Sits after the
          pill, on the right, on every width. -->
     <button class="circle transparent c_top_theme" id="id_top_theme"
-            title="Theme" data-translate-title="ui_theme">
+            title="Theme" data-str-title="ui_theme">
       <svg class="i" id="id_top_theme_icon"><use href="#i-theme"/></svg>
     </button>
   </nav>
@@ -1677,17 +1678,17 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <!-- ── The vent ─────────────────────────────────────────────────── -->
   <article class="no-padding span-all">
-    <h6 class="card-title" data-translate="ui_vent">Vent</h6>
+    <h6 class="card-title" data-str="ui_vent">Vent</h6>
     <div class="row vent-row large-padding" id="id_airflow">
       <!-- The dial and the pill are two controls, not one: the firmware
            binds each of them to vent_mode_cycle separately, and a single
            wrapping button would swallow both. -->
       <button class="vent-dial transparent" id="id_hero_dial"
-              title="Cycle the vent: auto, open, closed" data-translate-title="ui_cycle_the_vent_auto_open_closed">
+              title="Cycle the vent: auto, open, closed" data-str-title="ui_cycle_the_vent_auto_open_closed">
         <span class="arc" id="id_hero_arc"></span>
         <span class="center-align">
           <span class="vent-word" id="id_af_word"></span>
-          <span class="small-text upper" data-translate="vent_dial_label">Vent</span>
+          <span class="small-text upper" data-str="vent_dial_label">Vent</span>
         </span>
       </button>
 
@@ -1696,7 +1697,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <div class="small-text" id="id_af_sub"></div>
         <div class="space"></div>
         <button class="chip fill" id="id_af_pill"
-                title="Cycle the vent mode" data-translate-title="ui_cycle_the_vent_mode">
+                title="Cycle the vent mode" data-str-title="ui_cycle_the_vent_mode">
           <span id="id_af_pill_text"></span>
         </button>
       </div>
@@ -1706,22 +1707,22 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <div class="s12 m4 padding">
         <button class="border fill vertical responsive is-active" id="id_vent_auto" role="radio" aria-checked="true">
           <svg class="i"><use href="#i-vent-auto"/></svg>
-          <span data-translate="ui_auto">Auto</span>
-          <span class="small-text" data-translate="vent_mode_auto_sub">Follows the printer</span>
+          <span data-str="ui_auto">Auto</span>
+          <span class="small-text" data-str="vent_mode_auto_sub">Follows the printer</span>
         </button>
       </div>
       <div class="s12 m4 padding">
         <button class="border vertical responsive" id="id_vent_open" role="radio" aria-checked="false">
           <svg class="i"><use href="#i-vent-open"/></svg>
-          <span data-translate="ui_open">Open</span>
-          <span class="small-text" data-translate="vent_mode_open_sub">Held open</span>
+          <span data-str="ui_open">Open</span>
+          <span class="small-text" data-str="vent_mode_open_sub">Held open</span>
         </button>
       </div>
       <div class="s12 m4 padding">
         <button class="border vertical responsive" id="id_vent_closed" role="radio" aria-checked="false">
           <svg class="i"><use href="#i-vent-closed"/></svg>
-          <span data-translate="ui_closed">Closed</span>
-          <span class="small-text" data-translate="vent_mode_closed_sub">Held closed</span>
+          <span data-str="ui_closed">Closed</span>
+          <span class="small-text" data-str="vent_mode_closed_sub">Held closed</span>
         </button>
       </div>
     </div>
@@ -1734,7 +1735,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <!-- ── The print ────────────────────────────────────────────────── -->
   <article class="span-all">
-    <h6 class="card-title" data-translate="ui_current_print">Current print</h6>
+    <h6 class="card-title" data-str="ui_current_print">Current print</h6>
     <nav>
       <span class="max" id="id_job_name"></span>
       <span id="id_job_pct"></span>
@@ -1748,91 +1749,91 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <!-- ── The printer ──────────────────────────────────────────────── -->
   <article class="no-padding">
-    <h6 class="card-title" data-translate="card_printer">Printer</h6>
+    <h6 class="card-title" data-str="card_printer">Printer</h6>
     <ul class="list border" id="id_kv_printer">
       <li>
         <svg class="i"><use href="#i-network"/></svg>
-        <div class="max" data-translate="status_link">Link</div>
+        <div class="max" data-str="status_link">Link</div>
       </li>
       <li>
         <svg class="i"><use href="#i-printer-enclosed"/></svg>
-        <div class="max" data-translate="ui_state">State</div>
+        <div class="max" data-str="ui_state">State</div>
       </li>
       <li>
         <svg class="i"><use href="#i-nozzle-temp"/></svg>
         <div class="max">
-          <div data-translate="status_nozzle">Nozzle</div>
+          <div data-str="status_nozzle">Nozzle</div>
         </div>
       </li>
       <li>
         <svg class="i"><use href="#i-bed-hot"/></svg>
-        <div class="max" data-translate="status_bed">Bed</div>
+        <div class="max" data-str="status_bed">Bed</div>
       </li>
       <li>
         <svg class="i"><use href="#i-temp"/></svg>
-        <div class="max" data-translate="status_chamber">Chamber</div>
+        <div class="max" data-str="status_chamber">Chamber</div>
       </li>
       <li>
         <svg class="i"><use href="#i-spool-end"/></svg>
         <div class="max">
-          <div data-translate="ui_filament">Filament</div>
-          <div class="small-text" data-translate="ui_loaded">Loaded</div>
+          <div data-str="ui_filament">Filament</div>
+          <div class="small-text" data-str="ui_loaded">Loaded</div>
         </div>
       </li>
       <li>
         <svg class="i"><use href="#i-fan"/></svg>
-        <div class="max" data-translate="status_fans">Fans</div>
+        <div class="max" data-str="status_fans">Fans</div>
       </li>
       <li>
         <svg class="i"><use href="#i-materials"/></svg>
         <div class="max">
-          <div data-translate="status_ams">AMS</div>
+          <div data-str="status_ams">AMS</div>
           <div class="small-text">Humidity and temperature</div>
         </div>
       </li>
       <li>
         <svg class="i"><use href="#i-printer-open"/></svg>
-        <div class="max" data-translate="status_door">Door</div>
+        <div class="max" data-str="status_door">Door</div>
       </li>
       <li>
         <svg class="i"><use href="#i-warning"/></svg>
-        <div class="max" data-translate="status_fault_code">Fault code</div>
+        <div class="max" data-str="status_fault_code">Fault code</div>
       </li>
     </ul>
   </article>
 
   <!-- ── Reaching back to the printer ─────────────────────────────── -->
   <article class="no-padding" id="id_card_pctl">
-    <h6 class="card-title" data-translate="pctl_title">Printer controls</h6>
-    <div class="small-text" data-translate="ui_these_write_to_the_printer_so_they">These write to the printer, so they need Developer
+    <h6 class="card-title" data-str="pctl_title">Printer controls</h6>
+    <div class="small-text" data-str="ui_these_write_to_the_printer_so_they">These write to the printer, so they need Developer
       Mode switched on under LAN Only Mode. Everything above only listens.</div>
     <ul class="list border">
       <li>
         <svg class="i"><use href="#i-lighting"/></svg>
-        <div class="max" data-translate="status_chamber_light" id="sw_id_pctl_chamber_light">Chamber light</div>
+        <div class="max" data-str="status_chamber_light" id="sw_id_pctl_chamber_light">Chamber light</div>
         <label class="switch"><input type="checkbox" id="id_pctl_chamber_light" aria-labelledby="sw_id_pctl_chamber_light" checked><span></span></label>
       </li>
       <li id="id_pctl_work_light_row">
         <svg class="i"><use href="#i-brightness"/></svg>
-        <div class="max" data-translate="ui_work_light" id="sw_id_pctl_work_light">Work light</div>
+        <div class="max" data-str="ui_work_light" id="sw_id_pctl_work_light">Work light</div>
         <label class="switch"><input type="checkbox" id="id_pctl_work_light" aria-labelledby="sw_id_pctl_work_light"><span></span></label>
       </li>
     </ul>
     <div class="padding">
-      <div class="small-text" id="id_pctl_locked" hidden data-translate="ui_the_printer_is_refusing_commands_t">The printer is refusing commands. Turn on
+      <div class="small-text" id="id_pctl_locked" hidden data-str="ui_the_printer_is_refusing_commands_t">The printer is refusing commands. Turn on
         Developer Mode, under LAN Only Mode, on the printer's own screen.</div>
     </div>
   </article>
 
   <!-- ── Lighting, as it is right now ─────────────────────────────── -->
   <article class="no-padding" id="id_lighting_row">
-    <h6 class="card-title" data-translate="status_lighting">Lighting now</h6>
+    <h6 class="card-title" data-str="status_lighting">Lighting now</h6>
     <ul class="list border" id="id_kv_lighting">
-      <li><div class="max" data-translate="status_showing">Showing</div></li>
-      <li><div class="max" data-translate="status_effect">Effect</div></li>
-      <li><div class="max" data-translate="status_colour">Colour</div></li>
-      <li><div class="max" data-translate="status_brightness">Brightness</div></li>
-      <li><div class="max" data-translate="ui_led_strips">LED strips</div></li>
+      <li><div class="max" data-str="status_showing">Showing</div></li>
+      <li><div class="max" data-str="status_effect">Effect</div></li>
+      <li><div class="max" data-str="status_colour">Colour</div></li>
+      <li><div class="max" data-str="status_brightness">Brightness</div></li>
+      <li><div class="max" data-str="ui_led_strips">LED strips</div></li>
     </ul>
   </article>
 
@@ -1843,7 +1844,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
        The whole card hides when the printer has no AMS (the renderer sets
        #id_trays hidden, and the card follows). -->
   <article class="no-padding" id="id_card_filament">
-    <h6 class="card-title" data-translate="ui_filament_loaded">Filament Loaded</h6>
+    <h6 class="card-title" data-str="ui_filament_loaded">Filament Loaded</h6>
     <div class="padding" id="id_trays">
       <nav class="trays-grid" id="id_trays_row">
       </nav>
@@ -1852,13 +1853,13 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <!-- ── Endstop check ────────────────────────────────────────────── -->
   <article id="id_cal_row">
-    <h6 class="card-title" data-translate="cal_label">Endstop check</h6>
-    <div class="small-text" data-translate="ui_drives_the_flap_onto_both_stops_an">Drives the flap onto both stops and reports what the
+    <h6 class="card-title" data-str="cal_label">Endstop check</h6>
+    <div class="small-text" data-str="ui_drives_the_flap_onto_both_stops_an">Drives the flap onto both stops and reports what the
     hall sensor read at each one. Nothing is stored; this answers "is the sensor seeing the magnet".</div>
     <div class="space"></div>
     <button class="fill responsive" id="id_btn_cal">
       <svg class="i"><use href="#i-endstop"/></svg>
-      <span data-translate="ui_run_the_check">Run the check</span>
+      <span data-str="ui_run_the_check">Run the check</span>
     </button>
     <div id="id_cal_result" hidden>
       <div class="space"></div>
@@ -1879,13 +1880,13 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <!-- ── Master switches ──────────────────────────────────────────── -->
   <article class="no-padding">
-    <h6 class="card-title" data-translate="ui_the_strip">The strip</h6>
+    <h6 class="card-title" data-str="ui_the_strip">The strip</h6>
     <ul class="list border">
       <li>
         <svg class="i"><use href="#i-lighting"/></svg>
         <div class="max">
-          <div id="sw_id_light_on_off" data-translate="ui_lights_on">Lights on</div>
-          <div class="small-text" data-translate="ui_the_master_switch_for_both_strips">The master switch for both strips</div>
+          <div id="sw_id_light_on_off" data-str="ui_lights_on">Lights on</div>
+          <div class="small-text" data-str="ui_the_master_switch_for_both_strips">The master switch for both strips</div>
         </div>
         <button class="note-btn" id="id_note_light_effect" aria-label="What is this?">i</button>
         <label class="switch"><input type="checkbox" id="id_light_on_off" aria-labelledby="sw_id_light_on_off" checked><span></span></label>
@@ -1897,8 +1898,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <li id="rgb_warning_switch">
           <svg class="i"><use href="#i-temp"/></svg>
           <div class="max">
-            <div id="sw_id_btn_rgb_warning_overide" data-translate="ui_override_on_a_hot_chamber">Override on a hot chamber</div>
-            <div class="small-text" data-translate="ui_show_the_warning_colours_above_the">Show the warning colours above the hot threshold</div>
+            <div id="sw_id_btn_rgb_warning_overide" data-str="ui_override_on_a_hot_chamber">Override on a hot chamber</div>
+            <div class="small-text" data-str="ui_show_the_warning_colours_above_the">Show the warning colours above the hot threshold</div>
           </div>
           <button class="note-btn" id="id_note_warning_light" aria-label="What is this?">i</button>
           <label class="switch"><input type="checkbox" id="id_btn_rgb_warning_overide" aria-labelledby="sw_id_btn_rgb_warning_overide" checked><span></span></label>
@@ -1906,8 +1907,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <li>
           <svg class="i"><use href="#i-printer"/></svg>
           <div class="max">
-            <div id="sw_id_btn_rgb_follow" data-translate="ui_follow_the_printer">Follow the printer</div>
-            <div class="small-text" data-translate="ui_show_a_different_effect_for_each_p">Show a different effect for each printer state</div>
+            <div id="sw_id_btn_rgb_follow" data-str="ui_follow_the_printer">Follow the printer</div>
+            <div class="small-text" data-str="ui_show_a_different_effect_for_each_p">Show a different effect for each printer state</div>
           </div>
           <button class="note-btn" id="id_note_follow_printer" aria-label="What is this?">i</button>
           <label class="switch"><input type="checkbox" id="id_btn_rgb_follow" aria-labelledby="sw_id_btn_rgb_follow" checked><span></span></label>
@@ -1915,8 +1916,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <li>
           <svg class="i"><use href="#i-vent-open"/></svg>
           <div class="max">
-            <div id="sw_id_btn_follow_vent" data-translate="ui_follow_the_vent">Follow the vent</div>
-            <div class="small-text" data-translate="ui_use_the_open_or_closed_colour_depe">Use the open or closed colour depending on the flap</div>
+            <div id="sw_id_btn_follow_vent" data-str="ui_follow_the_vent">Follow the vent</div>
+            <div class="small-text" data-str="ui_use_the_open_or_closed_colour_depe">Use the open or closed colour depending on the flap</div>
           </div>
           <button class="note-btn" id="id_note_follow_vent" aria-label="What is this?">i</button>
           <label class="switch"><input type="checkbox" id="id_btn_follow_vent" aria-labelledby="sw_id_btn_follow_vent"><span></span></label>
@@ -1924,8 +1925,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <li id="rgb_reverse_switch">
           <svg class="i"><use href="#i-refresh"/></svg>
           <div class="max">
-            <div id="sw_id_btn_rgb_reverse_overide" data-translate="ui_run_backwards">Run backwards</div>
-            <div class="small-text" data-translate="ui_reverse_every_effect_on_both_strip">Reverse every effect on both strips</div>
+            <div id="sw_id_btn_rgb_reverse_overide" data-str="ui_run_backwards">Run backwards</div>
+            <div class="small-text" data-str="ui_reverse_every_effect_on_both_strip">Reverse every effect on both strips</div>
           </div>
           <button class="note-btn" id="id_note_reverse_light" aria-label="What is this?">i</button>
           <label class="switch"><input type="checkbox" id="id_btn_rgb_reverse_overide" aria-labelledby="sw_id_btn_rgb_reverse_overide"><span></span></label>
@@ -1936,16 +1937,16 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <!-- ── Which mode ───────────────────────────────────────────────── -->
   <article>
-    <h6 class="card-title" data-translate="ui_the_effect">The effect</h6>
-    <div class="small-text" data-translate="ui_simple_uses_one_effect_all_the_tim">Simple uses one effect all the time. Per printer
+    <h6 class="card-title" data-str="ui_the_effect">The effect</h6>
+    <div class="small-text" data-str="ui_simple_uses_one_effect_all_the_tim">Simple uses one effect all the time. Per printer
       state gives each of the six states its own. Hot chamber has two: safe, and over the threshold.</div>
     <div class="field label suffix border">
       <select id="id_rgb_mode_type">
-        <option value="Simple Mode" data-translate="rgb_mode0"></option>
-        <option value="Advance Mode" data-translate="rgb_mode1" selected></option>
-        <option value="Warning Hot Mode" data-translate="rgb_mode2"></option>
+        <option value="Simple Mode" data-str="rgb_mode0"></option>
+        <option value="Advance Mode" data-str="rgb_mode1" selected></option>
+        <option value="Warning Hot Mode" data-str="rgb_mode2"></option>
       </select>
-      <label for="id_rgb_mode_type" data-translate="ui_mode">Mode</label>
+      <label for="id_rgb_mode_type" data-str="ui_mode">Mode</label>
       <svg class="i"><use href="#i-caret"/></svg>
     </div>
     <div class="space"></div>
@@ -1957,33 +1958,33 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <nav>
         <div class="field label suffix border max">
           <select id="id_rgb_simple_mode_type">
-          <option value="Static" data-translate="rgb_info_mode0" selected></option>
-          <option value="Breathing" data-translate="rgb_info_mode1"></option>
-          <option value="Strobing" data-translate="rgb_info_mode2"></option>
-          <option value="Wave" data-translate="rgb_info_mode3"></option>
-          <option value="Marquee" data-translate="rgb_info_mode4"></option>
-          <option value="Color_Cycle" data-translate="rgb_info_mode5"></option>
-          <option value="Rainbow" data-translate="rgb_info_mode6"></option>
-          <option value="Cylon" data-translate="rgb_fx_cylon"></option>
-          <option value="Bounce" data-translate="rgb_fx_bounce"></option>
-          <option value="Progress_Bar" data-translate="rgb_fx_progress"></option>
-          <option value="Marquee_Out" data-translate="rgb_fx_marquee_out"></option>
-          <option value="Marquee_In" data-translate="rgb_fx_marquee_in"></option>
-          <option value="Fill_Out" data-translate="rgb_fx_fill_out"></option>
-          <option value="Fill_In" data-translate="rgb_fx_fill_in"></option>
-          <option value="Bounce_Out" data-translate="rgb_fx_bounce_out"></option>
-          <option value="Bounce_In" data-translate="rgb_fx_bounce_in"></option>
-          <option value="Bounce_Fill_Out" data-translate="rgb_fx_bounce_fill_out"></option>
-          <option value="Bounce_Fill_In" data-translate="rgb_fx_bounce_fill_in"></option>
-          <option value="Progress_Anim" data-translate="rgb_fx_progress_anim"></option>
-          <option value="Barber" data-translate="rgb_fx_barber"></option>
-          <option value="Temp_Gradient" data-translate="rgb_fx_temp"></option>
-          <option value="Animation" data-translate="rgb_fx_anim"></option>
+          <option value="Static" data-str="rgb_info_mode0" selected></option>
+          <option value="Breathing" data-str="rgb_info_mode1"></option>
+          <option value="Strobing" data-str="rgb_info_mode2"></option>
+          <option value="Wave" data-str="rgb_info_mode3"></option>
+          <option value="Marquee" data-str="rgb_info_mode4"></option>
+          <option value="Color_Cycle" data-str="rgb_info_mode5"></option>
+          <option value="Rainbow" data-str="rgb_info_mode6"></option>
+          <option value="Cylon" data-str="rgb_fx_cylon"></option>
+          <option value="Bounce" data-str="rgb_fx_bounce"></option>
+          <option value="Progress_Bar" data-str="rgb_fx_progress"></option>
+          <option value="Marquee_Out" data-str="rgb_fx_marquee_out"></option>
+          <option value="Marquee_In" data-str="rgb_fx_marquee_in"></option>
+          <option value="Fill_Out" data-str="rgb_fx_fill_out"></option>
+          <option value="Fill_In" data-str="rgb_fx_fill_in"></option>
+          <option value="Bounce_Out" data-str="rgb_fx_bounce_out"></option>
+          <option value="Bounce_In" data-str="rgb_fx_bounce_in"></option>
+          <option value="Bounce_Fill_Out" data-str="rgb_fx_bounce_fill_out"></option>
+          <option value="Bounce_Fill_In" data-str="rgb_fx_bounce_fill_in"></option>
+          <option value="Progress_Anim" data-str="rgb_fx_progress_anim"></option>
+          <option value="Barber" data-str="rgb_fx_barber"></option>
+          <option value="Temp_Gradient" data-str="rgb_fx_temp"></option>
+          <option value="Animation" data-str="rgb_fx_anim"></option>
           </select>
-          <label for="id_rgb_simple_mode_type" data-translate="status_effect">Effect</label>
+          <label for="id_rgb_simple_mode_type" data-str="status_effect">Effect</label>
           <svg class="i"><use href="#i-caret"/></svg>
         </div>
-        <button class="circle transparent" id="id_mode_reflash" title="Reset this effect&#x27;s settings" data-translate-title="ui_reset_this_effect_s_settings">
+        <button class="circle transparent" id="id_mode_reflash" title="Reset this effect&#x27;s settings" data-str-title="ui_reset_this_effect_s_settings">
           <svg class="i"><use href="#i-refresh"/></svg>
         </button>
       </nav>
@@ -1995,27 +1996,27 @@ body.is-waiting .waiting-hide { visibility: hidden; }
            black is a colour someone might have chosen on purpose. -->
       <div class="grid">
         <div class="s12 m6">
-          <div class="small-text" data-translate="color_vent_open">Vent Open Active Color</div>
+          <div class="small-text" data-str="color_vent_open">Vent Open Active Color</div>
           <button class="swatch responsive small-round is-unset" id="id_picker_btn_simple"></button>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-translate="color_vent_closed">Vent Closed Active Color</div>
+          <div class="small-text" data-str="color_vent_closed">Vent Closed Active Color</div>
           <button class="swatch responsive small-round is-unset" id="id_picker_btn_simple_closed"></button>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-translate="color_vent_open_bg">Vent Open Inactive Color</div>
+          <div class="small-text" data-str="color_vent_open_bg">Vent Open Inactive Color</div>
           <div class="swatch-slot">
             <button class="swatch responsive small-round is-unset" id="id_picker_btn_simple_bg"></button>
             <button class="clear circle transparent small" id="id_clear_simple_bg" hidden
-                    title="Clear" data-translate-title="ui_clear">&times;</button>
+                    title="Clear" data-str-title="ui_clear">&times;</button>
           </div>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-translate="color_vent_closed_bg">Vent Closed Inactive Color</div>
+          <div class="small-text" data-str="color_vent_closed_bg">Vent Closed Inactive Color</div>
           <div class="swatch-slot">
             <button class="swatch responsive small-round is-unset" id="id_picker_btn_simple_bg_closed"></button>
             <button class="clear circle transparent small" id="id_clear_simple_bg_closed" hidden
-                    title="Clear" data-translate-title="ui_clear">&times;</button>
+                    title="Clear" data-str-title="ui_clear">&times;</button>
           </div>
         </div>
       </div>
@@ -2025,15 +2026,15 @@ body.is-waiting .waiting-hide { visibility: hidden; }
            opposite within the pair (active or inactive), never across. -->
       <div class="space"></div>
       <nav class="wrap">
-        <button class="border small" data-translate="color_sync_active_open"
+        <button class="border small" data-str="color_sync_active_open"
                 data-pv-sync="active:open">Copy Active Open &rarr; Active Closed</button>
-        <button class="border small" data-translate="color_sync_active_closed"
+        <button class="border small" data-str="color_sync_active_closed"
                 data-pv-sync="active:closed">Copy Active Closed &rarr; Active Open</button>
       </nav>
       <nav class="wrap">
-        <button class="border small" data-translate="color_sync_inactive_open"
+        <button class="border small" data-str="color_sync_inactive_open"
                 data-pv-sync="inactive:open">Copy Inactive Open &rarr; Inactive Closed</button>
-        <button class="border small" data-translate="color_sync_inactive_closed"
+        <button class="border small" data-str="color_sync_inactive_closed"
                 data-pv-sync="inactive:closed">Copy Inactive Closed &rarr; Inactive Open</button>
       </nav>
 
@@ -2045,42 +2046,42 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <div class="row" id="id_grad_row_simple" hidden>
         <div class="field label border max">
           <input type="number" id="id_grad_min_simple" min="0" max="120" value="" placeholder=" ">
-          <label for="id_grad_min_simple" data-translate="ui_gradient_cold_end_c">Gradient cold end &deg;C</label>
+          <label for="id_grad_min_simple" data-str="ui_gradient_cold_end_c">Gradient cold end &deg;C</label>
         </div>
         <div class="field label border max">
           <input type="number" id="id_grad_max_simple" min="0" max="120" value="" placeholder=" ">
-          <label for="id_grad_max_simple" data-translate="ui_gradient_hot_end_c">Gradient hot end &deg;C</label>
+          <label for="id_grad_max_simple" data-str="ui_gradient_hot_end_c">Gradient hot end &deg;C</label>
         </div>
       </div>
 
       <div id="id_band_row_simple" hidden>
         <nav>
-          <span class="max small-text" data-translate="ui_band_width">Band width</span>
+          <span class="max small-text" data-str="ui_band_width">Band width</span>
           <span class="small-text" id="id_band_simple_value"></span>
           <button class="circle transparent small clear" id="id_band_clear_simple" hidden
-                  title="Clear" data-translate-title="ui_clear">&times;</button>
+                  title="Clear" data-str-title="ui_clear">&times;</button>
         </nav>
         <label class="slider">
           <input type="range" class="is-unset" id="id_band_simple" min="0" max="32" value="0"><span></span>
         </label>
       </div>
 
-      <nav><span class="max small-text" data-translate="bright_start">Start of cycle</span>
+      <nav><span class="max small-text" data-str="bright_start">Start of cycle</span>
            <span class="small-text" id="id_mode1_bg_percent_value"></span></nav>
       <label class="slider">
         <input type="range" id="id_mode1_bg_percent" min="0" max="100" step="5" value="50"><span></span>
       </label>
 
-      <nav><span class="max small-text" data-translate="bright_end">End of cycle</span>
+      <nav><span class="max small-text" data-str="bright_end">End of cycle</span>
            <span class="small-text" id="id_mode1_be_percent_value"></span>
            <button class="circle transparent small clear" id="id_clear_simple_be" hidden
-                   title="Clear" data-translate-title="ui_clear">&times;</button></nav>
+                   title="Clear" data-str-title="ui_clear">&times;</button></nav>
       <label class="slider">
         <input type="range" class="is-unset" id="id_mode1_be_percent" min="0" max="100" step="5" value="0"><span></span>
       </label>
 
       <div id="mode1_speed_container">
-        <nav><span class="max small-text" data-translate="status_speed">Speed</span>
+        <nav><span class="max small-text" data-str="status_speed">Speed</span>
              <span class="small-text" id="id_mode1_speed_percent_value"></span></nav>
         <label class="slider">
           <input type="range" id="id_mode1_speed_percent" min="0" max="100" step="5" value="50"><span></span>
@@ -2092,35 +2093,35 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <div class="space"></div>
       <div class="field label suffix border">
         <select id="id_preview_state_simple">
-        <option value="-1" data-translate="preview_as_live" selected></option>
-        <option value="0" data-translate="rgb_btn1"></option>
-        <option value="1" data-translate="rgb_btn2"></option>
-        <option value="2" data-translate="rgb_btn3"></option>
-        <option value="3" data-translate="rgb_btn4"></option>
-        <option value="4" data-translate="rgb_btn5"></option>
-        <option value="5" data-translate="rgb_btn6"></option>
+        <option value="-1" data-str="preview_as_live" selected></option>
+        <option value="0" data-str="rgb_btn1"></option>
+        <option value="1" data-str="rgb_btn2"></option>
+        <option value="2" data-str="rgb_btn3"></option>
+        <option value="3" data-str="rgb_btn4"></option>
+        <option value="4" data-str="rgb_btn5"></option>
+        <option value="5" data-str="rgb_btn6"></option>
         </select>
-        <label for="id_preview_state_simple" data-translate="preview_as">Preview as</label>
+        <label for="id_preview_state_simple" data-str="preview_as">Preview as</label>
         <svg class="i"><use href="#i-caret"/></svg>
       </div>
 
-      <nav><span class="max small-text" data-translate="preview_progress">Pin the progress to</span>
+      <nav><span class="max small-text" data-str="preview_progress">Pin the progress to</span>
            <span class="small-text" id="id_preview_pct_simple_value"></span>
            <button class="circle transparent small clear" id="id_preview_pct_clear_simple" hidden
-                   title="Clear" data-translate-title="ui_clear">&times;</button></nav>
+                   title="Clear" data-str-title="ui_clear">&times;</button></nav>
       <label class="slider">
         <input type="range" class="is-unset" id="id_preview_pct_simple" min="0" max="100" step="5" value="0"><span></span>
       </label>
 
       <nav>
-        <span class="max small-text" id="lbl_fxrev_simple" data-translate="fx_reverse">Run this effect backwards</span>
+        <span class="max small-text" id="lbl_fxrev_simple" data-str="fx_reverse">Run this effect backwards</span>
         <label class="switch"><input type="checkbox" id="id_fx_rev_simple" aria-labelledby="lbl_fxrev_simple"><span></span></label>
       </nav>
 
       <div class="space"></div>
       <nav class="wrap">
-        <button class="fill" id="id_btn_preview_simple" data-translate="preview_try">Try it on the strip</button>
-        <button class="border" id="id_preview_stop_simple" hidden data-translate="ui_stop">Stop</button>
+        <button class="fill" id="id_btn_preview_simple" data-str="preview_try">Try it on the strip</button>
+        <button class="border" id="id_preview_stop_simple" hidden data-str="ui_stop">Stop</button>
       </nav>
       <div class="small-text" id="id_preview_note_simple"></div>
     </div>
@@ -2135,42 +2136,42 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <button id="id_btn1" class="is-unset"><span>Idle</span></button>
         <button id="id_btn2" class="is-unset"><span>File download<br>Print prepare</span></button>
         <button id="id_btn3" class="is-unset"><span>Printing</span></button>
-        <button id="id_btn4" class="is-unset"><span data-translate="rgb_btn4">Paused</span></button>
-        <button id="id_btn5" class="is-unset"><span data-translate="ui_print_finished">Print finished</span></button>
-        <button id="id_btn6" class="is-unset"><span data-translate="rgb_btn6">Print error</span></button>
+        <button id="id_btn4" class="is-unset"><span data-str="rgb_btn4">Paused</span></button>
+        <button id="id_btn5" class="is-unset"><span data-str="ui_print_finished">Print finished</span></button>
+        <button id="id_btn6" class="is-unset"><span data-str="rgb_btn6">Print error</span></button>
       </div>
 
       <!-- ── The effect ───────────────────────────────────────────── -->
       <nav>
         <div class="field label suffix border max">
           <select id="id_rgb_h2d_mode_type">
-          <option value="Static" data-translate="rgb_info_mode0" selected></option>
-          <option value="Breathing" data-translate="rgb_info_mode1"></option>
-          <option value="Strobing" data-translate="rgb_info_mode2"></option>
-          <option value="Wave" data-translate="rgb_info_mode3"></option>
-          <option value="Marquee" data-translate="rgb_info_mode4"></option>
-          <option value="Color_Cycle" data-translate="rgb_info_mode5"></option>
-          <option value="Rainbow" data-translate="rgb_info_mode6"></option>
-          <option value="Cylon" data-translate="rgb_fx_cylon"></option>
-          <option value="Bounce" data-translate="rgb_fx_bounce"></option>
-          <option value="Progress_Bar" data-translate="rgb_fx_progress"></option>
-          <option value="Marquee_Out" data-translate="rgb_fx_marquee_out"></option>
-          <option value="Marquee_In" data-translate="rgb_fx_marquee_in"></option>
-          <option value="Fill_Out" data-translate="rgb_fx_fill_out"></option>
-          <option value="Fill_In" data-translate="rgb_fx_fill_in"></option>
-          <option value="Bounce_Out" data-translate="rgb_fx_bounce_out"></option>
-          <option value="Bounce_In" data-translate="rgb_fx_bounce_in"></option>
-          <option value="Bounce_Fill_Out" data-translate="rgb_fx_bounce_fill_out"></option>
-          <option value="Bounce_Fill_In" data-translate="rgb_fx_bounce_fill_in"></option>
-          <option value="Progress_Anim" data-translate="rgb_fx_progress_anim"></option>
-          <option value="Barber" data-translate="rgb_fx_barber"></option>
-          <option value="Temp_Gradient" data-translate="rgb_fx_temp"></option>
-          <option value="Animation" data-translate="rgb_fx_anim"></option>
+          <option value="Static" data-str="rgb_info_mode0" selected></option>
+          <option value="Breathing" data-str="rgb_info_mode1"></option>
+          <option value="Strobing" data-str="rgb_info_mode2"></option>
+          <option value="Wave" data-str="rgb_info_mode3"></option>
+          <option value="Marquee" data-str="rgb_info_mode4"></option>
+          <option value="Color_Cycle" data-str="rgb_info_mode5"></option>
+          <option value="Rainbow" data-str="rgb_info_mode6"></option>
+          <option value="Cylon" data-str="rgb_fx_cylon"></option>
+          <option value="Bounce" data-str="rgb_fx_bounce"></option>
+          <option value="Progress_Bar" data-str="rgb_fx_progress"></option>
+          <option value="Marquee_Out" data-str="rgb_fx_marquee_out"></option>
+          <option value="Marquee_In" data-str="rgb_fx_marquee_in"></option>
+          <option value="Fill_Out" data-str="rgb_fx_fill_out"></option>
+          <option value="Fill_In" data-str="rgb_fx_fill_in"></option>
+          <option value="Bounce_Out" data-str="rgb_fx_bounce_out"></option>
+          <option value="Bounce_In" data-str="rgb_fx_bounce_in"></option>
+          <option value="Bounce_Fill_Out" data-str="rgb_fx_bounce_fill_out"></option>
+          <option value="Bounce_Fill_In" data-str="rgb_fx_bounce_fill_in"></option>
+          <option value="Progress_Anim" data-str="rgb_fx_progress_anim"></option>
+          <option value="Barber" data-str="rgb_fx_barber"></option>
+          <option value="Temp_Gradient" data-str="rgb_fx_temp"></option>
+          <option value="Animation" data-str="rgb_fx_anim"></option>
           </select>
-          <label for="id_rgb_h2d_mode_type" data-translate="status_effect">Effect</label>
+          <label for="id_rgb_h2d_mode_type" data-str="status_effect">Effect</label>
           <svg class="i"><use href="#i-caret"/></svg>
         </div>
-        <button class="circle transparent" id="id_mode_reflash1" title="Reset this effect&#x27;s settings" data-translate-title="ui_reset_this_effect_s_settings">
+        <button class="circle transparent" id="id_mode_reflash1" title="Reset this effect&#x27;s settings" data-str-title="ui_reset_this_effect_s_settings">
           <svg class="i"><use href="#i-refresh"/></svg>
         </button>
       </nav>
@@ -2182,27 +2183,27 @@ body.is-waiting .waiting-hide { visibility: hidden; }
            black is a colour someone might have chosen on purpose. -->
       <div class="grid">
         <div class="s12 m6">
-          <div class="small-text" data-translate="color_vent_open">Vent Open Active Color</div>
+          <div class="small-text" data-str="color_vent_open">Vent Open Active Color</div>
           <button class="swatch responsive small-round is-unset" id="id_picker_btn_h2d"></button>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-translate="color_vent_closed">Vent Closed Active Color</div>
+          <div class="small-text" data-str="color_vent_closed">Vent Closed Active Color</div>
           <button class="swatch responsive small-round is-unset" id="id_picker_btn_h2d_closed"></button>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-translate="color_vent_open_bg">Vent Open Inactive Color</div>
+          <div class="small-text" data-str="color_vent_open_bg">Vent Open Inactive Color</div>
           <div class="swatch-slot">
             <button class="swatch responsive small-round is-unset" id="id_picker_btn_h2d_bg"></button>
             <button class="clear circle transparent small" id="id_clear_h2d_bg" hidden
-                    title="Clear" data-translate-title="ui_clear">&times;</button>
+                    title="Clear" data-str-title="ui_clear">&times;</button>
           </div>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-translate="color_vent_closed_bg">Vent Closed Inactive Color</div>
+          <div class="small-text" data-str="color_vent_closed_bg">Vent Closed Inactive Color</div>
           <div class="swatch-slot">
             <button class="swatch responsive small-round is-unset" id="id_picker_btn_h2d_bg_closed"></button>
             <button class="clear circle transparent small" id="id_clear_h2d_bg_closed" hidden
-                    title="Clear" data-translate-title="ui_clear">&times;</button>
+                    title="Clear" data-str-title="ui_clear">&times;</button>
           </div>
         </div>
       </div>
@@ -2212,15 +2213,15 @@ body.is-waiting .waiting-hide { visibility: hidden; }
            opposite within the pair (active or inactive), never across. -->
       <div class="space"></div>
       <nav class="wrap">
-        <button class="border small" data-translate="color_sync_active_open"
+        <button class="border small" data-str="color_sync_active_open"
                 data-pv-sync="active:open">Copy Active Open &rarr; Active Closed</button>
-        <button class="border small" data-translate="color_sync_active_closed"
+        <button class="border small" data-str="color_sync_active_closed"
                 data-pv-sync="active:closed">Copy Active Closed &rarr; Active Open</button>
       </nav>
       <nav class="wrap">
-        <button class="border small" data-translate="color_sync_inactive_open"
+        <button class="border small" data-str="color_sync_inactive_open"
                 data-pv-sync="inactive:open">Copy Inactive Open &rarr; Inactive Closed</button>
-        <button class="border small" data-translate="color_sync_inactive_closed"
+        <button class="border small" data-str="color_sync_inactive_closed"
                 data-pv-sync="inactive:closed">Copy Inactive Closed &rarr; Inactive Open</button>
       </nav>
 
@@ -2232,42 +2233,42 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <div class="row" id="id_grad_row_h2d" hidden>
         <div class="field label border max">
           <input type="number" id="id_grad_min_h2d" min="0" max="120" value="" placeholder=" ">
-          <label for="id_grad_min_h2d" data-translate="ui_gradient_cold_end_c">Gradient cold end &deg;C</label>
+          <label for="id_grad_min_h2d" data-str="ui_gradient_cold_end_c">Gradient cold end &deg;C</label>
         </div>
         <div class="field label border max">
           <input type="number" id="id_grad_max_h2d" min="0" max="120" value="" placeholder=" ">
-          <label for="id_grad_max_h2d" data-translate="ui_gradient_hot_end_c">Gradient hot end &deg;C</label>
+          <label for="id_grad_max_h2d" data-str="ui_gradient_hot_end_c">Gradient hot end &deg;C</label>
         </div>
       </div>
 
       <div id="id_band_row_h2d" hidden>
         <nav>
-          <span class="max small-text" data-translate="ui_band_width">Band width</span>
+          <span class="max small-text" data-str="ui_band_width">Band width</span>
           <span class="small-text" id="id_band_h2d_value"></span>
           <button class="circle transparent small clear" id="id_band_clear_h2d" hidden
-                  title="Clear" data-translate-title="ui_clear">&times;</button>
+                  title="Clear" data-str-title="ui_clear">&times;</button>
         </nav>
         <label class="slider">
           <input type="range" class="is-unset" id="id_band_h2d" min="0" max="32" value="0"><span></span>
         </label>
       </div>
 
-      <nav><span class="max small-text" data-translate="bright_start">Start of cycle</span>
+      <nav><span class="max small-text" data-str="bright_start">Start of cycle</span>
            <span class="small-text" id="id_mode2_bg_percent_value"></span></nav>
       <label class="slider">
         <input type="range" id="id_mode2_bg_percent" min="0" max="100" step="5" value="50"><span></span>
       </label>
 
-      <nav><span class="max small-text" data-translate="bright_end">End of cycle</span>
+      <nav><span class="max small-text" data-str="bright_end">End of cycle</span>
            <span class="small-text" id="id_mode2_be_percent_value"></span>
            <button class="circle transparent small clear" id="id_clear_h2d_be" hidden
-                   title="Clear" data-translate-title="ui_clear">&times;</button></nav>
+                   title="Clear" data-str-title="ui_clear">&times;</button></nav>
       <label class="slider">
         <input type="range" class="is-unset" id="id_mode2_be_percent" min="0" max="100" step="5" value="0"><span></span>
       </label>
 
       <div id="mode2_speed_container">
-        <nav><span class="max small-text" data-translate="status_speed">Speed</span>
+        <nav><span class="max small-text" data-str="status_speed">Speed</span>
              <span class="small-text" id="id_mode2_speed_percent_value"></span></nav>
         <label class="slider">
           <input type="range" id="id_mode2_speed_percent" min="0" max="100" step="5" value="50"><span></span>
@@ -2279,35 +2280,35 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <div class="space"></div>
       <div class="field label suffix border">
         <select id="id_preview_state_h2d">
-        <option value="-1" data-translate="preview_as_live" selected></option>
-        <option value="0" data-translate="rgb_btn1"></option>
-        <option value="1" data-translate="rgb_btn2"></option>
-        <option value="2" data-translate="rgb_btn3"></option>
-        <option value="3" data-translate="rgb_btn4"></option>
-        <option value="4" data-translate="rgb_btn5"></option>
-        <option value="5" data-translate="rgb_btn6"></option>
+        <option value="-1" data-str="preview_as_live" selected></option>
+        <option value="0" data-str="rgb_btn1"></option>
+        <option value="1" data-str="rgb_btn2"></option>
+        <option value="2" data-str="rgb_btn3"></option>
+        <option value="3" data-str="rgb_btn4"></option>
+        <option value="4" data-str="rgb_btn5"></option>
+        <option value="5" data-str="rgb_btn6"></option>
         </select>
-        <label for="id_preview_state_h2d" data-translate="preview_as">Preview as</label>
+        <label for="id_preview_state_h2d" data-str="preview_as">Preview as</label>
         <svg class="i"><use href="#i-caret"/></svg>
       </div>
 
-      <nav><span class="max small-text" data-translate="preview_progress">Pin the progress to</span>
+      <nav><span class="max small-text" data-str="preview_progress">Pin the progress to</span>
            <span class="small-text" id="id_preview_pct_h2d_value"></span>
            <button class="circle transparent small clear" id="id_preview_pct_clear_h2d" hidden
-                   title="Clear" data-translate-title="ui_clear">&times;</button></nav>
+                   title="Clear" data-str-title="ui_clear">&times;</button></nav>
       <label class="slider">
         <input type="range" class="is-unset" id="id_preview_pct_h2d" min="0" max="100" step="5" value="0"><span></span>
       </label>
 
       <nav>
-        <span class="max small-text" id="lbl_fxrev_h2d" data-translate="fx_reverse">Run this effect backwards</span>
+        <span class="max small-text" id="lbl_fxrev_h2d" data-str="fx_reverse">Run this effect backwards</span>
         <label class="switch"><input type="checkbox" id="id_fx_rev_h2d" aria-labelledby="lbl_fxrev_h2d"><span></span></label>
       </nav>
 
       <div class="space"></div>
       <nav class="wrap">
-        <button class="fill" id="id_btn_preview_h2d" data-translate="preview_try">Try it on the strip</button>
-        <button class="border" id="id_preview_stop_h2d" hidden data-translate="ui_stop">Stop</button>
+        <button class="fill" id="id_btn_preview_h2d" data-str="preview_try">Try it on the strip</button>
+        <button class="border" id="id_preview_stop_h2d" hidden data-str="ui_stop">Stop</button>
       </nav>
       <div class="small-text" id="id_preview_note_h2d"></div>
     </div>
@@ -2318,33 +2319,33 @@ body.is-waiting .waiting-hide { visibility: hidden; }
          not change. Two panels, one for each side of the threshold. -->
     <div id="rgb_mode3_panel" hidden>
       <nav class="no-space">
-        <button class="max left-round" id="id_warning_hit_green" style="background:#2ecc71;color:#08301c" data-translate="rgb_warn1">Safe</button>
-        <button class="max right-round" id="id_warning_hit_red" style="background:#A83836;color:#fff" data-translate="ui_high_temperature">High temperature</button>
+        <button class="max left-round" id="id_warning_hit_green" style="background:#2ecc71;color:#08301c" data-str="rgb_warn1">Safe</button>
+        <button class="max right-round" id="id_warning_hit_red" style="background:#A83836;color:#fff" data-str="ui_high_temperature">High temperature</button>
       </nav>
-      <button class="circle transparent" id="id_mode_reflash2" title="Reset this mode&#x27;s settings" data-translate-title="ui_reset_this_mode_s_settings">
+      <button class="circle transparent" id="id_mode_reflash2" title="Reset this mode&#x27;s settings" data-str-title="ui_reset_this_mode_s_settings">
         <svg class="i"><use href="#i-refresh"/></svg>
       </button>
 
       <div class="space"></div>
 
       <article class="surface-container no-elevate" id="safe_panel">
-        <div class="small-text" data-translate="ui_below_the_threshold">Below the threshold</div>
+        <div class="small-text" data-str="ui_below_the_threshold">Below the threshold</div>
         <div class="field label suffix border">
           <select id="id_safe_effect">
-            <option value="Static Mode" data-translate="rgb_info_mode0" selected></option>
-            <option value="Strobing Mode" data-translate="rgb_info_mode2"></option>
+            <option value="Static Mode" data-str="rgb_info_mode0" selected></option>
+            <option value="Strobing Mode" data-str="rgb_info_mode2"></option>
           </select>
-          <label for="id_safe_effect" data-translate="status_effect">Effect</label>
+          <label for="id_safe_effect" data-str="status_effect">Effect</label>
           <svg class="i"><use href="#i-caret"/></svg>
         </div>
-        <nav><span class="max small-text" data-translate="status_brightness">Brightness</span>
+        <nav><span class="max small-text" data-str="status_brightness">Brightness</span>
              <span class="small-text" id="id_mode3_safe_bg_percent_value"></span></nav>
         <div id="safe_bg_container">
           <label class="slider">
             <input type="range" id="id_mode3_safe_bg_percent" min="0" max="100" step="5" value="50"><span></span>
           </label>
         </div>
-        <nav><span class="max small-text" data-translate="status_speed">Speed</span>
+        <nav><span class="max small-text" data-str="status_speed">Speed</span>
              <span class="small-text" id="id_mode3_safe_speed_percent_value"></span></nav>
         <div id="safe_speed_container">
           <label class="slider">
@@ -2354,21 +2355,21 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       </article>
 
       <article class="surface-container no-elevate" id="warning_panel">
-        <div class="small-text" data-translate="ui_above_the_threshold">Above the threshold</div>
+        <div class="small-text" data-str="ui_above_the_threshold">Above the threshold</div>
         <div class="field label suffix border">
           <select id="id_danger_effect">
-            <option value="Static Mode" data-translate="rgb_info_mode0" selected></option>
-            <option value="Strobing Mode" data-translate="rgb_info_mode2"></option>
+            <option value="Static Mode" data-str="rgb_info_mode0" selected></option>
+            <option value="Strobing Mode" data-str="rgb_info_mode2"></option>
           </select>
-          <label for="id_danger_effect" data-translate="status_effect">Effect</label>
+          <label for="id_danger_effect" data-str="status_effect">Effect</label>
           <svg class="i"><use href="#i-caret"/></svg>
         </div>
-        <nav><span class="max small-text" data-translate="status_brightness">Brightness</span>
+        <nav><span class="max small-text" data-str="status_brightness">Brightness</span>
              <span class="small-text" id="id_mode3_warn_bg_percent_value"></span></nav>
         <label class="slider">
           <input type="range" id="id_mode3_warn_bg_percent" min="0" max="100" step="5" value="50"><span></span>
         </label>
-        <nav><span class="max small-text" data-translate="status_speed">Speed</span>
+        <nav><span class="max small-text" data-str="status_speed">Speed</span>
              <span class="small-text" id="id_mode3_warn_speed_percent_value"></span></nav>
         <div id="warning_speed_container">
           <label class="slider">
@@ -2381,15 +2382,15 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <!-- ── The hardware ─────────────────────────────────────────────── -->
   <article class="no-padding" id="id_card_leds">
-    <h6 class="card-title" data-translate="leds_title">LED strips</h6>
-    <div class="small-text" data-translate="ui_how_many_leds_each_strip_really_ha">How many LEDs each strip really has. Effects with a
+    <h6 class="card-title" data-str="leds_title">LED strips</h6>
+    <div class="small-text" data-str="ui_how_many_leds_each_strip_really_ha">How many LEDs each strip really has. Effects with a
       centre, and the progress bar, need these to land in the right place.</div>
     <ul class="list border">
       <li>
         <svg class="i"><use href="#i-lighting"/></svg>
         <div class="max">
-          <div id="sw_id_leds_rev_0" data-translate="ui_strip_1">Strip 1</div>
-          <div class="small-text" data-translate="leds_reverse">Mounted backwards</div>
+          <div id="sw_id_leds_rev_0" data-str="ui_strip_1">Strip 1</div>
+          <div class="small-text" data-str="leds_reverse">Mounted backwards</div>
         </div>
         <div class="field border small" style="inline-size:5rem">
           <input type="number" id="id_leds_0" min="0" max="255" value="" placeholder=" ">
@@ -2399,8 +2400,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <li>
         <svg class="i"><use href="#i-lighting"/></svg>
         <div class="max">
-          <div id="sw_id_leds_rev_1" data-translate="ui_strip_2">Strip 2</div>
-          <div class="small-text" data-translate="leds_reverse">Mounted backwards</div>
+          <div id="sw_id_leds_rev_1" data-str="ui_strip_2">Strip 2</div>
+          <div class="small-text" data-str="leds_reverse">Mounted backwards</div>
         </div>
         <div class="field border small" style="inline-size:5rem">
           <input type="number" id="id_leds_1" min="0" max="255" value="" placeholder=" ">
@@ -2412,17 +2413,17 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <!-- ── Behaviour ────────────────────────────────────────────────── -->
   <article class="no-padding" id="id_card_behaviour">
-    <h6 class="card-title" data-translate="behaviour_title">Behaviour</h6>
+    <h6 class="card-title" data-str="behaviour_title">Behaviour</h6>
     <div class="padding">
-      <div class="small-text" data-translate="warn_hot_note">The factory firmware calls 50 &deg;C hot and cannot be told otherwise.
+      <div class="small-text" data-str="warn_hot_note">The factory firmware calls 50 &deg;C hot and cannot be told otherwise.
         That suits PLA and not ABS, where the bed sits at a hundred all print.</div>
       <div class="space"></div>
       <nav>
         <div class="field label border max">
           <input type="number" id="id_warn_hot_c" min="0" max="120" value="" placeholder=" ">
-          <label for="id_warn_hot_c" data-translate="ui_hot_above_c">Hot above &deg;C</label>
+          <label for="id_warn_hot_c" data-str="ui_hot_above_c">Hot above &deg;C</label>
         </div>
-        <button class="border" id="id_warn_hot_reset" data-translate="use_default">Use the default</button>
+        <button class="border" id="id_warn_hot_reset" data-str="use_default">Use the default</button>
       </nav>
     </div>
 
@@ -2430,31 +2431,31 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <li>
         <svg class="i"><use href="#i-tune"/></svg>
         <div class="max">
-          <div id="sw_id_contiguous" data-translate="ui_join_the_strips">Join the strips</div>
-          <div class="small-text" data-translate="ui_treat_both_as_one_long_run_so_effe">Treat both as one long run, so effects sweep end to end</div>
+          <div id="sw_id_contiguous" data-str="ui_join_the_strips">Join the strips</div>
+          <div class="small-text" data-str="ui_treat_both_as_one_long_run_so_effe">Treat both as one long run, so effects sweep end to end</div>
         </div>
         <label class="switch"><input type="checkbox" id="id_contiguous" aria-labelledby="sw_id_contiguous"><span></span></label>
       </li>
       <li>
         <svg class="i"><use href="#i-close"/></svg>
         <div class="max">
-          <div id="sw_id_err_set" data-translate="ui_my_own_error_flash">My own error flash</div>
-          <div class="small-text" data-translate="ui_the_factory_setting_is_a_steady_re">The factory setting is a steady red</div>
+          <div id="sw_id_err_set" data-str="ui_my_own_error_flash">My own error flash</div>
+          <div class="small-text" data-str="ui_the_factory_setting_is_a_steady_re">The factory setting is a steady red</div>
         </div>
         <label class="switch"><input type="checkbox" id="id_err_set" aria-labelledby="sw_id_err_set"><span></span></label>
       </li>
     </ul>
 
     <div class="padding" id="id_err_fields" hidden>
-      <div class="small-text" data-translate="ui_error_colour">Error colour</div>
+      <div class="small-text" data-str="ui_error_colour">Error colour</div>
       <button class="swatch responsive small-round is-unset" id="id_picker_btn_err"></button>
-      <nav><span class="max small-text" data-translate="status_brightness">Brightness</span>
+      <nav><span class="max small-text" data-str="status_brightness">Brightness</span>
            <span class="small-text" id="id_err_bright_value"></span></nav>
       <label class="slider">
         <input type="range" id="id_err_bright" min="0" max="100" step="5" value="100"><span></span>
       </label>
       <nav>
-        <span class="max small-text" id="lbl_err_strobe" data-translate="errflash_strobe">Strobe</span>
+        <span class="max small-text" id="lbl_err_strobe" data-str="errflash_strobe">Strobe</span>
         <label class="switch"><input type="checkbox" id="id_err_strobe" aria-labelledby="lbl_err_strobe"><span></span></label>
       </nav>
     </div>
@@ -2466,14 +2467,14 @@ body.is-waiting .waiting-hide { visibility: hidden; }
        the only place to persist it is a flash whose second OTA slot is the
        way back to the factory firmware. Its own card. -->
   <article class="no-padding" id="id_anim_card">
-    <h6 class="card-title" data-translate="anim_label">Your own animation</h6>
+    <h6 class="card-title" data-str="anim_label">Your own animation</h6>
     <div class="padding" id="id_anim_row">
-      <div class="small-text" data-translate="ui_each_row_of_the_image_becomes_one_">Each row of the image becomes one frame across the strip. Held in
+      <div class="small-text" data-str="ui_each_row_of_the_image_becomes_one_">Each row of the image becomes one frame across the strip. Held in
         memory, so it is gone after a restart.</div>
       <div class="space"></div>
       <ul class="list border" id="id_kv_anim">
-        <li><div class="max" data-translate="anim_loaded">Loaded</div></li>
-        <li><div class="max" data-translate="anim_room">Room for</div></li>
+        <li><div class="max" data-str="anim_loaded">Loaded</div></li>
+        <li><div class="max" data-str="anim_room">Room for</div></li>
       </ul>
       <div class="space"></div>
       <div id="id_anim_preview_wrap" hidden>
@@ -2482,51 +2483,51 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       </div>
       <input type="file" id="id_anim_file" accept="image/*" hidden>
       <nav class="wrap btn-row">
-        <button class="fill" id="id_btn_anim_send" data-translate="ui_send_it_to_the_strip">Send it to the strip</button>
-        <button class="border" id="id_btn_anim_discard" data-translate="anim_discard">Discard</button>
-        <button class="border" id="id_btn_anim_clear" data-translate="ui_clear_the_strip">Clear the strip</button>
+        <button class="fill" id="id_btn_anim_send" data-str="ui_send_it_to_the_strip">Send it to the strip</button>
+        <button class="border" id="id_btn_anim_discard" data-str="anim_discard">Discard</button>
+        <button class="border" id="id_btn_anim_clear" data-str="ui_clear_the_strip">Clear the strip</button>
       </nav>
     </div>
   </article>
 
   <!-- ── The ring light on the vent itself ────────────────────────── -->
   <article class="no-padding" id="id_card_ring">
-    <h6 class="card-title" data-translate="ui_the_vent_s_own_button_light">The vent's own button light</h6>
+    <h6 class="card-title" data-str="ui_the_vent_s_own_button_light">The vent's own button light</h6>
     <ul class="list border" id="id_ring_list" role="radiogroup"
         aria-label="The vent's own button light">
       <li class="wave is-active" id="id_ring_0" role="radio" tabindex="0" aria-checked="true">
         <div class="max">
-          <div data-translate="ui_auto">Auto</div>
-          <div class="small-text" data-translate="ui_factory_behaviour_dark_in_auto_bli">Factory behaviour: dark in Auto, blinking in manual</div>
+          <div data-str="ui_auto">Auto</div>
+          <div class="small-text" data-str="ui_factory_behaviour_dark_in_auto_bli">Factory behaviour: dark in Auto, blinking in manual</div>
         </div>
         <svg class="i ring-tick"><use href="#i-check"/></svg>
       </li>
       <li class="wave" id="id_ring_1" role="radio" tabindex="-1" aria-checked="false">
-        <div class="max"><div data-translate="ui_always_on">Always on</div><div class="small-text" data-translate="ring_mode_on_sub">Lit at all times</div></div>
+        <div class="max"><div data-str="ui_always_on">Always on</div><div class="small-text" data-str="ring_mode_on_sub">Lit at all times</div></div>
         <svg class="i ring-tick"><use href="#i-check"/></svg>
       </li>
       <li class="wave" id="id_ring_2" role="radio" tabindex="-1" aria-checked="false">
-        <div class="max"><div data-translate="ui_always_off">Always off</div><div class="small-text" data-translate="ring_mode_off_sub">Dark at all times</div></div>
+        <div class="max"><div data-str="ui_always_off">Always off</div><div class="small-text" data-str="ring_mode_off_sub">Dark at all times</div></div>
         <svg class="i ring-tick"><use href="#i-check"/></svg>
       </li>
       <li class="wave" id="id_ring_3" role="radio" tabindex="-1" aria-checked="false">
         <div class="max">
-          <div data-translate="ui_on_when_open">On when open</div>
-          <div class="small-text" data-translate="ui_lit_whenever_the_vent_is_open_fact">Lit whenever the vent is open, factory behaviour when closed</div>
+          <div data-str="ui_on_when_open">On when open</div>
+          <div class="small-text" data-str="ui_lit_whenever_the_vent_is_open_fact">Lit whenever the vent is open, factory behaviour when closed</div>
         </div>
         <svg class="i ring-tick"><use href="#i-check"/></svg>
       </li>
       <li class="wave" id="id_ring_4" role="radio" tabindex="-1" aria-checked="false">
         <div class="max">
-          <div data-translate="ui_off_when_closed">Off when closed</div>
-          <div class="small-text" data-translate="ui_dark_whenever_the_vent_is_closed_f">Dark whenever the vent is closed, factory behaviour when open</div>
+          <div data-str="ui_off_when_closed">Off when closed</div>
+          <div class="small-text" data-str="ui_dark_whenever_the_vent_is_closed_f">Dark whenever the vent is closed, factory behaviour when open</div>
         </div>
         <svg class="i ring-tick"><use href="#i-check"/></svg>
       </li>
       <li id="id_ring_blink_row">
         <div class="max">
-          <div id="sw_id_ring_blink" data-translate="ui_blink">Blink</div>
-          <div class="small-text" data-translate="ui_pulse_rather_than_sit_steady">Pulse rather than sit steady</div>
+          <div id="sw_id_ring_blink" data-str="ui_blink">Blink</div>
+          <div class="small-text" data-str="ui_pulse_rather_than_sit_steady">Pulse rather than sit steady</div>
         </div>
         <button class="note-btn" id="id_note_ring_blink" aria-label="What is this?">i</button>
         <label class="switch"><input type="checkbox" id="id_ring_blink" aria-labelledby="sw_id_ring_blink" checked><span></span></label>
@@ -2536,16 +2537,16 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <!-- ── Vent policy ──────────────────────────────────────────────── -->
   <article class="no-padding" id="id_card_policy">
-    <h6 class="card-title" data-translate="policy_title">Vent policy</h6>
-    <div class="small-text" data-translate="ui_the_factory_firmware_opens_the_ven">The factory firmware opens the vent during every
+    <h6 class="card-title" data-str="policy_title">Vent policy</h6>
+    <div class="small-text" data-str="ui_the_factory_firmware_opens_the_ven">The factory firmware opens the vent during every
       print. ABS and its relatives want the chamber sealed, and the printer says which filament is
       loaded, so the vent can decide for itself.</div>
     <ul class="list border">
       <li>
         <svg class="i"><use href="#i-material"/></svg>
         <div class="max">
-          <div id="sw_id_policy_enable" data-translate="ui_material_aware">Material aware</div>
-          <div class="small-text" data-translate="ui_seal_or_vent_depending_on_what_is_">Seal or vent depending on what is loaded</div>
+          <div id="sw_id_policy_enable" data-str="ui_material_aware">Material aware</div>
+          <div class="small-text" data-str="ui_seal_or_vent_depending_on_what_is_">Seal or vent depending on what is loaded</div>
         </div>
         <button class="note-btn" id="id_note_policy" aria-label="What is this?">i</button>
         <label class="switch"><input type="checkbox" id="id_policy_enable" aria-labelledby="sw_id_policy_enable" checked><span></span></label>
@@ -2556,13 +2557,13 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <ul class="list border">
         <li>
           <svg class="i"><use href="#i-spool-end"/></svg>
-          <div class="max" data-translate="policy_material_now">Loaded filament</div>
+          <div class="max" data-str="policy_material_now">Loaded filament</div>
           <span id="id_policy_material"></span>
         </li>
       </ul>
 
       <div class="padding">
-        <div class="small-text" data-translate="policy_materials">Filament rules</div>
+        <div class="small-text" data-str="policy_materials">Filament rules</div>
         <button class="note-btn" id="id_note_policy_materials" aria-label="What is this?">i</button>
         <div class="space"></div>
         <ul class="policy-materials" id="id_policy_material_list"></ul>
@@ -2572,8 +2573,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <li id="policy_temp_panel">
           <svg class="i"><use href="#i-bed-hot"/></svg>
           <div class="max">
-            <div id="sw_id_policy_heat_hold" data-translate="ui_hold_open_while_hot">Hold open while hot</div>
-            <div class="small-text" data-translate="ui_do_not_close_a_chamber_that_is_sti">Do not close a chamber that is still hot from the last print</div>
+            <div id="sw_id_policy_heat_hold" data-str="ui_hold_open_while_hot">Hold open while hot</div>
+            <div class="small-text" data-str="ui_do_not_close_a_chamber_that_is_sti">Do not close a chamber that is still hot from the last print</div>
           </div>
           <button class="note-btn" id="id_note_policy_heat" aria-label="What is this?">i</button>
           <label class="switch"><input type="checkbox" id="id_policy_heat_hold" aria-labelledby="sw_id_policy_heat_hold" checked><span></span></label>
@@ -2584,15 +2585,15 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <nav>
           <div class="field label border max">
             <input type="number" id="id_policy_bed_open" min="0" max="120" value="" placeholder=" ">
-            <label for="id_policy_bed_open" data-translate="ui_hold_open_above_c">Hold open above &deg;C</label>
+            <label for="id_policy_bed_open" data-str="ui_hold_open_above_c">Hold open above &deg;C</label>
           </div>
           <div class="field label border max">
             <input type="number" id="id_policy_bed_close" min="0" max="120" value="" placeholder=" ">
-            <label for="id_policy_bed_close" data-translate="ui_allow_close_below_c">Allow close below &deg;C</label>
+            <label for="id_policy_bed_close" data-str="ui_allow_close_below_c">Allow close below &deg;C</label>
           </div>
         </nav>
         <div class="space"></div>
-        <button class="fill responsive" id="id_btn_policy_temps" data-translate="policy_set_temps">Set temperatures</button>
+        <button class="fill responsive" id="id_btn_policy_temps" data-str="policy_set_temps">Set temperatures</button>
       </div>
     </div>
   </article>
@@ -2608,7 +2609,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 <section id="id_card_settings" data-card>
 
   <article class="card-divided">
-    <h6 class="card-title" data-translate="ui_appearance">Appearance</h6>
+    <h6 class="card-title" data-str="ui_appearance">Appearance</h6>
     <div class="field label suffix border">
       <select id="id_settings_lang">
         <option selected>English</option>
@@ -2616,78 +2617,78 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <option>Español</option>
         <option>Deutsch</option>
       </select>
-      <label for="id_settings_lang" data-translate="ui_language">Language</label>
+      <label for="id_settings_lang" data-str="ui_language">Language</label>
       <svg class="i"><use href="#i-caret"/></svg>
     </div>
 
-    <div class="small-text" data-translate="ui_theme">Theme</div>
+    <div class="small-text" data-str="ui_theme">Theme</div>
     <div class="space"></div>
     <nav class="segmented" id="id_theme_seg" role="radiogroup" aria-label="Theme">
-      <button id="id_theme_auto"  role="radio" aria-checked="true"  data-translate="appearance_auto">Auto</button>
-      <button id="id_theme_light" role="radio" aria-checked="false" data-translate="appearance_light">Light</button>
-      <button id="id_theme_dark"  role="radio" aria-checked="false" data-translate="appearance_dark">Dark</button>
+      <button id="id_theme_auto"  role="radio" aria-checked="true"  data-str="appearance_auto">Auto</button>
+      <button id="id_theme_light" role="radio" aria-checked="false" data-str="appearance_light">Light</button>
+      <button id="id_theme_dark"  role="radio" aria-checked="false" data-str="appearance_dark">Dark</button>
     </nav>
   </article>
 
   <article class="card-divided">
-    <h6 class="card-title" data-translate="ui_this_device">This device</h6>
-    <div class="small-text" data-translate="ui_the_name_shown_in_the_bar_above_an">The name shown in the bar above and on your network.</div>
+    <h6 class="card-title" data-str="ui_this_device">This device</h6>
+    <div class="small-text" data-str="ui_the_name_shown_in_the_bar_above_an">The name shown in the bar above and on your network.</div>
     <nav>
       <div class="field label border max">
         <input type="text" id="id_settings_device_name" maxlength="31" value="" placeholder=" ">
-        <label for="id_settings_device_name" data-translate="device_name">Device name</label>
+        <label for="id_settings_device_name" data-str="device_name">Device name</label>
       </div>
       <button class="note-btn" id="id_note_device_name" aria-label="What is this?">i</button>
     </nav>
     <nav class="wrap btn-row">
-      <button class="fill" id="id_btn_device_name_set" data-translate="ui_save_name">Save name</button>
-      <button class="border" id="id_btn_device_name_reset" data-translate="ui_reset_to_default">Reset to default</button>
+      <button class="fill" id="id_btn_device_name_set" data-str="ui_save_name">Save name</button>
+      <button class="border" id="id_btn_device_name_reset" data-str="ui_reset_to_default">Reset to default</button>
     </nav>
   </article>
 
   <article class="no-padding">
-    <h6 class="card-title" data-translate="ui_firmware">Firmware</h6>
+    <h6 class="card-title" data-str="ui_firmware">Firmware</h6>
     <ul class="list border">
       <li>
         <svg class="i"><use href="#i-info"/></svg>
-        <div class="max" data-translate="ui_version">Version</div>
+        <div class="max" data-str="ui_version">Version</div>
         <span id="id_settings_fw_ver"></span>
       </li>
       <li>
         <svg class="i"><use href="#i-image"/></svg>
         <div class="max">
-          <div data-translate="ui_web_app">Web app</div>
-          <div class="small-text" data-translate="ui_the_page_you_are_looking_at">The page you are looking at</div>
+          <div data-str="ui_web_app">Web app</div>
+          <div class="small-text" data-str="ui_the_page_you_are_looking_at">The page you are looking at</div>
         </div>
         <span id="id_settings_img_ver"></span>
       </li>
       <li>
         <svg class="i"><use href="#i-printer-enclosed"/></svg>
-        <div class="max" data-translate="ui_reports_itself_as">Reports itself as</div>
+        <div class="max" data-str="ui_reports_itself_as">Reports itself as</div>
         <span id="id_settings_printing_ui_type"></span>
       </li>
     </ul>
     <div class="padding">
       <button class="border responsive" id="id_btn_ota_fw">
         <svg class="i"><use href="#i-upload"/></svg>
-        <span id="id_span_status_ota_fw" data-translate="ui_choose_a_bin_file">Choose a .bin file</span>
+        <span id="id_span_status_ota_fw" data-str="ui_choose_a_bin_file">Choose a .bin file</span>
         <span id="id_span_progress_ota_fw"></span>
       </button>
     </div>
   </article>
 
   <article class="card-divided">
-    <h6 class="card-title" data-translate="ui_power">Power</h6>
-    <div class="small-text" data-translate="ui_a_factory_reset_erases_the_wi_fi_c">A factory reset erases the Wi-Fi credentials, the
+    <h6 class="card-title" data-str="ui_power">Power</h6>
+    <div class="small-text" data-str="ui_a_factory_reset_erases_the_wi_fi_c">A factory reset erases the Wi-Fi credentials, the
       printer binding and every light setting. It cannot be undone from here.</div>
     <nav class="wrap btn-row">
       <button class="border" id="id_btn_restart">
         <svg class="i"><use href="#i-restart"/></svg>
-        <span data-translate="restart">Restart</span>
+        <span data-str="restart">Restart</span>
       </button>
       <button class="error" id="id_btn_factory">
         <svg class="i"><use href="#i-factory"/></svg>
-        <span data-translate="factory_reset">Factory reset</span>
+        <span data-str="factory_reset">Factory reset</span>
       </button>
     </nav>
   </article>
@@ -2703,34 +2704,34 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <article class="card-divided">
     <nav>
-      <h6 class="card-title max" data-translate="ui_bind_to_a_printer">Bind to a printer</h6>
+      <h6 class="card-title max" data-str="ui_bind_to_a_printer">Bind to a printer</h6>
       <button class="note-btn" id="id_note_printer" aria-label="What is this?">i</button>
-      <button class="circle transparent" id="id_btn_printer_scan" title="Scan the network" data-translate-title="ui_scan_the_network">
+      <button class="circle transparent" id="id_btn_printer_scan" title="Scan the network" data-str-title="ui_scan_the_network">
         <svg class="i" id="id_img_scan_printer"><use href="#i-search"/></svg>
       </button>
     </nav>
-    <div class="small-text" data-translate="ui_the_vent_finds_bambu_printers_on_t">The vent finds Bambu printers on the same network.
+    <div class="small-text" data-str="ui_the_vent_finds_bambu_printers_on_t">The vent finds Bambu printers on the same network.
       Pick yours and it fills in the serial; the access code is on the printer's own screen.</div>
 
     <div class="field label suffix border">
       <select id="id_printer_name"></select>
-      <label for="id_printer_name" data-translate="card_printer">Printer</label>
+      <label for="id_printer_name" data-str="card_printer">Printer</label>
       <svg class="i"><use href="#i-caret"/></svg>
     </div>
 
     <div class="field label border">
       <input type="text" id="id_printer_sn" maxlength="15" value="" placeholder=" ">
-      <label for="id_printer_sn" data-translate="ui_serial_number">Serial number</label>
+      <label for="id_printer_sn" data-str="ui_serial_number">Serial number</label>
     </div>
 
     <div class="field label border">
       <input type="text" id="id_printer_access_code" maxlength="8" value="" placeholder=" ">
-      <label for="id_printer_access_code" data-translate="printer_access_code">Access code</label>
+      <label for="id_printer_access_code" data-str="printer_access_code">Access code</label>
     </div>
 
     <div class="field label border">
       <input type="text" id="id_printer_ip" maxlength="15" value="" placeholder=" ">
-      <label for="id_printer_ip" data-translate="ui_ip_address">IP address</label>
+      <label for="id_printer_ip" data-str="ui_ip_address">IP address</label>
     </div>
 
     <button class="border responsive" id="id_btn_printer_bind">
@@ -2753,28 +2754,28 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 <section id="id_card_camera" data-card>
 
   <article class="no-padding">
-    <h6 class="card-title" data-translate="card_camera">Camera</h6>
-    <div class="small-text" id="id_cam_none" hidden data-translate="ui_this_printer_has_no_camera_or_has_">This printer has no camera,
+    <h6 class="card-title" data-str="card_camera">Camera</h6>
+    <div class="small-text" id="id_cam_none" hidden data-str="ui_this_printer_has_no_camera_or_has_">This printer has no camera,
       or has not reported one.</div>
     <ul class="list border" id="id_kv_camera">
-      <li><svg class="i"><use href="#i-image"/></svg><div class="max" data-translate="cam_resolution">Resolution</div><span></span></li>
-      <li><svg class="i"><use href="#i-video"/></svg><div class="max" data-translate="cam_record">Recording</div></li>
-      <li><svg class="i"><use href="#i-clock"/></svg><div class="max" data-translate="cam_timelapse">Timelapse</div></li>
-      <li><svg class="i"><use href="#i-disk"/></svg><div class="max" data-translate="cam_storage">Storage</div><span></span></li>
+      <li><svg class="i"><use href="#i-image"/></svg><div class="max" data-str="cam_resolution">Resolution</div><span></span></li>
+      <li><svg class="i"><use href="#i-video"/></svg><div class="max" data-str="cam_record">Recording</div></li>
+      <li><svg class="i"><use href="#i-clock"/></svg><div class="max" data-str="cam_timelapse">Timelapse</div></li>
+      <li><svg class="i"><use href="#i-disk"/></svg><div class="max" data-str="cam_storage">Storage</div><span></span></li>
     </ul>
   </article>
 
   <div id="id_cam_ctl">
   <article class="no-padding">
-    <h6 class="card-title" data-translate="cam_stream">Live stream</h6>
-    <div class="small-text" id="id_cam_rtsp_note" data-translate="cam_rtsp_off">RTSP is turned off on the
+    <h6 class="card-title" data-str="cam_stream">Live stream</h6>
+    <div class="small-text" id="id_cam_rtsp_note" data-str="cam_rtsp_off">RTSP is turned off on the
       printer. Turn it on from the printer's own screen, under the camera settings, and the address
       will appear here.</div>
 
     <div class="padding" id="id_cam_rtsp_row" hidden>
       <nav>
         <code class="max small-text scroll" id="id_cam_rtsp">rtsps://bblp:••••@192.0.2.65:322/streaming/live/1</code>
-        <button class="circle transparent" id="id_cam_copy" title="Copy" data-translate-title="ui_copy">
+        <button class="circle transparent" id="id_cam_copy" title="Copy" data-str-title="ui_copy">
           <svg class="i"><use href="#i-copy"/></svg>
         </button>
       </nav>
@@ -2784,8 +2785,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <li>
         <svg class="i"><use href="#i-video"/></svg>
         <div class="max">
-          <div data-translate="cam_record" id="sw_id_cam_record">Recording</div>
-          <div class="small-text" data-translate="ui_records_each_print_to_the_printer_">Records each print to the printer's own card</div>
+          <div data-str="cam_record" id="sw_id_cam_record">Recording</div>
+          <div class="small-text" data-str="ui_records_each_print_to_the_printer_">Records each print to the printer's own card</div>
         </div>
         <label class="switch"><input type="checkbox" id="id_cam_record" aria-labelledby="sw_id_cam_record" checked><span></span></label>
       </li>
@@ -2803,24 +2804,24 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 <section id="id_card_sta" data-card>
 
   <article class="no-padding">
-    <h6 class="card-title" id="id_label_sta_state" data-translate="ui_network">Network</h6>
-    <div class="small-text" data-translate="ui_type_this_address_into_a_browser_o">Type this address into a browser on any device on
+    <h6 class="card-title" id="id_label_sta_state" data-str="ui_network">Network</h6>
+    <div class="small-text" data-str="ui_type_this_address_into_a_browser_o">Type this address into a browser on any device on
       the same network to open this page again.</div>
     <ul class="list border">
-      <li><svg class="i"><use href="#i-network"/></svg><div class="max" data-translate="ui_address">Address</div><button class="note-btn" id="id_note_sta_ip" aria-label="What is this?">i</button><span id="id_sta_ip"></span></li>
-      <li><svg class="i"><use href="#i-status"/></svg><div class="max" data-translate="ui_signal">Signal</div><span></span></li>
+      <li><svg class="i"><use href="#i-network"/></svg><div class="max" data-str="ui_address">Address</div><button class="note-btn" id="id_note_sta_ip" aria-label="What is this?">i</button><span id="id_sta_ip"></span></li>
+      <li><svg class="i"><use href="#i-status"/></svg><div class="max" data-str="ui_signal">Signal</div><span></span></li>
     </ul>
     <div class="padding">
       <button class="border responsive" id="id_btn_wifi_config">
         <svg class="i"><use href="#i-tune"/></svg>
-        <span data-translate="ui_join_a_different_network">Join a different network</span>
+        <span data-str="ui_join_a_different_network">Join a different network</span>
       </button>
     </div>
   </article>
 
   <article class="card-divided">
-    <h6 class="card-title" data-translate="hostname">Host name</h6>
-    <div class="small-text" data-translate="ui_a_name_is_easier_to_remember_than_">A name is easier to remember than an address and
+    <h6 class="card-title" data-str="hostname">Host name</h6>
+    <div class="small-text" data-str="ui_a_name_is_easier_to_remember_than_">A name is easier to remember than an address and
       survives the router handing out a different one.</div>
     <!-- The label has to be the input's NEXT sibling: Beer floats it with
          `[placeholder]:not(:placeholder-shown) + label`, and the `.local`
@@ -2833,12 +2834,12 @@ body.is-waiting .waiting-hide { visibility: hidden; }
     <nav>
       <div class="field label border max">
         <input type="text" id="id_sta_hostname" maxlength="32" value="" placeholder=" ">
-        <label for="id_sta_hostname" data-translate="hostname">Host name</label>
+        <label for="id_sta_hostname" data-str="hostname">Host name</label>
       </div>
       <button class="note-btn" id="id_note_hostname" aria-label="What is this?">i</button>
     </nav>
-    <div class="small-text" data-translate="ui_adding_local_to_this_name_reaches_">Adding .local to this name reaches the vent from any device on the network.</div>
-    <button class="fill responsive" id="id_btn_set_hostname" data-translate="ui_save_host_name">Save host name</button>
+    <div class="small-text" data-str="ui_adding_local_to_this_name_reaches_">Adding .local to this name reaches the vent from any device on the network.</div>
+    <button class="fill responsive" id="id_btn_set_hostname" data-str="ui_save_host_name">Save host name</button>
   </article>
 
 </section>
@@ -2852,15 +2853,15 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 <section id="id_card_ap" data-card>
 
   <article class="no-padding span-all">
-    <h6 class="card-title" data-translate="ui_the_vent_s_own_network">The vent's own network</h6>
-    <div class="small-text" data-translate="ui_connect_to_this_from_a_phone_or_la">Connect to this from a phone or laptop when the vent
+    <h6 class="card-title" data-str="ui_the_vent_s_own_network">The vent's own network</h6>
+    <div class="small-text" data-str="ui_connect_to_this_from_a_phone_or_la">Connect to this from a phone or laptop when the vent
       is not on your Wi-Fi, then open the address below.</div>
     <ul class="list border">
       <li>
         <svg class="i"><use href="#i-hotspot"/></svg>
         <div class="max">
-          <div data-translate="ui_hotspot_on" id="sw_id_btn_ap_on">Hotspot on</div>
-          <div class="small-text" id="id_label_ap_note" data-translate="ui_ap_note_on">Always on, so you can always reach the vent. Changing the name, the password or this switch drops you if you are connected through it.</div>
+          <div data-str="ui_hotspot_on" id="sw_id_btn_ap_on">Hotspot on</div>
+          <div class="small-text" id="id_label_ap_note" data-str="ui_ap_note_on">Always on, so you can always reach the vent. Changing the name, the password or this switch drops you if you are connected through it.</div>
         </div>
         <label class="switch"><input type="checkbox" id="id_btn_ap_on" aria-labelledby="sw_id_btn_ap_on" checked><span></span></label>
       </li>
@@ -2869,25 +2870,25 @@ body.is-waiting .waiting-hide { visibility: hidden; }
     <div class="padding" id="id_card_ap_switch">
       <div class="field label border">
         <input type="text" id="id_ap_ssid" maxlength="32" value="" placeholder=" ">
-        <label for="id_ap_ssid" data-translate="ui_network_name">Network name</label>
+        <label for="id_ap_ssid" data-str="ui_network_name">Network name</label>
       </div>
 
       <div class="field label suffix border">
         <input type="password" id="id_password_ap" maxlength="63" value="" placeholder=" ">
-        <label for="id_password_ap" data-translate="ui_password">Password</label>
-        <a id="id_btn_password_ap" title="Show the password" data-translate-title="ui_show_the_password" tabindex="0" role="button"><svg class="i" id="id_img_password_ap"><use href="#i-eye"/></svg></a>
+        <label for="id_password_ap" data-str="ui_password">Password</label>
+        <a id="id_btn_password_ap" title="Show the password" data-str-title="ui_show_the_password" tabindex="0" role="button"><svg class="i" id="id_img_password_ap"><use href="#i-eye"/></svg></a>
       </div>
 
       <div class="field label border">
         <input type="text" id="id_ap_ip" maxlength="15" value="" placeholder=" ">
-        <label for="id_ap_ip" data-translate="ui_address">Address</label>
+        <label for="id_ap_ip" data-str="ui_address">Address</label>
       </div>
       <nav>
-        <span class="max small-text" data-translate="ui_leave_this_alone_unless_it_clashes">Leave this alone unless it clashes with something on your network.</span>
+        <span class="max small-text" data-str="ui_leave_this_alone_unless_it_clashes">Leave this alone unless it clashes with something on your network.</span>
         <button class="note-btn" id="id_note_ap_ip" aria-label="What is this?">i</button>
       </nav>
 
-      <button class="fill responsive" id="id_btn_ap_confirm" data-translate="ui_save">Save</button>
+      <button class="fill responsive" id="id_btn_ap_confirm" data-str="ui_save">Save</button>
     </div>
   </article>
 
@@ -2902,17 +2903,17 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 <section id="id_card_logs" data-card>
 
   <article class="span-all">
-    <h6 class="card-title" data-translate="status_logs_label">The last lines the device wrote to itself</h6>
+    <h6 class="card-title" data-str="status_logs_label">The last lines the device wrote to itself</h6>
 <pre class="log" id="id_log_view"></pre>
 
     <nav class="wrap btn-row">
       <button class="fill" id="id_btn_logs_refresh">
         <svg class="i"><use href="#i-refresh"/></svg>
-        <span data-translate="status_logs_refresh">Refresh</span>
+        <span data-str="status_logs_refresh">Refresh</span>
       </button>
       <button class="border" id="id_btn_logs_clear">
         <svg class="i"><use href="#i-delete"/></svg>
-        <span data-translate="ui_clear">Clear</span>
+        <span data-str="ui_clear">Clear</span>
       </button>
     </nav>
   </article>
@@ -2940,7 +2941,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       <path d="M 0 0 L 8 8 L 16 0" fill="none" stroke="currentColor" stroke-width="2"/>
     </g>
   </svg>
-  <div class="small-text" data-translate="ui_choose_a_language_then_next">Choose a language, then Next.</div>
+  <div class="small-text" data-str="ui_choose_a_language_then_next">Choose a language, then Next.</div>
   <div class="space"></div>
 
   <article class="no-padding">
@@ -2956,67 +2957,67 @@ body.is-waiting .waiting-hide { visibility: hidden; }
     </ul>
   </article>
 
-  <button class="fill responsive" id="id_btn_lang_next" data-translate="lang_next">Next</button>
+  <button class="fill responsive" id="id_btn_lang_next" data-str="lang_next">Next</button>
 </section>
 
 <!-- ── 2 of 3 · Wi-Fi ───────────────────────────────────────────────── -->
 <section id="id_page_wifi" data-page>
   <h5>Wi-Fi</h5>
-  <div class="small-text" data-translate="ui_put_the_vent_on_the_same_network_a">Put the vent on the same network as the printer.</div>
+  <div class="small-text" data-str="ui_put_the_vent_on_the_same_network_a">Put the vent on the same network as the printer.</div>
   <div class="space"></div>
 
   <article>
     <nav>
       <div class="field label suffix border max">
         <select id="id_wifi_ssid"><option selected>example-iot</option></select>
-        <label data-translate="ui_network">Network</label>
+        <label data-str="ui_network">Network</label>
         <svg class="i"><use href="#i-caret"/></svg>
       </div>
-      <button class="circle transparent" id="id_btn_wifi_scan" title="Scan again" data-translate-title="ui_scan_again">
+      <button class="circle transparent" id="id_btn_wifi_scan" title="Scan again" data-str-title="ui_scan_again">
         <svg class="i" id="id_img_scan_wifi"><use href="#i-search"/></svg>
       </button>
     </nav>
 
     <div class="field label suffix border">
       <input type="password" id="id_password_wifi" maxlength="63" value="0000000000000000" placeholder=" ">
-      <label data-translate="ui_password">Password</label>
-      <a id="id_btn_password_wifi" title="Show the password" data-translate-title="ui_show_the_password" tabindex="0" role="button"><svg class="i" id="id_img_password_wifi"><use href="#i-eye"/></svg></a>
+      <label data-str="ui_password">Password</label>
+      <a id="id_btn_password_wifi" title="Show the password" data-str-title="ui_show_the_password" tabindex="0" role="button"><svg class="i" id="id_img_password_wifi"><use href="#i-eye"/></svg></a>
     </div>
 
     <nav class="wrap">
-      <button class="fill" id="id_btn_wifi_connect" data-translate="connect">Connect</button>
-      <button class="border" id="id_btn_wifi_back" data-translate="back">Back</button>
+      <button class="fill" id="id_btn_wifi_connect" data-str="connect">Connect</button>
+      <button class="border" id="id_btn_wifi_back" data-str="back">Back</button>
     </nav>
   </article>
 </section>
 
 <!-- ── 3 of 3 · Colour ──────────────────────────────────────────────── -->
 <section id="id_page_color" data-page>
-  <h5 data-translate="ui_lights">Lights</h5>
-  <div class="small-text" data-translate="ui_pick_a_colour_for_the_strip_you_ca">Pick a colour for the strip. You can change all of this later, in much more
+  <h5 data-str="ui_lights">Lights</h5>
+  <div class="small-text" data-str="ui_pick_a_colour_for_the_strip_you_ca">Pick a colour for the strip. You can change all of this later, in much more
     detail, on the Lighting page.</div>
   <div class="space"></div>
 
   <article>
     <div class="grid">
       <div class="s12 m6">
-        <div class="small-text" data-translate="ui_vent_open">Vent open</div>
+        <div class="small-text" data-str="ui_vent_open">Vent open</div>
         <button class="responsive no-round" style="background:#FFFFFF;height:3rem"></button>
       </div>
       <div class="s12 m6">
-        <div class="small-text" data-translate="ui_vent_closed">Vent closed</div>
+        <div class="small-text" data-str="ui_vent_closed">Vent closed</div>
         <button class="responsive no-round" style="background:#FF3700;height:3rem"></button>
       </div>
     </div>
 
     <div class="space"></div>
-    <div class="small-text" data-translate="ui_brightness">Brightness</div>
+    <div class="small-text" data-str="ui_brightness">Brightness</div>
     <label class="slider"><input type="range" min="0" max="100" step="5" value="50"><span></span></label>
 
     <div class="space"></div>
     <nav class="wrap">
-      <button class="fill" data-translate="ui_finish">Finish</button>
-      <button class="border" data-translate="back">Back</button>
+      <button class="fill" data-str="ui_finish">Finish</button>
+      <button class="border" data-str="back">Back</button>
     </nav>
   </article>
 </section>
@@ -3042,12 +3043,12 @@ body.is-waiting .waiting-hide { visibility: hidden; }
      ══════════════════════════════════════════════════════════════════ -->
 
 <!-- Shown from the first paint until the device's first state document
-     lands. Every light control is inert until then -- see the ws_send_data
+     lands. Every light control is inert until then -- see the ws_push
      guard -- and a page full of controls that quietly do nothing is worse
      than a page that says why. -->
 <div class="banner c_waiting_note" id="id_waiting_note">
   <progress class="circle small"></progress>
-  <span class="max" data-translate="waiting_for_device">Waiting for the vent to say what it is doing.</span>
+  <span class="max" data-str="waiting_for_device">Waiting for the vent to say what it is doing.</span>
 </div>
 
 <!-- Settings that would not save. This is not a toast: it stays until the
@@ -3055,11 +3056,11 @@ body.is-waiting .waiting-hide { visibility: hidden; }
      use for a condition that persists. -->
 <div class="banner error-container" id="id_cfg_alert" hidden>
   <svg class="i"><use href="#i-warning"/></svg>
-  <span class="max" data-translate="ui_settings_could_not_be_saved_the_de">Settings could not be saved. The device will forget them on restart.</span>
+  <span class="max" data-str="ui_settings_could_not_be_saved_the_de">Settings could not be saved. The device will forget them on restart.</span>
   <!-- A close X has to close something. This one dismisses the banner until
        the device reports a save that worked and then fails again. -->
   <button class="circle transparent" id="id_cfg_alert_close" aria-label="Dismiss"
-          title="Dismiss" data-translate-title="ui_dismiss">
+          title="Dismiss" data-str-title="ui_dismiss">
     <svg class="i"><use href="#i-close"/></svg>
   </button>
 </div>
@@ -3092,16 +3093,16 @@ body.is-waiting .waiting-hide { visibility: hidden; }
   <div class="space"></div>
   <div class="field label border">
     <input type="text" id="id_hsl_hex" maxlength="7" placeholder=" ">
-    <label data-translate="hex_label">Hex</label>
+    <label data-str="hex_label">Hex</label>
   </div>
   <div class="field label border">
     <input type="text" id="id_hsl_hsl" maxlength="20" placeholder=" ">
-    <label data-translate="ui_hue_saturation_lightness">Hue, saturation, lightness</label>
+    <label data-str="ui_hue_saturation_lightness">Hue, saturation, lightness</label>
   </div>
   <nav class="right-align wrap">
-    <button class="transparent" id="id_hsl_reset" data-translate="reset_default">Reset to default</button>
-    <button class="transparent" id="id_hsl_cancel" data-translate="cancel">Cancel</button>
-    <button class="fill" id="id_hsl_confirm" data-translate="confirm">Use this colour</button>
+    <button class="transparent" id="id_hsl_reset" data-str="reset_default">Reset to default</button>
+    <button class="transparent" id="id_hsl_cancel" data-str="cancel">Cancel</button>
+    <button class="fill" id="id_hsl_confirm" data-str="confirm">Use this colour</button>
   </nav>
 </dialog>
 
@@ -3728,7 +3729,7 @@ var PV_STRINGS = {"ar":{"airflow_head_closed":"تدفق الهواء مغلق","
    beer.trim.css (nav.left, nav.max, button cursor).
 
    Nothing here sends a message. Module 1 (core.js) owns the socket, the
-   state document, i18n (tr), navigation (card_navigate) and the dialog.
+   state document, i18n (tr), navigation (show_card) and the dialog.
    This module only uses those globals.
 
    Attestation: written from private/SPEC and Jeremy's markup/CSS/harnesses;
@@ -3831,7 +3832,7 @@ function theme_segments_paint(pref) {
 
 /* The top-bar button is a readout as much as a control: its icon names
    the state, and its accessible name says it in words. The `title` is
-   left to the markup's data-translate-title (module 1's translate pass
+   left to the markup's data-str-title (module 1's translate pass
    owns it), so the two never fight. */
 function theme_button_paint(pref) {
   chrome_use_href('id_top_theme_icon', THEME_ICON[pref]);
@@ -3932,7 +3933,7 @@ function nav_pin_toggle() {
    a translated page names the items in that language.
 
    Module 1's translate pass (set_language -> apply_translations) rewrites
-   every [data-translate] span, the nav's among them, and announces
+   every [data-str] span, the nav's among them, and announces
    nothing. The watcher below takes that rewrite of the nav's spans as
    the signal and says every name this module writes again, in the new
    language: the items, the rail's pin, the theme button.
@@ -4000,7 +4001,7 @@ function pill_watch() {
 }
 
 function pill_go_status() {
-  if (typeof card_navigate === 'function') card_navigate('status');
+  if (typeof show_card === 'function') show_card('status');
 }
 
 /* ---------------------------------------------------------------------
@@ -4108,7 +4109,7 @@ window.nav_pin_set = nav_pin_set;
    Attestation: written from private/SPEC and Jeremy's markup/CSS/
    harnesses; no vendor source opened.
 
-   Module 1 surface used: ws_send_data, tr, dialog_create, toast_show,
+   Module 1 surface used: ws_push, tr, dialog_open, toast_show,
    render_vent_modes (the optimistic vent repaint the brief allows), and
    the read-only g_state. Nothing here opens a socket or renders a push.
    ===================================================================== */
@@ -4120,7 +4121,7 @@ window.nav_pin_set = nav_pin_set;
 function status_el(id) { return document.getElementById(id); }
 
 /* Until the first state document lands the page is not real: module 1
-   keeps `is-waiting` on <body> and ws_send_data drops frames while it is
+   keeps `is-waiting` on <body> and ws_push drops frames while it is
    there. Nothing here may paint an optimistic change whose send would be
    dropped, so every action checks this first. */
 function status_device_ready() {
@@ -4165,7 +4166,7 @@ function vent_mode_choose(mode) {
   if (VENT_MODE_ORDER.indexOf(mode) < 0) return;
   if (!status_device_ready()) return;
   render_vent_modes({ vent_mode: mode });
-  ws_send_data('vent', { mode: mode });
+  ws_push('vent', { mode: mode });
 }
 
 function vent_mode_cycle() {
@@ -4204,7 +4205,7 @@ function cal_refuse_running() {
 function cal_confirm() {
   if (!status_device_ready()) return;
   if (cal_is_running()) { cal_refuse_running(); return; }
-  dialog_create(
+  dialog_open(
     tr('ui_endstop_check_confirm_title', 'Run the endstop check?'),
     tr('ui_endstop_check_confirm_text',
       'The vent will close, then open, then go back to where it was, and the hall reading at each end is reported. It takes about ten seconds.'),
@@ -4218,7 +4219,7 @@ function cal_start() {
   if (!status_device_ready()) return;
   /* The physical button can start a check while the dialog is open. */
   if (cal_is_running()) { cal_refuse_running(); return; }
-  ws_send_data('calibrate', { go: 1 });
+  ws_push('calibrate', { go: 1 });
   /* The immediate response{type:"calibrate"} is silent; progress, the
      button's lock and the two readings all arrive in vent_policy.calibrate
      on the next pushes, and module 1 draws them. Nothing is locked here. */
@@ -4263,7 +4264,7 @@ function light_switch_changed(ev) {
   if (!sw) return;
   var want = el.checked ? 1 : 0;
   if (!status_device_ready()) { el.checked = (want === 0); return; }   /* inert before the first document */
-  ws_send_data('printer_ctl', { light: sw.light, on: want });
+  ws_push('printer_ctl', { light: sw.light, on: want });
   light_settle_begin(el.id, want);
 }
 
@@ -4344,11 +4345,11 @@ if (document.readyState === 'loading') {
 
    This file is the INBOUND half of the Behaviour card: a user action on a
    vent-policy, ring-light or LED-count control becomes one single-key
-   message through module 1's ws_send_data. Every device push is rendered
+   message through module 1's ws_push. Every device push is rendered
    by module 1 (handle_behaviour / render_policy_materials); nothing here
    re-renders a push, opens a socket, or redefines a module-1 name.
 
-   Module-1 surface used: ws_send_data, tr, dialog_create, toast_show,
+   Module-1 surface used: ws_push, tr, dialog_open, toast_show,
    policy_dim (the optimistic dim the brief names).
 
    Attestation: written from private/SPEC and Jeremy's markup/CSS/harnesses;
@@ -4375,19 +4376,19 @@ function bh_int(raw) {
   return isFinite(n) ? n : null;
 }
 
-/* Before the first state document the controls are inert (ws_send_data
+/* Before the first state document the controls are inert (ws_push
    drops the frame). An optimistic paint on top of nothing would lie. */
 function bh_live() {
   return !(document.body && document.body.classList.contains('is-waiting'));
 }
 
-/* dialog_create / toast_show look their arguments up as translation keys
+/* dialog_open / toast_show look their arguments up as translation keys
    and fall back to the key itself, so a key the table does not carry yet
    would show raw. Resolving through tr(key, English) first keeps the
    English fallback; an already-translated string passes straight through
    the second lookup untouched. */
 function bh_dialog(title, text) {
-  dialog_create(title, text, [{ key: 'ui_ok', fallback: 'OK' }]);
+  dialog_open(title, text, [{ key: 'ui_ok', fallback: 'OK' }]);
 }
 
 function bh_toast(text, ms) {
@@ -4409,11 +4410,11 @@ function bh_on(id, ev, fn) {
 function bh_policy_enable_changed(e) {
   var on = !!(e.target && e.target.checked);
   if (typeof policy_dim === 'function') policy_dim(!on);
-  ws_send_data('vent_policy', { enable: bh_bit(on) });
+  ws_push('vent_policy', { enable: bh_bit(on) });
 }
 
 function bh_policy_heat_changed(e) {
-  ws_send_data('vent_policy', { heat_hold: bh_bit(e.target && e.target.checked) });
+  ws_push('vent_policy', { heat_hold: bh_bit(e.target && e.target.checked) });
 }
 
 /* The material rows are rebuilt by module 1 on every push, so this sits
@@ -4423,7 +4424,7 @@ function bh_policy_material_changed(e) {
   if (!input || input.tagName !== 'INPUT' || input.type !== 'checkbox') return;
   var m = /^id_policy_mat_(\d+)$/.exec(input.id || '');
   if (!m) return;
-  ws_send_data('vent_policy', {
+  ws_push('vent_policy', {
     material: { index: parseInt(m[1], 10), on: bh_bit(input.checked) }
   });
 }
@@ -4447,7 +4448,7 @@ function bh_policy_temps_clicked() {
       'The close-below temperature must be lower than the hold-open-above temperature.'));
     return;
   }
-  ws_send_data('vent_policy', { bed_open_c: open, bed_close_c: close });
+  ws_push('vent_policy', { bed_open_c: open, bed_close_c: close });
 }
 
 /* ---------------------------------------------------------------------
@@ -4490,7 +4491,7 @@ function bh_ring_row_of(target) {
 function bh_ring_select(mode) {
   if (!bh_live()) return;
   bh_ring_paint(mode);            /* optimistic show first */
-  ws_send_data('ring', { mode: mode });
+  ws_push('ring', { mode: mode });
 }
 
 function bh_ring_clicked(e) {
@@ -4519,7 +4520,7 @@ function bh_ring_keydown(e) {
 }
 
 function bh_ring_blink_changed(e) {
-  ws_send_data('ring', { blink: bh_bit(e.target && e.target.checked) });
+  ws_push('ring', { blink: bh_bit(e.target && e.target.checked) });
 }
 
 /* ---------------------------------------------------------------------
@@ -4541,13 +4542,13 @@ function bh_leds_count_handler(strip) {
       bh_toast(tr('ui_leds_count_range', 'Each strip takes between 1 and 16 LEDs.'), 3000);
       return;
     }
-    ws_send_data('leds', { strip: strip, count: n });
+    ws_push('leds', { strip: strip, count: n });
   };
 }
 
 function bh_leds_reverse_handler(strip) {
   return function (e) {
-    ws_send_data('leds', { strip: strip, reverse: bh_bit(e.target && e.target.checked) });
+    ws_push('leds', { strip: strip, reverse: bh_bit(e.target && e.target.checked) });
   };
 }
 
@@ -4755,14 +4756,14 @@ function lx_preview_running() {
    ------------------------------------------------------------------- */
 
 function lx_send_rgb(members) {
-  if (typeof ws_send_data === 'function') ws_send_data('rgb_mode', members);
+  if (typeof ws_push === 'function') ws_push('rgb_mode', members);
 }
 
 /* P§7.6: the five boolean switches go out as 0/1 integers. */
 function lx_send_switch(field, on) {
   var m = {};
   m[field] = on ? 1 : 0;
-  if (typeof ws_send_data === 'function') ws_send_data('rgb_switch', m);
+  if (typeof ws_push === 'function') ws_push('rgb_switch', m);
 }
 
 function lx_merge(into, members) {
@@ -4879,7 +4880,7 @@ function lx_wire_switches() {
     var mode = sel.selectedIndex;
     if (mode < 0) return;
     var m = { current_light_mode: mode };
-    if (typeof ws_send_data === 'function') ws_send_data('rgb_switch', m);
+    if (typeof ws_push === 'function') ws_push('rgb_switch', m);
     if (typeof show_light_panel === 'function') show_light_panel(mode);
   });
 
@@ -5279,11 +5280,11 @@ function lx_wire_extras() {
 
 function lx_wire_note(btnId, titleKey, titleEn, textKey, textEn) {
   lx_on(btnId, 'click', function () {
-    if (typeof dialog_create !== 'function') return;
-    /* dialog_create looks its arguments up as keys; passing the already
+    if (typeof dialog_open !== 'function') return;
+    /* dialog_open looks its arguments up as keys; passing the already
        translated text through means a key the table lacks still shows
        its English rather than its name. */
-    dialog_create(tr(titleKey, titleEn), tr(textKey, textEn), [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open(tr(titleKey, titleEn), tr(textKey, textEn), [{ key: 'ui_ok', fallback: 'OK' }]);
   });
 }
 
@@ -5354,7 +5355,7 @@ if (document.readyState === 'loading') {
    Written from private/SPEC and Jeremy's markup/CSS/harnesses; no vendor
    source opened.
 
-   From module 1 (core.js) it uses ws_send_data, tr and toast_show, and
+   From module 1 (core.js) it uses ws_push, tr and toast_show, and
    reads g_state, g_simple_selected and g_h2d_selected. It renders no
    device push: module 1 repaints every swatch when the device answers;
    this module paints only the optimistic version of that repaint.
@@ -5550,7 +5551,7 @@ function cpk_paint_state_button(target, hex) {
    context's body, which always names the effect (and the device state
    for Advance). The error flash is its own body (P§7.7.6). */
 function cpk_send_colours(target, members) {
-  if (typeof ws_send_data !== 'function') return;
+  if (typeof ws_push !== 'function') return;
   var body = {}, k;
   if (target.ctx !== 'err') {
     if (target.ctx === 'h2d') body.mode = target.mode;
@@ -5561,7 +5562,7 @@ function cpk_send_colours(target, members) {
   }
   var msg = {};
   msg[target.ctx === 'err' ? 'error_flash' : (target.ctx === 'h2d' ? 'h2d_mode' : 'simple_mode')] = body;
-  ws_send_data('rgb_mode', msg);
+  ws_push('rgb_mode', msg);
 }
 
 /* ---------------------------------------------------------------------
@@ -5943,8 +5944,8 @@ if (document.readyState === 'loading') {
 
    This module SENDS. Module 1 (core.js) owns the socket, the merged
    state, every device-push render and every response dialog/toast. It is
-   reached only through ws_send_data, tr, set_language, page_navigate,
-   dialog_create, toast_show and the read-only g_lang.
+   reached only through ws_push, tr, set_language, show_page,
+   dialog_open, toast_show and the read-only g_language.
    ===================================================================== */
 
 /* ---------------------------------------------------------------------
@@ -6000,14 +6001,14 @@ function s6_lang_known(code) {
 /* The language module 1 is currently speaking (it restores the stored
    preference at boot and follows settings.language on every push). */
 function s6_current_language() {
-  return (typeof g_lang === 'string' && g_lang) ? g_lang : 'en';
+  return (typeof g_language === 'string' && g_language) ? g_language : 'en';
 }
 
-/* dialog_create() takes translation keys only, so the English fallback the
+/* dialog_open() takes translation keys only, so the English fallback the
    brief requires for every string is written in afterwards through tr():
    the dialog then never shows a raw key while the table is catching up. */
 function s6_dialog(titleKey, titleEn, textKey, textEn, btns) {
-  dialog_create(titleKey, textKey, btns);
+  dialog_open(titleKey, textKey, btns);
   s6_set_text(s6_el('id_dialog_title'), tr(titleKey, titleEn));
   s6_set_text(s6_el('id_dialog_text'), tr(textKey, textEn));
 }
@@ -6111,7 +6112,7 @@ function s6_pick_language(code) {
   if (!s6_lang_known(code)) return;
   set_language(code);
   s6_mark_language(code);
-  ws_send_data('settings', { language: code });
+  ws_push('settings', { language: code });
 }
 
 /* ---------------------------------------------------------------------
@@ -6121,13 +6122,13 @@ function s6_pick_language(code) {
 function s6_device_name_save() {
   var input = s6_el('id_settings_device_name');
   if (!input) return;
-  ws_send_data('settings', { device_name: input.value });
+  ws_push('settings', { device_name: input.value });
 }
 
 /* An empty string tells the device to restore its compiled default, so the
    page does not have to know what that name is (P§7.5). */
 function s6_device_name_reset() {
-  ws_send_data('settings', { device_name: '' });
+  ws_push('settings', { device_name: '' });
 }
 
 function s6_note_device_name() {
@@ -6148,7 +6149,7 @@ function s6_confirm_restart() {
     [
       { key: 'cancel', fallback: 'Cancel' },
       { key: 'restart', fallback: 'Restart', handler: function () {
-        ws_send_data('settings', { reset: 1 });
+        ws_push('settings', { reset: 1 });
       } }
     ]);
 }
@@ -6160,7 +6161,7 @@ function s6_confirm_factory() {
     [
       { key: 'cancel', fallback: 'Cancel' },
       { key: 'factory_reset', fallback: 'Factory reset', handler: function () {
-        ws_send_data('settings', { factory_reset: 1 });
+        ws_push('settings', { factory_reset: 1 });
       } }
     ]);
 }
@@ -6271,8 +6272,8 @@ function s6_wire_language() {
 
   /* Next: send the chosen language and move on to the Wi-Fi page. */
   s6_on('id_btn_lang_next', 'click', function () {
-    ws_send_data('settings', { language: s6_current_language() });
-    page_navigate('id_page_wifi');
+    ws_push('settings', { language: s6_current_language() });
+    show_page('id_page_wifi');
   });
 }
 
@@ -6337,7 +6338,7 @@ window.settings_language_sync = settings_language_sync;
    Attestation: written from private/SPEC and Jeremy's markup/CSS/harnesses;
    no vendor source opened.
 
-   Module 1's surface used here: ws_send_data, tr, dialog_create,
+   Module 1's surface used here: ws_push, tr, dialog_open,
    toast_show, paint_printer_scan, paint_printer_bind, and g_state (read
    only). Everything else in this file is its own, prefixed pcard_.
    ===================================================================== */
@@ -6352,7 +6353,7 @@ var g_pcard_wired = false;
 function pcard_el(id) { return document.getElementById(id); }
 
 /* Before the first state document lands the page is waiting (§0.4) and
-   ws_send_data drops every frame. Nothing here may act then: an
+   ws_push drops every frame. Nothing here may act then: an
    optimistic repaint with no message behind it would show a state the
    device was never asked for. */
 function pcard_ready() {
@@ -6385,7 +6386,7 @@ function pcard_set_field(id, val) {
 
 function pcard_on_scan() {
   if (!pcard_ready()) return;
-  ws_send_data('printer', { scan: 1 });
+  ws_push('printer', { scan: 1 });
   paint_printer_scan(1);
 }
 
@@ -6461,16 +6462,16 @@ function pcard_bind() {
     return;
   }
   var name = pcard_name() || sn;
-  ws_send_data('printer', { name: name, sn: sn, access_code: code, ip: ip });
+  ws_push('printer', { name: name, sn: sn, access_code: code, ip: ip });
   paint_printer_bind(PCARD_STATE_BINDING);   /* optimistic; the next push settles it (§6.2) */
 }
 
-/* dialog_create and toast_show look a key up and fall back to the bare
+/* dialog_open and toast_show look a key up and fall back to the bare
    key, so the strings are resolved here first, with their English, and
    handed over ready to show; a resolved string passes through the lookup
    untouched. The keys are still the translation keys. */
 function pcard_confirm_unbind() {
-  dialog_create(
+  dialog_open(
     tr('ui_unbind_this_printer', 'Unbind this printer?'),
     tr('ui_the_vent_clears_the_stored_binding',
       'The vent clears the stored binding and stops talking to the printer. You can bind it again from this page.'),
@@ -6482,7 +6483,7 @@ function pcard_confirm_unbind() {
 
 function pcard_unbind() {
   if (!pcard_ready()) return;
-  ws_send_data('printer', { disconnect: 1 });
+  ws_push('printer', { disconnect: 1 });
   paint_printer_bind(PCARD_STATE_UNBOUND);   /* optimistic; disconnect answers with a state push (P§9) */
 }
 
@@ -6491,7 +6492,7 @@ function pcard_unbind() {
    ------------------------------------------------------------------- */
 
 function pcard_on_note() {
-  dialog_create(
+  dialog_open(
     tr('ui_bind_to_a_printer', 'Bind to a printer'),
     tr('ui_the_vent_talks_to_the_printer_dire',
       'The vent talks to the printer directly over your own network; nothing goes through Bambu\'s cloud. ' +
@@ -6575,7 +6576,7 @@ var NET_AP_PASSWORD_MIN = 8;
 function net_el(id) { return document.getElementById(id); }
 
 /* The device has said nothing yet while body.is-waiting (frame.html /
-   app.css): ws_send_data is inert then, so a control that would send does
+   app.css): ws_push is inert then, so a control that would send does
    nothing rather than pretending it did. The waiting banner says why. */
 function net_ready() {
   return !(document.body && document.body.classList.contains('is-waiting'));
@@ -6588,7 +6589,7 @@ function net_val(id) {
   return String(el.value);
 }
 
-/* Module 1's toast_show / dialog_create look a key up with the key itself
+/* Module 1's toast_show / dialog_open look a key up with the key itself
    as the fallback. Every string this module produces is resolved here
    first with tr(key, English), so a key the table does not carry still
    shows its English rather than its name; a resolved string handed back
@@ -6598,7 +6599,7 @@ function net_toast(key, english, ms) {
 }
 
 function net_dialog(titleKey, titleEn, textKey, textEn, btns) {
-  dialog_create(tr(titleKey, titleEn), tr(textKey, textEn), btns);
+  dialog_open(tr(titleKey, titleEn), tr(textKey, textEn), btns);
 }
 
 /* Keyboard activation for an <a role="button" tabindex="0">. */
@@ -6623,10 +6624,10 @@ function net_wire_eye(btnId, inputId, imgId) {
     var svg = net_el(imgId);
     var use = svg ? svg.querySelector('use') : null;
     if (use) use.setAttribute('href', shown ? '#i-eye-off' : '#i-eye');
-    /* The title follows the state, and the data-translate-title key with
+    /* The title follows the state, and the data-str-title key with
        it, so a later language change keeps the two in step. */
     var key = shown ? 'ui_hide_the_password' : 'ui_show_the_password';
-    btn.setAttribute('data-translate-title', key);
+    btn.setAttribute('data-str-title', key);
     btn.setAttribute('title', tr(key, shown ? 'Hide the password' : 'Show the password'));
     btn.setAttribute('aria-pressed', shown ? 'true' : 'false');
   }
@@ -6683,7 +6684,7 @@ function net_wire_notes() {
 function net_wifi_scan() {
   if (!net_ready()) return;
   if (typeof paint_wifi_scan === 'function') paint_wifi_scan(1);
-  ws_send_data('wifi', { scan: 1 });
+  ws_push('wifi', { scan: 1 });
 }
 
 /* {"wifi":{"ssid","password"}} from the select and the field. The device
@@ -6695,7 +6696,7 @@ function net_wifi_connect() {
   if (!net_ready()) return;
   var ssid = net_val('id_wifi_ssid');
   if (!ssid) { net_toast('ui_choose_a_network_first', 'Choose a network first.'); return; }
-  ws_send_data('wifi', { ssid: ssid, password: net_val('id_password_wifi') });
+  ws_push('wifi', { ssid: ssid, password: net_val('id_password_wifi') });
   net_toast('ui_joining_the_network', 'Joining the network...');
 }
 
@@ -6705,7 +6706,7 @@ function net_set_hostname() {
   if (!net_ready()) return;
   var name = net_val('id_sta_hostname').trim();
   if (!name) { net_toast('ui_enter_a_host_name', 'Enter a host name first.'); return; }
-  ws_send_data('sta', { hostname: name });
+  ws_push('sta', { hostname: name });
 }
 
 function net_wire_wifi() {
@@ -6720,10 +6721,10 @@ function net_wire_wifi() {
 
   /* Client-only page moves (§7.3). */
   var config = net_el('id_btn_wifi_config');
-  if (config) config.addEventListener('click', function () { page_navigate('id_page_wifi'); });
+  if (config) config.addEventListener('click', function () { show_page('id_page_wifi'); });
 
   var back = net_el('id_btn_wifi_back');
-  if (back) back.addEventListener('click', function () { page_navigate('id_page_app'); });
+  if (back) back.addEventListener('click', function () { show_page('id_page_app'); });
 
   net_wire_eye('id_btn_password_wifi', 'id_password_wifi', 'id_img_password_wifi');
 }
@@ -6744,7 +6745,7 @@ function net_ap_switch_changed(e) {
   if (!net_ready()) { sw.checked = !sw.checked; return; }
 
   if (sw.checked) {
-    ws_send_data('ap', { on: 1 });
+    ws_push('ap', { on: 1 });
     return;
   }
 
@@ -6757,7 +6758,7 @@ function net_ap_switch_changed(e) {
       { key: 'cancel', fallback: 'Cancel' },
       { key: 'ui_turn_off', fallback: 'Turn off', handler: function () {
         sw.checked = false;
-        ws_send_data('ap', { on: 0 });
+        ws_push('ap', { on: 0 });
       } }
     ]);
 }
@@ -6788,7 +6789,7 @@ function net_ap_save() {
     [
       { key: 'cancel', fallback: 'Cancel' },
       { key: 'ui_save', fallback: 'Save', handler: function () {
-        ws_send_data('ap', { ssid: ssid, password: password, ip: ip });
+        ws_push('ap', { ssid: ssid, password: password, ip: ip });
       } }
     ]);
 }
@@ -6823,7 +6824,7 @@ function net_fallback_land() {
   if (document.querySelector('[data-page].active:not(#id_page_app)')) return;   /* a setup page is up */
   var cur = document.querySelector('[data-card].active');
   if (cur && cur.id !== 'id_card_status') return;           /* the person already chose */
-  card_navigate('sta');
+  show_card('sta');
 }
 
 /* ---------------------------------------------------------------------
@@ -6911,12 +6912,12 @@ function cam_on_record_change() {
   var input = cam_node('id_cam_record');
   if (!input) return;
   /* Inert before the first state document, like every other control:
-     ws_send_data would drop the frame, and module 1's first push sets the
+     ws_push would drop the frame, and module 1's first push sets the
      switch from the device. No hold either, or it would fight that push. */
   if (document.body && document.body.classList.contains('is-waiting')) return;
   var want = input.checked ? 1 : 0;           /* the switch is already flipped: that is the optimistic paint */
   g_cam_hold = { want: want, until: Date.now() + CAM_RECORD_HOLD_MS };
-  ws_send_data('printer_ctl', { record: want });
+  ws_push('printer_ctl', { record: want });
   cam_hold_start();
 }
 
@@ -7025,7 +7026,7 @@ if (document.readyState === 'loading') {
    the log document and the animation rows from the device's own pushes;
    nothing here paints a device value.
 
-   Uses from module 1: ws_send_data, toast_show, g_state (read only).
+   Uses from module 1: ws_push, toast_show, g_state (read only).
    ===================================================================== */
 
 /* ---------------------------------------------------------------------
@@ -7035,16 +7036,16 @@ if (document.readyState === 'loading') {
 var g_logs_card_shown = false;
 
 function logs_request() {
-  ws_send_data('logs', {});
+  ws_push('logs', {});
 }
 
 function logs_clear_request() {
-  ws_send_data('logs', { clear: 1 });
+  ws_push('logs', { clear: 1 });
 }
 
 /* A card is open exactly when it wears .active (app.css). Watching that
    class on the Logs card catches every way of opening it: the rail, the
-   bottom bar, the keyboard, and a bare card_navigate('logs'). It runs
+   bottom bar, the keyboard, and a bare show_card('logs'). It runs
    after module 1's navigation has finished, because it IS that navigation
    landing. Only the closed-to-open edge asks. */
 function logs_watch_card() {
@@ -7337,14 +7338,42 @@ window.g_anim = g_anim;
    handlers (button clicks, form submits, sliders, the colour picker) are
    later modules; they call into the globals this module exposes:
 
-       g_websocket, ws_send_data(root, members), tr(key[, fallback]),
-       card_navigate(id), page_navigate(id),
-       dialog_create(titleKey, textKey, btns), dialog_close(),
+       g_sock, ws_push(root, members), tr(key[, fallback]),
+       show_card(id), show_page(id),
+       dialog_open(titleKey, textKey, btns), dialog_dismiss(),
        toast_show(key, ms)
 
    Written entirely from private/SPEC/handler-contract.md,
    private/SPEC/websocket-protocol.md and private/SPEC/printer-states.md
    plus Jeremy's own clean Beer markup (frame/global/pages).
+
+   Attestation, written 2026-09-02 and deliberately not backdated.
+
+   This module was authored BEFORE the "ui-legacy.html closed" mandate was
+   stated for modules 2-10, and ui-legacy.html was still in the working tree
+   at the time. So unlike its siblings it cannot carry their line, "no vendor
+   source opened": the discipline was not yet in place to attest to, and this
+   file says so rather than implying otherwise.
+
+   What the record does show, from the 2026-09-02 provenance scan:
+
+     - Of 112 distinctive string literals this file shares with the vendor
+       page, 111 are accounted for by the SPEC, our own markup or our English
+       key set. The one left is 'http://www.w3.org/2000/svg', which
+       createElementNS requires and which has no other spelling.
+     - This module coined its own name for everything it names: ws_recv,
+       render_status, g_state, g_inbound_queue, g_out_queue, handle_camera,
+       handle_pctl, g_have_first_state, render_airflow, hexColour. None of
+       them appears anywhere in the vendor page.
+     - It was OFFERED vendor names by the harnesses it was written against --
+       ws_on_message and h2d_mode_effect, which occur 3 and 21 times in the
+       vendor page -- and refused both. The harnesses were rewritten to call
+       this module's names instead; see PHASE2-RECORD.md section D.
+
+   Seven identifiers that did match the vendor's have since been renamed, six
+   of them because private/SPEC named them and every author inherited them
+   honestly from a document that was itself derivative. That was the leak, and
+   it was in the brief, not in this file.
    ===================================================================== */
 
 /* ---------------------------------------------------------------------
@@ -7480,7 +7509,7 @@ var STA_STATES = { 1: 'No network saved', 2: 'Connecting', 3: 'Connected', 4: 'R
 /* The string table is PV_STRINGS, language-major: PV_STRINGS[lang][key].
    The build generates it from strings/en.json and the per-language files
    beside it and splices it into the page as its own block. */
-var g_lang = 'en';
+var g_language = 'en';
 
 function langTable() {
   if (typeof PV_STRINGS !== 'undefined' && PV_STRINGS) return PV_STRINGS;
@@ -7492,7 +7521,7 @@ function langTable() {
 function trLookup(key) {
   var tbl = langTable();
   if (!tbl) return null;
-  var cur = tbl[g_lang];
+  var cur = tbl[g_language];
   if (cur && cur[key] != null) return cur[key];
   if (tbl.en && tbl.en[key] != null) return tbl.en[key];
   return null;
@@ -7506,22 +7535,22 @@ function tr(key, fallback) {
   return (fallback !== undefined) ? fallback : key;
 }
 
-/* Set text on every [data-translate] and the title on every
-   [data-translate-title]. Only overwrite when a resource actually exists,
+/* Set text on every [data-str] and the title on every
+   [data-str-title]. Only overwrite when a resource actually exists,
    so the English defaults baked into the markup survive a missing key. */
 function apply_translations() {
   var i, el, key, v, nodes;
-  nodes = document.querySelectorAll('[data-translate]');
+  nodes = document.querySelectorAll('[data-str]');
   for (i = 0; i < nodes.length; i++) {
     el = nodes[i];
-    key = el.getAttribute('data-translate');
+    key = el.getAttribute('data-str');
     v = trLookup(key);
     if (v != null) el.textContent = v;
   }
-  nodes = document.querySelectorAll('[data-translate-title]');
+  nodes = document.querySelectorAll('[data-str-title]');
   for (i = 0; i < nodes.length; i++) {
     el = nodes[i];
-    key = el.getAttribute('data-translate-title');
+    key = el.getAttribute('data-str-title');
     v = trLookup(key);
     if (v != null) el.setAttribute('title', v);
   }
@@ -7547,19 +7576,19 @@ var RTL_LANGS = ['ar'];
 
 function apply_direction() {
   var el = document.documentElement;
-  if (el) el.setAttribute('dir', RTL_LANGS.indexOf(g_lang) >= 0 ? 'rtl' : 'ltr');
+  if (el) el.setAttribute('dir', RTL_LANGS.indexOf(g_language) >= 0 ? 'rtl' : 'ltr');
 }
 
 function set_language(lang) {
-  if (!lang || lang === g_lang) return;
-  g_lang = lang;
+  if (!lang || lang === g_language) return;
+  g_language = lang;
   try { localStorage.setItem('pv_lang', lang); } catch (e) {}
   apply_direction();
   apply_translations();
 }
 
 /* ---------------------------------------------------------------------
-   3. Navigation: page_navigate / card_navigate + a delegated nav listener
+   3. Navigation: show_page / show_card + a delegated nav listener
    ------------------------------------------------------------------- */
 
 var g_current_card = null;
@@ -7579,7 +7608,7 @@ function enter_app() {
 }
 
 /* Switch the top-level page: a setup page (data-page) vs the app (§0.4). */
-function page_navigate(id) {
+function show_page(id) {
   var el = byId(id);
   var isSetup = el && el.hasAttribute('data-page');
   if (isSetup) {
@@ -7593,7 +7622,7 @@ function page_navigate(id) {
 }
 
 /* Show one card inside the app and mark it active in both navs (§0.4). */
-function card_navigate(id) {
+function show_card(id) {
   enter_app();
   var targetId = 'id_card_' + id;
   var cards = document.querySelectorAll('[data-card]');
@@ -7616,14 +7645,14 @@ function card_navigate(id) {
 function wire_navigation() {
   document.addEventListener('click', function (e) {
     var a = e.target.closest ? e.target.closest('[data-nav]') : null;
-    if (a) { e.preventDefault(); card_navigate(a.getAttribute('data-nav')); }
+    if (a) { e.preventDefault(); show_card(a.getAttribute('data-nav')); }
   });
   document.addEventListener('keydown', function (e) {
     var a = e.target.closest ? e.target.closest('[data-nav]') : null;
     if (!a) return;
     if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
       e.preventDefault();
-      card_navigate(a.getAttribute('data-nav'));
+      show_card(a.getAttribute('data-nav'));
       return;
     }
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -7642,7 +7671,7 @@ function wire_navigation() {
    4. Response UI: dialog + toast (§0.6)
    ------------------------------------------------------------------- */
 
-function dialog_close() {
+function dialog_dismiss() {
   var dlg = byId('id_dialog');
   if (!dlg) return;
   if (typeof dlg.close === 'function' && dlg.open) { try { dlg.close(); } catch (e) {} }
@@ -7695,9 +7724,9 @@ var DLG_EN = {
   dlg_ota_unknown_text: 'The vent did not recognise the upload type. Nothing was changed.'
 };
 
-/* dialog_create(titleKey, textKey, btns): btns is a list of
+/* dialog_open(titleKey, textKey, btns): btns is a list of
    {key, handler}. A button's handler may run a follow-on. */
-function dialog_create(titleKey, textKey, btns) {
+function dialog_open(titleKey, textKey, btns) {
   var dlg = byId('id_dialog');
   if (!dlg) return;
   setElText(byId('id_dialog_title'), tr(titleKey, DLG_EN[titleKey] || titleKey));
@@ -7712,7 +7741,7 @@ function dialog_create(titleKey, textKey, btns) {
         btn.className = last ? 'fill' : 'transparent';
         btn.textContent = tr(b.key, b.fallback || b.key);
         btn.addEventListener('click', function () {
-          dialog_close();
+          dialog_dismiss();
           if (typeof b.handler === 'function') b.handler();
         });
         host.appendChild(btn);
@@ -7739,7 +7768,7 @@ function toast_show(key, ms, fallback) {
 }
 
 function error_dialog() {
-  dialog_create('dlg_error_title', 'dlg_error_text',
+  dialog_open('dlg_error_title', 'dlg_error_text',
     [{ key: 'ui_ok', fallback: 'OK' }]);
 }
 
@@ -7747,7 +7776,7 @@ function error_dialog() {
    5. The socket, the merged state document, the deep merge
    ------------------------------------------------------------------- */
 
-var g_websocket = null;
+var g_sock = null;
 var g_state = {};             /* the single merged source of truth (§0.2) */
 
 var g_ui_ready = false;
@@ -7797,8 +7826,8 @@ function ws_url() { return 'ws://' + location.host + '/ws'; }
 
 function ws_raw_send(obj) {
   var str = JSON.stringify(obj);
-  if (g_websocket && g_websocket.readyState === 1) {
-    try { g_websocket.send(str); return true; } catch (e) {}
+  if (g_sock && g_sock.readyState === 1) {
+    try { g_sock.send(str); return true; } catch (e) {}
   }
   g_out_queue.push(str);
   return false;
@@ -7806,9 +7835,9 @@ function ws_raw_send(obj) {
 
 /* THE send helper every later module uses. One inbound message, a single
    top-level key (§1.1). Controls stay inert until the first state document
-   lands — the ws_send_data guard the markup refers to. Our own "please
+   lands — the ws_push guard the markup refers to. Our own "please
    send everything" request bypasses it via ws_raw_send. */
-function ws_send_data(root, members) {
+function ws_push(root, members) {
   if (document.body && document.body.classList.contains('is-waiting')) return;
   var msg = {};
   msg[root] = members || {};
@@ -7816,11 +7845,11 @@ function ws_send_data(root, members) {
 }
 
 function flush_out_queue() {
-  if (!g_websocket || g_websocket.readyState !== 1) return;
+  if (!g_sock || g_sock.readyState !== 1) return;
   var q = g_out_queue;
   g_out_queue = [];
   for (var i = 0; i < q.length; i++) {
-    try { g_websocket.send(q[i]); } catch (e) { g_out_queue.push(q[i]); }
+    try { g_sock.send(q[i]); } catch (e) { g_out_queue.push(q[i]); }
   }
 }
 
@@ -7844,8 +7873,8 @@ function ws_open() {
   var sock;
   try { sock = new WebSocket(ws_url()); }
   catch (e) { setTimeout(ws_open, 2000); return; }
-  g_websocket = sock;
-  window.g_websocket = sock;
+  g_sock = sock;
+  window.g_sock = sock;
 
   sock.onopen = function () {
     flush_out_queue();
@@ -7932,8 +7961,8 @@ function ws_recv(data) {
     msg.sta && msg.sta.state !== undefined &&
     msg.printer && msg.printer.state !== undefined) {
     g_landed = true;
-    if (msg.sta.state === 3 && msg.printer.state === 3) card_navigate('status');
-    else card_navigate('sta');
+    if (msg.sta.state === 3 && msg.printer.state === 3) show_card('status');
+    else show_card('sta');
   }
 
   /* 7. Response envelope: dialog / toast (§0.6). */
@@ -8415,7 +8444,6 @@ function render_calibrate(vp) {
   var btn = byId('id_btn_cal');
   if (btn) {
     btn.disabled = running;
-    btn.classList.toggle('readonly', running);
     var lbl = btn.querySelector('span');
     if (running) {
       var stepMap = { 0: tr('ui_cal_step_closing', 'Closing...'), 1: tr('ui_cal_step_opening', 'Opening...'), 2: tr('ui_cal_step_restoring', 'Restoring...') };
@@ -8983,14 +9011,6 @@ function paint_printer_bind(state) {
   else if (state === 3) { set_use_href('id_img_printer_bind', '#i-link-off'); var im2 = byId('id_img_printer_bind'); if (im2) im2.classList.remove('spin'); }
   else { set_use_href('id_img_printer_bind', '#i-link'); var im3 = byId('id_img_printer_bind'); if (im3) im3.classList.remove('spin'); }
 
-  /* button kind class */
-  if (btn) {
-    btn.classList.remove('submit', 'cancel', 'recovery');
-    if (binding) btn.classList.add('cancel');
-    else if (state >= 4) btn.classList.add('recovery');
-    else btn.classList.add('submit');
-  }
-
   /* elapsed timer while binding */
   if (binding) {
     if (!g_bind_timer) {
@@ -9009,20 +9029,20 @@ function paint_printer_bind(state) {
   var lock = binding || bound;
   ['id_printer_name', 'id_printer_sn', 'id_printer_access_code', 'id_printer_ip'].forEach(function (id) {
     var el = byId(id);
-    if (el) { el.disabled = lock; el.classList.toggle('c_readonly', lock); }
+    if (el) el.disabled = lock;
   });
 
   /* state -> dialog */
   if (state === 3 && g_was_binding) {
-    dialog_create('dlg_bind_ok_title', 'dlg_bind_ok_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open('dlg_bind_ok_title', 'dlg_bind_ok_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   } else if (state === 4) {
-    dialog_create('dlg_bind_ip_title', 'dlg_bind_ip_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open('dlg_bind_ip_title', 'dlg_bind_ip_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   } else if (state === 5) {
-    dialog_create('dlg_bind_sn_title', 'dlg_bind_sn_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open('dlg_bind_sn_title', 'dlg_bind_sn_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   } else if (state === 6) {
-    dialog_create('dlg_bind_code_title', 'dlg_bind_code_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open('dlg_bind_code_title', 'dlg_bind_code_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   } else if (state === 7) {
-    dialog_create('dlg_bind_unknown_title', 'dlg_bind_unknown_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open('dlg_bind_unknown_title', 'dlg_bind_unknown_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   }
 
   g_was_binding = binding;
@@ -9039,16 +9059,16 @@ function paint_printer_scan(scan) {
     if (img) img.classList.remove('spin');
   }
   if (scan === 2) {
-    if (g_prev_printer_scan === 1 || g_prev_printer_scan === 3) dialog_create('dlg_scan_ok_title', 'dlg_scan_ok_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    if (g_prev_printer_scan === 1 || g_prev_printer_scan === 3) dialog_open('dlg_scan_ok_title', 'dlg_scan_ok_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   } else if (scan === 4) {
-    dialog_create('dlg_scan_sn_title', 'dlg_scan_sn_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open('dlg_scan_sn_title', 'dlg_scan_sn_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   } else if (scan === 5) {
-    dialog_create('dlg_scan_ip_title', 'dlg_scan_ip_text', [
-      { key: 'ui_hotspot', fallback: 'Hotspot', handler: function () { card_navigate('ap'); } },
+    dialog_open('dlg_scan_ip_title', 'dlg_scan_ip_text', [
+      { key: 'ui_hotspot', fallback: 'Hotspot', handler: function () { show_card('ap'); } },
       { key: 'cancel', fallback: 'Cancel' }
     ]);
   } else if (scan === 6) {
-    dialog_create('dlg_scan_newip_title', 'dlg_scan_newip_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open('dlg_scan_newip_title', 'dlg_scan_newip_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   }
   g_prev_printer_scan = scan;
 }
@@ -9071,7 +9091,7 @@ function handle_wifi(wifi) {
   if (wifi.ssid !== undefined) {
     if (wifi.ssid === '') {
       /* no saved network: send the owner to the first-use flow */
-      if (!g_landed) { g_firstuse = true; page_navigate('id_page_language'); }
+      if (!g_landed) { g_firstuse = true; show_page('id_page_language'); }
     } else {
       add_wifi_option(wifi.ssid, true);
       setInputValue('id_password_wifi', wifi.password);
@@ -9121,7 +9141,7 @@ function paint_wifi_scan(scan) {
     if (img) img.classList.remove('spin');
     if (scan === 2 && g_wifi_scanning) {
       g_wifi_scanning = false;
-      dialog_create('dlg_scan_ok_title', 'dlg_scan_ok_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+      dialog_open('dlg_scan_ok_title', 'dlg_scan_ok_text', [{ key: 'ui_ok', fallback: 'OK' }]);
     }
   }
 }
@@ -9138,14 +9158,14 @@ function handle_sta(sta) {
   }
 
   if (state === 3 && (g_prev_sta_state === 2 || g_prev_sta_state === 4)) {
-    dialog_create('dlg_conn_ok_title', 'dlg_conn_ok_text', [
-      { key: 'card_printer', fallback: 'Printer', handler: function () { card_navigate('printer'); } },
+    dialog_open('dlg_conn_ok_title', 'dlg_conn_ok_text', [
+      { key: 'card_printer', fallback: 'Printer', handler: function () { show_card('printer'); } },
       { key: 'cancel', fallback: 'Cancel' }
     ]);
   } else if (state === 4) {
-    dialog_create('dlg_conn_reconnect_title', 'dlg_conn_reconnect_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open('dlg_conn_reconnect_title', 'dlg_conn_reconnect_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   } else if (state === 5) {
-    dialog_create('dlg_conn_pw_title', 'dlg_conn_pw_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+    dialog_open('dlg_conn_pw_title', 'dlg_conn_pw_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   }
   g_prev_sta_state = state;
 }
@@ -9295,21 +9315,21 @@ function handle_response(resp) {
 
   switch (type) {
     case 'set_hostname':
-      if (ok) dialog_create('dlg_hostname_title', 'dlg_hostname_text',
-        [{ key: 'restart', fallback: 'Restart', handler: function () { ws_send_data('settings', { reset: 1 }); } }]);
+      if (ok) dialog_open('dlg_hostname_title', 'dlg_hostname_text',
+        [{ key: 'restart', fallback: 'Restart', handler: function () { ws_push('settings', { reset: 1 }); } }]);
       else error_dialog();
       break;
     case 'set_ap':
-      if (ok) dialog_create('dlg_ap_title', 'dlg_ap_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+      if (ok) dialog_open('dlg_ap_title', 'dlg_ap_text', [{ key: 'ui_ok', fallback: 'OK' }]);
       else error_dialog();
       break;
     case 'set_hotspot_ip':
-      if (ok) dialog_create('dlg_hotspot_ip_title', 'dlg_hotspot_ip_text',
-        [{ key: 'restart', fallback: 'Restart', handler: function () { ws_send_data('settings', { reset: 1 }); } }]);
+      if (ok) dialog_open('dlg_hotspot_ip_title', 'dlg_hotspot_ip_text',
+        [{ key: 'restart', fallback: 'Restart', handler: function () { ws_push('settings', { reset: 1 }); } }]);
       else error_dialog();
       break;
     case 'factory_reset':
-      if (ok) dialog_create('dlg_factory_title', 'dlg_factory_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+      if (ok) dialog_open('dlg_factory_title', 'dlg_factory_text', [{ key: 'ui_ok', fallback: 'OK' }]);
       else error_dialog();
       break;
     case 'set_device_name':
@@ -9318,12 +9338,12 @@ function handle_response(resp) {
       break;
     case 'ota_fw':
       clear_ota_progress();
-      if (ok) dialog_create('dlg_ota_title', 'dlg_ota_text',
+      if (ok) dialog_open('dlg_ota_title', 'dlg_ota_text',
         [{ key: 'ui_reload', fallback: 'Reload', handler: function () { location.reload(); } }]);
-      else dialog_create('dlg_ota_err_title', 'dlg_ota_err_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+      else dialog_open('dlg_ota_err_title', 'dlg_ota_err_text', [{ key: 'ui_ok', fallback: 'OK' }]);
       break;
     case 'ota_unknown':
-      dialog_create('dlg_ota_unknown_title', 'dlg_ota_unknown_text', [{ key: 'ui_ok', fallback: 'OK' }]);
+      dialog_open('dlg_ota_unknown_title', 'dlg_ota_unknown_text', [{ key: 'ui_ok', fallback: 'OK' }]);
       break;
     /* vent, ring, leds, calibrate, vent_policy, anim, printer_fan,
        printer_speed, printer_light, printer_record: silent success ack;
@@ -9356,9 +9376,9 @@ function wire_cfg_alert() {
 
 function wire_dialog_close() {
   var x = byId('id_dialog_close');
-  if (x) x.addEventListener('click', dialog_close);
+  if (x) x.addEventListener('click', dialog_dismiss);
   var dlg = byId('id_dialog');
-  if (dlg) dlg.addEventListener('cancel', function (e) { e.preventDefault(); dialog_close(); });
+  if (dlg) dlg.addEventListener('cancel', function (e) { e.preventDefault(); dialog_dismiss(); });
 }
 
 function init_ui() {
@@ -9368,7 +9388,7 @@ function init_ui() {
   /* language: stored preference, else English (device settings.language
      overrides once part 0 arrives). Recorded as a gap: the spec is thin on
      where the UI language is sourced pre-connect. */
-  try { var stored = localStorage.getItem('pv_lang'); if (stored) g_lang = stored; } catch (e) {}
+  try { var stored = localStorage.getItem('pv_lang'); if (stored) g_language = stored; } catch (e) {}
 
   apply_direction();
   apply_translations();
@@ -9377,7 +9397,7 @@ function init_ui() {
   wire_cfg_alert();
 
   /* Open on the Status card by default; landing may move it once (§0.4). */
-  card_navigate('status');
+  show_card('status');
 
   /* Every choice group shows one selection even before the device answers
      (coldstart.js): the device-state buttons default to Idle until the
@@ -9389,7 +9409,7 @@ function init_ui() {
      so it does not count as landed, and the device's own first frame still
      lands the page wherever §0.4 says. */
   setTimeout(function () {
-    if (!g_landed && !g_firstuse && !g_have_first_state) card_navigate('sta');
+    if (!g_landed && !g_firstuse && !g_have_first_state) show_card('sta');
   }, 2000);
 
   flush_inbound_queue();
@@ -9407,13 +9427,13 @@ if (document.readyState === 'loading') {
    20. Expose the globals later modules call into
    ------------------------------------------------------------------- */
 
-window.g_websocket = g_websocket;
-window.ws_send_data = ws_send_data;
+window.g_sock = g_sock;
+window.ws_push = ws_push;
 window.tr = tr;
-window.card_navigate = card_navigate;
-window.page_navigate = page_navigate;
-window.dialog_create = dialog_create;
-window.dialog_close = dialog_close;
+window.show_card = show_card;
+window.show_page = show_page;
+window.dialog_open = dialog_open;
+window.dialog_dismiss = dialog_dismiss;
 window.toast_show = toast_show;
 window.apply_translations = apply_translations;
 window.set_language = set_language;

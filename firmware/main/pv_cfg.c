@@ -739,8 +739,7 @@ void pv_cfg_rgb_mode_defaults(pv_rgb_cfg_t *r, int mode)
         //
         // The stock image builds it the same way: a loop writes white to all
         // seven slots, then a switch overwrites the active slot for states 1,
-        // 4 and 5 only (0x400dc845 onward, colour literals at file offsets
-        // 0x17060 and the table at 0x1707c).
+        // 4 and 5 only.
         //
         // Note the printed manual is wrong here twice over: it lists
         // Preparation as F8A323 and Completed as 00FF2A, and neither value
@@ -814,11 +813,10 @@ void pv_cfg_factory_defaults(pv_cfg_t *c)
 // DELIBERATE DEPARTURE, documented rather than silent.
 //
 // Stock does NOT validate. Its store is one nvs_get_blob per subsystem
-// through the wrapper at 0x400d8cdc (namespace "app_nvs", keys "sign",
-// "wifi_info", "bambu_mqtt_info", "ui_info", "sys_rgb_mode" 0x138 bytes,
-// "rgb_sundry" 6, "key_mode" 4), and the loader at 0x400d8e38 issues the
-// three reads and returns 1 with no magic, no version and no range check on
-// any field.
+// through a single wrapper (namespace "app_nvs", keys "sign", "wifi_info",
+// "bambu_mqtt_info", "ui_info", "sys_rgb_mode" 0x138 bytes, "rgb_sundry" 6,
+// "key_mode" 4), and its loader issues the three reads and returns 1 with no
+// magic, no version and no range check on any field.
 //
 // We keep the magic AND clamp, for one concrete reason: resolve() indexes
 // warnhot_bg[lvl][warnhot_current[lvl]] and warnhot_speed likewise, both

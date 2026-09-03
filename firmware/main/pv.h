@@ -34,12 +34,10 @@
 #define PV_PIN_BUTTON_LED    27   // ring LED: off = AUTO, blink = MANUAL
 #define PV_PIN_STRIP0        14   // WS2812, 16 px
 #define PV_PIN_STRIP1        4    // WS2812, 16 px (both strips always driven)
-// The count stock actually drives. It is the 32-bit word at DRAM 0x3ffb0318
-// in the shipping image's initialised data (file offset 0x3a714), returned by
-// the accessor at 0x400dc934, cached in the byte at 0x3ffb68d1 by the render
-// task at 0x400dcaf9, and passed down as every effect function's n. Two
-// strips (blti a7,2 in rgb_init 0x400dc4fc, bgei a2,2 in every effect), so
-// 32 LEDs driven in total, with a 3*n = 48 byte buffer each (0x400dce3e).
+// The count stock actually drives. It is a single initialised word, read
+// once through an accessor, cached by the render task and passed down as
+// every effect function's n. Stock drives two strips, so 32 LEDs in total,
+// with a 3*n = 48 byte buffer each.
 #define PV_LEDS_PER_STRIP    16
 #define PV_STRIP_COUNT_MAX   2
 #define PV_MOTOR_GROUPS      4
@@ -100,38 +98,34 @@
 #define PV_FX_STOCK_COUNT 7
 
 // Not user selectable and not part of the config arrays. Stock's warning
-// override renderer at 0x400ddeac is a separate function, not one of the
-// seven: it paints every pixel R=127 G=0 B=0 directly, with no brightness
-// scaling, and delays 10 ticks = 100 ms.
+// override renderer is a separate function, not one of the seven: it paints
+// every pixel R=127 G=0 B=0 directly, with no brightness scaling, and delays
+// 10 ticks = 100 ms.
 #define PV_FX_OVERRIDE_RED 100
 
-// The other two non-selectable renderers the rgb task reaches, both recovered
-// 2026-08-28 by enumerating every vTaskDelay in the render region.
+// The other two non-selectable renderers the rgb task reaches.
 //
-// PV_FX_FAULT_STROBE is stock's 0x400dd33c: it does not render anything
-// itself, it builds a stack record { brightness 100, speed 150, r, g, b } and
-// tail calls Strobing at 0x400dd1b0. speed 150 through Strobing's own
-// 200 - speed gives a 50 ms half period.
+// PV_FX_FAULT_STROBE does not render anything itself: it builds a record
+// { brightness 100, speed 150, r, g, b } and tail calls Strobing. Speed 150
+// through Strobing's own 200 - speed gives a 50 ms half period.
 //
-// PV_FX_LINK_MARQUEE is stock's 0x400dd840. Same prologue as Static, same
-// travelling Gaussian as Marquee (fminf, 5.0f cutoff at 0x400d0cfc, 0.3f
-// step at 0x400d0cd8), but it takes no speed and its frame is a fixed
-// vTaskDelay(5) = 50 ms at 0x400dda16, and it keeps its OWN position global
-// at 0x3ffb6910 rather than sharing Marquee's.
+// PV_FX_LINK_MARQUEE has the same prologue as Static and the same travelling
+// Gaussian as Marquee (5.0 cutoff, 0.3 step), but it takes no speed, its
+// frame is a fixed 50 ms, and it keeps its OWN position rather than sharing
+// Marquee's.
 #define PV_FX_FAULT_STROBE 101
 #define PV_FX_LINK_MARQUEE 102
 
-// Not a renderer at all. Stock's test mode 1 falls through to 0x400dcab0 when
-// the radio self test has no verdict yet: vTaskDelay(50) and NOTHING is
-// written, so the previous frame stays on the strip for 500 ms. That is not
-// the same as rendering black, so it needs its own id.
+// Not a renderer at all. Stock's test mode 1 falls through to a hold when the
+// radio self test has no verdict yet: it delays 500 ms and writes NOTHING, so
+// the previous frame stays on the strip. That is not the same as rendering
+// black, so it needs its own id.
 #define PV_FX_HOLD         103
 
 // Warning Hot boundary, stated verbatim in the factory app's own copy:
 // the printer's maximum temperature crossing 50 C is the burn-risk line.
-// Warning Hot boundary, read out of the image at 0x400dc5da: movi.n a9, 50
-// then blt/bge. STRICT greater-than, on either temperature, and stock
-// compares the strtol'd INTEGER, so 50.9 is 50 and reads safe.
+// The comparison is a STRICT greater-than, on either temperature, and stock
+// compares the parsed INTEGER, so 50.9 is 50 and reads safe.
 #define PV_WARN_HOT_C     50
 
 #define PV_MODE_SIMPLE    0
@@ -419,9 +413,9 @@ typedef struct {
     int  printer_scan;
     // Printer telemetry driving H2D + warning modes and AUTO venting.
     int   device_state;          // PV_ST_*
-    // int, not float: stock parses these with strtol base 10 at 0x400d92cd,
-    // which stops at the decimal point. Zero at boot, because stock's report
-    // array is in .bss and nothing ever clears it.
+    // int, not float: stock parses these base 10 and stops at the decimal
+    // point. Zero at boot, because stock's report array is in .bss and
+    // nothing ever clears it.
     int bed_temp;
     int nozzle_temp;
     bool  vent_open;             // current vent target (all groups)
@@ -430,19 +424,18 @@ typedef struct {
     // "Automatically turns RGB effect ON and OFF following the printers
     // stock light."
     bool  printer_light;
-    // print_error, report key index 1. Stock feeds it to the classifier at
-    // 0x400d8fa4; see pv_bambu.c. Zero at boot because stock's report array is
-    // .bss and nothing ever clears it.
+    // print_error, report key index 1. Stock feeds it to its error
+    // classifier; see pv_bambu.c. Zero at boot because stock's report array
+    // is .bss and nothing ever clears it.
     int   print_error;
     // Whether the last report's hms array carried the one pair stock looks
-    // for at 0x400d900c.
+    // for.
     bool  hms_fault;
-    // gcode_state as stock stores it, at report base + 124 = 0x3ffb568c.
-    // 0 IDLE, 1 RUNNING, 2 PREPARE, 3 PAUSE, 4 FINISH, 5 FAILED (0x400d9300
-    // through 0x400d9379). This is the discriminant of the H2D state machine.
+    // gcode_state as stock stores it: 0 IDLE, 1 RUNNING, 2 PREPARE,
+    // 3 PAUSE, 4 FINISH, 5 FAILED. This is the discriminant of the H2D
+    // state machine.
     int   gcode_state;
-    // Report keys 4 and 3. Both are consumed, by the stage classifier at
-    // 0x400dc300 (0x3ffb5620 and 0x3ffb561c).
+    // Report keys 4 and 3. Both are consumed by the stage classifier.
     int   stg_cur;
     int   layer_num;
     // Filament in the active tray, as the printer names it ("PLA", "ABS",
@@ -563,11 +556,10 @@ void pv_apply_message(const char *json, int len);
 void pv_wifi_start(void);
 void pv_wifi_scan_start(void);
 // Whether the last completed scan saw an AP named "test1". Stock's factory
-// self-test at 0x400dc9e8 strcmps that name (string at 0x3f4039b8, strcmp is
-// ROM 0x40001274) against all 20 scan records at 0x3ffb63f8.
+// self-test compares that name against all 20 scan records.
 bool pv_wifi_saw_test_ap(void);
-// 0 idle, 1 scanning, 2 complete. Mirrors the word stock reads at 0x3ffb63f0
-// to pick blue / green / red in test mode 1.
+// 0 idle, 1 scanning, 2 complete. Mirrors the word stock reads to pick
+// blue / green / red in test mode 1.
 int  pv_wifi_test_scan_state(void);
 void pv_wifi_join(const char *ssid, const char *password);
 void pv_ap_apply(void);                             // reconfigure softAP now
@@ -628,17 +620,17 @@ typedef struct {
 } pv_cmd_ack_t;
 
 void pv_bambu_last_ack(pv_cmd_ack_t *out);
-// Whether the link layer has run once. Stock's equivalent is the init at
-// 0x400d9840, which is what first evaluates the level 3 indicator; until then
-// the word keeps the 2 the rgb task armed at 0x400dcabd.
+// Whether the link layer has run once. Stock's equivalent is its link init,
+// which is what first evaluates the level 3 indicator; until then the word
+// keeps the 2 the rgb task armed at boot.
 bool pv_bambu_started(void);
 
 // pv_rgb.c
 void pv_rgb_start(void);
 void pv_rgb_notify(void);                           // config/state changed
-// Stops the render task the way stock does: notification value 255 at
-// 0x400dcae5, all-off through 0x400ddf98, then the task returns. Used before
-// an OTA so the strip goes dark and RMT is released.
+// Stops the render task the way stock does: notification value 255, the
+// strip driven all-off, then the task returns. Used before an OTA so the
+// strip goes dark and RMT is released.
 void pv_rgb_stop(void);
 
 // NOT STOCK. LIVE PREVIEW: render a set of effect parameters right now, without
@@ -695,8 +687,8 @@ void pv_rgb_stats(pv_rgb_stats_t *out);
 // so a host test exercises resolve, the brightness ramp, the per-strip lengths
 // and the phase rewind between strips rather than just render_effect.
 // Declared in pv_rgb.c, where rgb_t lives; nothing else in the firmware calls it.
-// Advances stock's test mode, 0x400dc980. Registered as the SHORT click
-// handler for GPIO 0 at 0x400de965, so it ships on every unit.
+// Advances stock's test mode. Stock registers it as the SHORT click handler
+// for GPIO 0, so it ships on every unit.
 void pv_rgb_test_cycle(void);
 
 // pv_motor.c
@@ -729,9 +721,8 @@ int  pv_motor_get_mode(void);
 #define PV_RING_COUNT      5
 void pv_motor_manual_toggle(void);
 void pv_motor_update(void);                         // printer state changed
-// Any group latched in fault. Stock keeps four per-group bytes at 0x3ffb6958
-// and ORs them into 0x3ffb6954 at 0x400de524; that byte is what the rgb task
-// reads through 0x400de550 to raise the red strobe.
+// Any group latched in fault. Stock keeps four per-group bytes and ORs them
+// into one; that byte is what its rgb task reads to raise the red strobe.
 bool pv_motor_fault_any(void);
 
 // NOT STOCK. Whether the flap is travelling right now.

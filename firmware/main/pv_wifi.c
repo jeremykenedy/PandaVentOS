@@ -19,8 +19,7 @@ static const char *TAG = "pv_wifi";
 static esp_netif_t *s_sta_netif, *s_ap_netif;
 static bool s_ever_connected;
 // Stock's factory self test looks for this exact SSID among the 20 scan
-// records; the string lives at DROM 0x3f4039b8 and is compared with the ROM
-// strcmp at 0x40001274.
+// records, comparing the whole string.
 #define TEST_AP_SSID "test1"
 static bool s_saw_test_ap;
 // Kept separate from g_live.wifi_scan on purpose: that field is part of the
