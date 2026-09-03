@@ -14,4 +14,3 @@ Two more live beside the code they describe.
 | Document | Covers |
 | --- | --- |
 | [Safety](../firmware/SAFETY.md) | What will brick the device, and what will not |
-| [Protocol](../firmware/PROTOCOL.md) | Every WebSocket message shape, stock and added |

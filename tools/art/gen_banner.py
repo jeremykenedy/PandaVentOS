@@ -92,7 +92,7 @@ def build(p):
         stroke="{p['outline']}" stroke-width="1" opacity=".35"/>
 {panda(p, 56, 50, 1.16)}
   <text x="206" y="98" font-family="{FONT}" font-size="52" font-weight="700"
-        letter-spacing="-1" fill="{p['on_surface']}">PandaVent<tspan
+        letter-spacing="-1" fill="{p['on_surface']}">VentOS<tspan
         fill="{p['primary']}" font-weight="600"> OS</tspan></text>
   <text x="208" y="132" font-family="{FONT}" font-size="17" font-weight="400"
         letter-spacing=".2" fill="{p['on_surface_variant']}">Open firmware for the BIQU Panda Vent</text>

@@ -61,7 +61,7 @@ if [[ -n "$HOST" ]]; then
 
     mkdir -p "$BACKUP_DIR"
     STAMP="$(date +%Y%m%d-%H%M%S)"
-    OUT="$BACKUP_DIR/pandavent-$HOST-$STAMP-full-4MB.bin"
+    OUT="$BACKUP_DIR/ventos-$HOST-$STAMP-full-4MB.bin"
 
     say "Backing up the whole 4 MB over the network"
     info "this takes about twenty seconds"
@@ -131,7 +131,7 @@ fi
 # ---------------------------------------------------------------------------
 mkdir -p "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-OUT="$BACKUP_DIR/pandavent-$STAMP-full-4MB.bin"
+OUT="$BACKUP_DIR/ventos-$STAMP-full-4MB.bin"
 
 say "Backing up the whole 4 MB first"
 info "offset 0 to 0x400000: bootloader, partition table, otadata, both app"

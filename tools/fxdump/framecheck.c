@@ -89,7 +89,6 @@ static void setup(int fx, const char *open_hex, const char *closed_hex,
     pv_rgb_preview_cancel();
     fc_clock_us = 0;
     s_strips = 2;
-    s_test_entered = false;
     s_link_ind = 0;
     g_cfg.rgb.light_on = true;
     g_cfg.rgb.light_mode = PV_MODE_SIMPLE;

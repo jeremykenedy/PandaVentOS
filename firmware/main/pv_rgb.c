@@ -181,12 +181,6 @@ static esp_err_t strip_push(int i, const rgb_t *px, int n)
 }
 
 
-static rgb_t hex_to_rgb(const char *hex)
-{
-    unsigned v = 0;
-    sscanf(hex, "%6x", &v);
-    return (rgb_t){ (v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF };
-}
 
 
 // Render one effect into px[n]. speed 0..100.
@@ -480,10 +474,6 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
         // scaling, at a fixed 100 ms frame.
         for (int i = 0; i < n; ++i) px[i] = (rgb_t){127, 0, 0};
         return 100;
-
-    case PV_FX_HOLD:
-        // Leave px exactly as the last frame left it.
-        return 500;
 
     case PV_FX_FAULT_STROBE:
         // The motor-fault indicator: Strobing at fixed full brightness, so it
@@ -1044,42 +1034,9 @@ static uint32_t render_effect(int fx, rgb_t color, rgb_t bg, uint8_t bright100,
 // the link settles. The clone went straight to the configured effect.
 // ---------------------------------------------------------------------------
 
-// Level 1 state. 0x400dc980 is registered as the SHORT click handler for
-// GPIO 0 at 0x400de965 (the LONG press, 0x400de938, is the factory reset the
-// clone already implements), so these modes ship on every unit and are not
-// jig-only. s_test_entered is stock's latch byte at 0x3ffb68d8: once set it
-// is never cleared, so the vent stays in test mode until it is power cycled.
-static int  s_test_mode;        // 0x3ffb68d4, cycles 0 -> 1 -> 2 -> 3 -> 1
-static bool s_test_entered;     // 0x3ffb68d8
-
-// Level 3 state, stock's word at 0x3ffb6900. Armed to 2 by the render task
-// before its loop, then driven by 0x400d9840.
+// Level 3 state: armed to 2 by the render task before its loop, then driven by
+// the link layer's first evaluation.
 static int s_link_ind = 2;
-
-// Test mode 2 cycles these once a second, from the table at DROM 0x3f417070.
-static const rgb_t TEST_CYCLE[4] = {
-    {255, 0, 0}, {0, 255, 0}, {0, 0, 255}, {255, 255, 255},
-};
-
-void pv_rgb_test_cycle(void)
-{
-    if (s_test_mode == 0) {
-        // 0x400dc995: latch, then ask for a scan, then mode 1.
-        s_test_entered = true;
-        pv_wifi_scan_start();
-        s_test_mode = 1;
-    } else if (s_test_mode == 1) {
-        s_test_mode = 2;            // 0x400dc9af
-    } else if (s_test_mode == 2) {
-        s_test_mode = 3;            // 0x400dc9bc
-    } else {
-        // 0x400dc9c8: wrapping back to 1 re-requests the scan, the same way
-        // entering from 0 does.
-        pv_wifi_scan_start();
-        s_test_mode = 1;            // 0x400dc9ce
-    }
-    ESP_LOGI(TAG, "==================current_mode is %d", s_test_mode);
-}
 
 // Stock's level 3 evaluation, 0x400d986b onward.
 //
@@ -1249,53 +1206,10 @@ static bool resolve(int *fx, rgb_t *color, uint8_t *bright, uint8_t *speed,
 
     preview_tick();      // NOT STOCK, and above every early return by design
 
-    // ---- Level 1: factory test mode, gate at 0x400dcb2d ----
-    if (s_test_entered) {
-        if (s_test_mode == 1) {
-            // 0x400dc9e8. A radio self test: Static at brightness 100, blue
-            // while the scan runs, then green if an AP named "test1" is in
-            // range and red if it is not. With no verdict yet stock delays
-            // 500 ms at 0x400dcab0 and draws nothing at all.
-            *bright = 100; *speed = 0; *fx = PV_FX_STATIC;
-            if (pv_wifi_test_scan_state() == 1) {
-                *color = (rgb_t){0, 0, 255};
-            } else if (pv_wifi_test_scan_state() == 2) {
-                *color = pv_wifi_saw_test_ap() ? (rgb_t){0, 255, 0}
-                                               : (rgb_t){255, 0, 0};
-            } else {
-                *fx = PV_FX_HOLD;
-                *color = (rgb_t){0, 0, 0};
-            }
-            return true;
-        }
-        if (s_test_mode == 2) {
-            // 0x400dcb4a. One colour per second, red green blue white, timed
-            // off esp_timer_get_time against 999999 us at 0x400d0c88 and
-            // indexed by a counter masked to two bits at 0x400dcb7a.
-            static int64_t last_us;
-            static uint8_t idx;
-            int64_t now = esp_timer_get_time();
-            if (now - last_us > 999999) { last_us = now; idx = (idx + 1) & 3; }
-            *fx = PV_FX_STATIC; *bright = 100; *speed = 0;
-            *color = TEST_CYCLE[idx];
-            return true;
-        }
-        // mode 3 falls through to level 2, then straight to green, never to
-        // the gate chain. 0x400dcbc9.
-    }
-
     // ---- Level 2: motor fault, gate at 0x400dcc1c (0x400dcbcf in mode 3) ----
     if (pv_motor_fault_any()) {
         *fx = PV_FX_FAULT_STROBE;
         *color = (rgb_t){255, 0, 0};
-        *bright = 100; *speed = 0;
-        return true;
-    }
-
-    if (s_test_entered) {
-        // Test mode 3 tail, 0x400dcbf8: green link marquee, no gates.
-        *fx = PV_FX_LINK_MARQUEE;
-        *color = (rgb_t){0, 255, 0};
         *bright = 100; *speed = 0;
         return true;
     }
@@ -1535,11 +1449,8 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
     bright = ramp_apply(bright, on ? bright_end : -1);
     if (!on) memset(px, 0, sizeof(px));
     else     fx_phase_save(&phase);
-    // PV_FX_HOLD is stock's 0x400dcab0: it returns without reaching the
-    // shared refresh at 0x400dce68, so no RMT transaction is queued at
-    // all and the WS2812s simply hold their latched frame. Re-pushing an
-    // identical buffer would look the same but is a different instruction
-    // path and costs a transfer per frame, so skip it outright.
+    // Nothing skips the push any more. The one effect that did was the test
+    // mode's hold, removed 2026-09-03 with the mode itself.
     // NOT STOCK. One run, or two.
     //
     // The strips are separate outputs and every effect renders on each of them
@@ -1568,7 +1479,7 @@ uint32_t pv_rgb_render_frame(rgb_t out[][PV_LEDS_PER_STRIP], bool push)
         }
     }
 
-    if (fx != PV_FX_HOLD) {
+    {
         int taken = 0;
         for (int s = 0; s < s_strips; ++s) {
             int n = g_cfg.leds[s];

@@ -2,7 +2,7 @@
 // VentOS: a from-scratch re-creation of the BIQU Panda Vent factory
 // application. The contract is the FACTORY web UI (served byte-exact from
 // this firmware) and the factory WebSocket protocol captured from a running
-// stock device; see PROTOCOL.md. Anything the factory app does, this app
+// stock device. Anything the factory app does, this app
 // does, before anything new is added.
 
 #include <stdbool.h>
@@ -116,11 +116,6 @@
 #define PV_FX_FAULT_STROBE 101
 #define PV_FX_LINK_MARQUEE 102
 
-// Not a renderer at all. Stock's test mode 1 falls through to a hold when the
-// radio self test has no verdict yet: it delays 500 ms and writes NOTHING, so
-// the previous frame stays on the strip. That is not the same as rendering
-// black, so it needs its own id.
-#define PV_FX_HOLD         103
 
 // Warning Hot boundary, stated verbatim in the factory app's own copy:
 // the printer's maximum temperature crossing 50 C is the burn-risk line.
@@ -370,6 +365,15 @@ extern pv_policy_cfg_t g_pol;
 // -DPV_FXDUMP=1 at configure time.
 #ifndef PV_FXDUMP
 #define PV_FXDUMP 0
+#endif
+
+// TEST BUILD ONLY. Logs every transition of both buttons, and the idle level
+// of each at the first poll after boot. Kept SEPARATE from PV_FXDUMP on
+// purpose: the frame dump writes two lines per frame and turns the 64-line log
+// ring over in about eleven seconds, which evicts button events before they
+// can be read. Enable one or the other, not both.
+#ifndef PV_BTNDUMP
+#define PV_BTNDUMP 0
 #endif
 #if PV_POLICY_TEST_HOOK
 extern bool g_test_live_lock;
@@ -703,9 +707,6 @@ void pv_rgb_stats(pv_rgb_stats_t *out);
 // so a host test exercises resolve, the brightness ramp, the per-strip lengths
 // and the phase rewind between strips rather than just render_effect.
 // Declared in pv_rgb.c, where rgb_t lives; nothing else in the firmware calls it.
-// Advances stock's test mode. Stock registers it as the SHORT click handler
-// for GPIO 0, so it ships on every unit.
-void pv_rgb_test_cycle(void);
 
 // pv_motor.c
 void pv_motor_start(void);

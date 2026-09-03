@@ -644,8 +644,8 @@ static void button_task(void *arg)
     // They also debounce by re-reading the level after a yield before
     // accepting an edge.
     int user_held = 0, boot_held = 0, blink = 0;
-    int user_released_ms = 0, boot_released_ms = 0;
-    bool user_pending_click = false, boot_pending_click = false;
+    int user_released_ms = 0;
+    bool user_pending_click = false;
     bool user_armed = false, boot_armed = false;
 
     for (;; vTaskDelay(pdMS_TO_TICKS(PV_BTN_POLL_MS))) {
@@ -657,6 +657,24 @@ static void button_task(void *arg)
 
         bool user_down = gpio_get_level(PV_PIN_USER_BUTTON) == 0;
         bool boot_down = gpio_get_level(PV_PIN_BOOT_BUTTON) == 0;
+
+#if PV_BTNDUMP
+        // TEST BUILD ONLY. Every transition of either button, so that "nothing
+        // happened" can be told apart from "the press was seen but the click
+        // window rejected it". A press that never appears here did not reach
+        // the poll at all.
+        {
+            static int last_u = -1, last_b = -1;   /* -1 so the first poll prints the idle level */
+            if ((int)user_down != last_u) {
+                ESP_LOGW(TAG, "BTN user(gpio%d) %s", PV_PIN_USER_BUTTON, user_down ? "DOWN" : "up");
+                last_u = user_down;
+            }
+            if ((int)boot_down != last_b) {
+                ESP_LOGW(TAG, "BTN boot(gpio%d) %s", PV_PIN_BOOT_BUTTON, boot_down ? "DOWN" : "up");
+                last_b = boot_down;
+            }
+        }
+#endif
 
         if (!user_down) user_armed = true;      // seen released: real button
         if (!boot_down) boot_armed = true;
@@ -691,34 +709,20 @@ static void button_task(void *arg)
             }
         }
 
+        // GPIO 0 carries only the factory reset now. The short click that
+        // entered the test mode was removed 2026-09-03: this hardware has no
+        // switch on the pin, so the mode could never be entered, never
+        // observed and therefore never specified. See
+        // private/SPEC/rgb-levels.md 8c and PROVENANCE-AUDIT.md.
         if (boot_armed) {
             if (boot_down) {
                 boot_held += PV_BTN_POLL_MS;
-                boot_released_ms = 0;
                 if (boot_held > PV_BTN_LONG_MS) {
-                    // ctx[8], 0x400de938, dispatched at 0x400df035 once the
-                    // hold passes the 0xbb7 literal.
-                    boot_held = -1000000;
-                    boot_pending_click = false;
+                    boot_held = -1000000;      // once only, until released
                     pv_factory_reset_and_reboot();
                 }
             } else {
-                if (boot_held > 0) {
-                    boot_pending_click = true;
-                    boot_released_ms = 0;
-                }
                 boot_held = 0;
-                // ctx[4], 0x400dc980, dispatched at 0x400df06x after the same
-                // 300 ms quiet window the user button uses.
-                if (boot_pending_click) {
-                    boot_released_ms += PV_BTN_POLL_MS;
-                    if (boot_released_ms > PV_BTN_CLICK_SETTLE_MS) {
-                        ESP_LOGI(TAG, "boot click: test mode");
-                        pv_rgb_test_cycle();
-                        boot_pending_click = false;
-                        boot_released_ms = 0;
-                    }
-                }
             }
         }
     }

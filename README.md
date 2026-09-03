@@ -343,7 +343,6 @@ Every setting, what it does, and why it is there.
 | [`docs/backup.md`](docs/backup.md) | Full image, settings snapshot, restore, going back to stock |
 | [`docs/troubleshooting.md`](docs/troubleshooting.md) | It does not do the thing. Start here |
 | [`firmware/SAFETY.md`](firmware/SAFETY.md) | What will brick the device, and what will not |
-| [`firmware/PROTOCOL.md`](firmware/PROTOCOL.md) | Every WebSocket message shape, stock and added |
 
 ## Project Layout
 

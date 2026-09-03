@@ -135,4 +135,3 @@ and `firmware/SAFETY.md` says so in more detail.
 
 - [`venting.md`](venting.md) for what the vent does with the filament type
 - [`lighting.md`](lighting.md) for the effects the printer state selects
-- [`../firmware/PROTOCOL.md`](../firmware/PROTOCOL.md) for the exact message shapes

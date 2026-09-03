@@ -82,3 +82,14 @@ if(DEFINED ENV{PV_FXDUMP})
     target_compile_definitions(${COMPONENT_LIB} PRIVATE PV_FXDUMP=1)
     message(WARNING "PV_FXDUMP is ON: this is a TEST image, do not ship it")
 endif()
+
+# Test-only button logging, separate from the frame dump because the two fight
+# over the 64-line log ring:
+#
+#   PV_BTNDUMP=1 idf.py fullclean build
+#
+#   strings build/ventos.bin | grep -c "BTN user"            -> 0 when shipping
+if(DEFINED ENV{PV_BTNDUMP})
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE PV_BTNDUMP=1)
+    message(WARNING "PV_BTNDUMP is ON: this is a TEST image, do not ship it")
+endif()

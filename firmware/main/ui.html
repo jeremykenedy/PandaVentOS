@@ -370,11 +370,11 @@ svg.sprite { display: none; }
 #id_airflow.is-moving .vent-dial > .arc {
   border-block-start-color: var(--primary);
   border-inline-end-color: var(--primary);
-  animation: c_vent_spin 1.15s linear infinite;
+  animation: vo_vent_spin 1.15s linear infinite;
   transition: none;
 }
 
-@keyframes c_vent_spin {
+@keyframes vo_vent_spin {
   from { transform: rotate(-45deg); }
   to   { transform: rotate(315deg); }
 }
@@ -383,7 +383,7 @@ svg.sprite { display: none; }
    "no animation at all" is the wrong thing to show somebody waiting to find
    out whether their tap did anything. It breathes instead: same message,
    no rotation. */
-@keyframes c_vent_breathe {
+@keyframes vo_vent_breathe {
   0%, 100% { opacity: 1; }
   50%      { opacity: 0.45; }
 }
@@ -392,7 +392,7 @@ svg.sprite { display: none; }
   .vent-dial > .arc,
   #id_airflow.is-open .vent-dial > .arc { transition: none; animation: none; }
   #id_airflow.is-moving .vent-dial > .arc {
-    animation: c_vent_breathe 1.6s ease-in-out infinite;
+    animation: vo_vent_breathe 1.6s ease-in-out infinite;
   }
 }
 
@@ -842,9 +842,9 @@ input[type="range"]:active { cursor: grabbing; }
 /* Centred on the BAR, not between its neighbours. Laid out in the flex row
    it would sit wherever the device name and the state pill left room, and
    would slide sideways every time the pill grew a percentage. */
-.c_top_bar_row { position: relative; }
+.vo_top_bar_row { position: relative; }
 
-.c_top_brand {
+.vo_top_brand {
   position: absolute;
   inset-inline-start: 50%;
   transform: translateX(-50%);
@@ -864,7 +864,7 @@ input[type="range"]:active { cursor: grabbing; }
    Written against the row rather than the element, because Beer's
    `:is(nav,.row)>:not(header,footer)` sets white-space:normal and
    flex:none on every child of a nav, and it scores (0,1,1). */
-.c_top_bar_row > .c_top_name {
+.vo_top_bar_row > .vo_top_name {
   font-size: 0.8125rem;
   font-weight: 400;
   min-inline-size: 0;
@@ -877,13 +877,13 @@ input[type="range"]:active { cursor: grabbing; }
 /* The wordmark only appears from 600px up (Beer's `m l`), so only there
    does the name have to stop short of it. On a phone it has the bar. */
 @media only screen and (min-width: 601px) {
-  .c_top_bar_row > .c_top_name { max-inline-size: calc(50% - 8rem); }
+  .vo_top_bar_row > .vo_top_name { max-inline-size: calc(50% - 8rem); }
 }
 
 /* What the printer is doing, as a printer rather than a dot. state_show()
    REPLACES the element's class list, so the Beer sizing classes cannot
-   live on it: `.c_top_dot` carries the size as well as the colour. */
-.c_top_dot {
+   live on it: `.vo_top_dot` carries the size as well as the colour. */
+.vo_top_dot {
   inline-size: 1.125rem;
   block-size: 1.125rem;
   flex: 0 0 auto;
@@ -894,12 +894,12 @@ input[type="range"]:active { cursor: grabbing; }
   color: var(--on-surface-variant);
 }
 
-.c_top_dot.is-run  { color: var(--primary); }
-.c_top_dot.is-wait { color: var(--tertiary); }
-.c_top_dot.is-err  { color: var(--error); }
+.vo_top_dot.is-run  { color: var(--primary); }
+.vo_top_dot.is-wait { color: var(--tertiary); }
+.vo_top_dot.is-err  { color: var(--error); }
 /* Idle is the one state where nothing is happening, and it says so by
    receding rather than by taking a colour of its own. */
-.c_top_dot.is-idle { color: var(--on-surface-variant); opacity: 0.55; }
+.vo_top_dot.is-idle { color: var(--on-surface-variant); opacity: 0.55; }
 
 /* The pill goes to Status. On Status there is nowhere to go, so it stops
    being a control -- and "nothing to do here" is the plain arrow, not the
@@ -913,7 +913,7 @@ input[type="range"]:active { cursor: grabbing; }
    2.74:1 on the Status page, which is the page the app opens on. */
 #id_top_pill:disabled { opacity: 1; }
 
-.c_top_mark {
+.vo_top_mark {
   inline-size: 1.75rem;
   block-size: 1.75rem;
   flex: 0 0 auto;
@@ -922,7 +922,7 @@ input[type="range"]:active { cursor: grabbing; }
 /* The theme toggle: a compact icon button on the right of the bar. Sized
    down from Beer's default circle so it sits with the state pill rather
    than towering over it, and its icon takes the theme's own colour. */
-.c_top_theme {
+.vo_top_theme {
   inline-size: 2.25rem;
   block-size: 2.25rem;
   min-inline-size: 2.25rem;
@@ -930,21 +930,21 @@ input[type="range"]:active { cursor: grabbing; }
   flex: 0 0 auto;
   color: var(--on-surface-variant);
 }
-.c_top_theme:hover { color: var(--on-surface); background: var(--surface-container-highest); }
+.vo_top_theme:hover { color: var(--on-surface); background: var(--surface-container-highest); }
 
-.c_mark_dark  { display: block; }
-.c_mark_light { display: none; }
+.vo_mark_dark  { display: block; }
+.vo_mark_light { display: none; }
 
-body.light .c_mark_dark  { display: none; }
-body.light .c_mark_light { display: block; }
+body.light .vo_mark_dark  { display: none; }
+body.light .vo_mark_light { display: block; }
 
 @media (prefers-color-scheme: light) {
-  body:not(.dark) .c_mark_dark  { display: none; }
-  body:not(.dark) .c_mark_light { display: block; }
+  body:not(.dark) .vo_mark_dark  { display: none; }
+  body:not(.dark) .vo_mark_light { display: block; }
 }
 
-body.dark .c_mark_dark  { display: block; }
-body.dark .c_mark_light { display: none; }
+body.dark .vo_mark_dark  { display: block; }
+body.dark .vo_mark_light { display: none; }
 
 
 /* ── 20  The release line ───────────────────────────────────────────────
@@ -953,7 +953,7 @@ body.dark .c_mark_light { display: none; }
    at the content's own left edge on every page. Only the breathing room
    and the fact that it is quiet are decided here.
    ────────────────────────────────────────────────────────────────────── */
-footer.c_version {
+footer.vo_version {
   /* The `responsive` class in the markup caps and centres this footer exactly
      the way it caps and centres main -- fill the area, cap at 75rem, centre
      the rest -- so the two share a left edge. All that is left here is the
@@ -975,12 +975,12 @@ footer.c_version {
 /* The name and the number are two elements so the JS can write each one
    without taking the other out, and the space between them has to survive
    being laid out: `VentOSv0.1.0` was one collapsed whitespace node. */
-footer.c_version > a {
+footer.vo_version > a {
   display: inline-flex;
   gap: 0.3rem;
   text-decoration: none;
 }
-footer.c_version > a:hover { text-decoration: underline; }
+footer.vo_version > a:hover { text-decoration: underline; }
 
 
 /* ── 21  The RTSP address ───────────────────────────────────────────────
@@ -999,7 +999,7 @@ footer.c_version > a:hover { text-decoration: underline; }
    state document lands, and it has to be ABOVE the fixed top bar rather
    than under it: the whole point is that it is the first thing seen.
    ────────────────────────────────────────────────────────────────────── */
-.c_waiting_note {
+.vo_waiting_note {
   display: none;
   position: fixed;
   inset-block-start: 0;
@@ -1012,7 +1012,7 @@ footer.c_version > a:hover { text-decoration: underline; }
   border-block-end: 1px solid var(--outline-variant);
 }
 
-body.is-waiting .c_waiting_note { display: flex; align-items: center; gap: 0.75rem; }
+body.is-waiting .vo_waiting_note { display: flex; align-items: center; gap: 0.75rem; }
 
 /* And the controls that cannot do anything yet say so by receding, rather
    than by accepting a tap and dropping it. */
@@ -1499,8 +1499,8 @@ nav.bottom a.active > svg.i {
 .note-btn { position: relative; }
 .note-btn::before { content: ''; position: absolute; inset: -0.625rem; border-radius: 50%; }
 
-.c_top_theme { position: relative; }
-.c_top_theme::before { content: ''; position: absolute; inset: -0.25rem; }
+.vo_top_theme { position: relative; }
+.vo_top_theme::before { content: ''; position: absolute; inset: -0.25rem; }
 
 /* Beer already positions a field's trailing control absolutely against the
    field. Adding `position: relative` here beat that rule on specificity and
@@ -1627,8 +1627,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
      said in a way you can read from across the room.
      ══════════════════════════════════════════════════════════════════ -->
 <header class="fixed surface-container" id="id_top_bar">
-  <nav class="c_top_bar_row">
-    <span class="small-text c_top_name" id="id_top_name"></span>
+  <nav class="vo_top_bar_row">
+    <span class="small-text vo_top_name" id="id_top_name"></span>
     <span class="max"></span>
 
     <!-- The product, in the middle. The left of the bar carries whatever
@@ -1642,9 +1642,9 @@ body.is-waiting .waiting-hide { visibility: hidden; }
          Two marks, one per theme, both always in the DOM: swapping a src
          would refetch, and a data: URL that has already been decoded is
          cheaper to hide than to decode again. -->
-    <span class="c_top_brand l" id="id_top_brand">
-      <img class="c_top_mark c_mark_light" id="id_top_mark" alt="" src="data:image/png;base64,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">
-      <img class="c_top_mark c_mark_dark" id="id_top_mark_dark" alt="" src="data:image/png;base64,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">
+    <span class="vo_top_brand l" id="id_top_brand">
+      <img class="vo_top_mark vo_mark_light" id="id_top_mark" alt="" src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAMAAABiM0N1AAAAwFBMVEXkbZjcq6vv7+xuaWjb2dVjYmBEKyesqqrr09KjopwoGBWsqKAMDAxYWFdtbGquqaEpKShdNkWOY3AyMjJCQD7FwbjHw7jBuq7IxLbW1c/Xs67luMpAQD+qqlWBgH6KhH///wDi4rFVVQCqVVW5xbm/wL//AAD//38AAAD5+fkEBAT+/v64tazW1tUqJyfq5+YWFhauq6SYlpVKSEc4Nzb7+/jIyMf6+vlYV1aKiIYuGBR/f39pZmX5+fg3Ihz7+vp0uPY6AAAAQHRSTlP//VnwHaD/Fvxc8pt4DGTrqf//DPjtnKFZkxn/kANj/wEcAwMW/wECAP7+BP7+/P79/v7+/Cv/i/z+/wL+qv/S3McPAwAABY1JREFUeNqNmIeWsjoQgKWIorvqFrfdv94aCASQImB7/7e6kwklYEDnnD2yZviYkpkMTogkdJXHyetiqcOl+AKkXpOuyWyavybxZkXbeyfN1YzYCxclTGwKpPpGkyPMivaL/EvpNKwUDZteg0i9DMKmwiaq7/cnB+V00nX8ChQbPTexyWMPRFeuJOEPsESvGK3s9Rkh32RFNiOHLmjG5HU30fWLo5CLbp87ig8912hlL3t6ws88cAbEj/l6+fQUKkAHQnHZfZ6ALFzmOSOyc90nrmddg74THT2z+PrkedgcIVmMepNQYdFb2Bg00ZyboqHikwIkLDL48h+OcyfpGgS7D0HlvRxBGskae76Tw0mWCkQeRTbjezlOIDbepgsC3wzc0cHdIMfDG+oaaWst3cD3UfM8bxdl11b4UZQ1zzoCZ1pViFy0EKbasd0rOsqMjoGBgd6EefW4IGQrRfUD+dFHhagtu3ArudJ2h0QYO9dV/QgaUorLRqcN+M127tTqDiuYvqj6ESX7ynOBYN00CrdYKJN0qgSZF1GRaLwHkcVCrkIe4c4PGgWX1/WJKEAUPascYIFztI4BJxVNilwji61CpB1VnIvZmCSDdNDPhVbkvC5KN+fYowABk2VlWbrPjug4+ISUqEB7nlGhFGSudbZKj8mgY7Fg5/IsvATvx0CVThhEJQPQLqmiiqYax/IMElTuh3OI9hCojqSfLSwmLMqatnjcgZnnc6sEp8EtUOFYbukannAAW3Xohh5bSDEaBulOnRHX/cf5aRQ+wywHvh/gPs39o7FuHsYLXB2jtA022OT7EYY6iq2ytIyM78jY8/16w+JWpar0U3rp1QdXztzybFnnRcKd6wjYevoaLpGky3H80uJSwmXWIeXDJYJbO5BIBo9ysQCLypInb553OY6pKpGmagtRrWFeJ/68WCR1xVUZS3B37f+kRAmiad0di8ILREvkhuywkwmWD2s7cSlVWhdUlRu/fz6vdg96p/H//LxulPOqb7bbug+CBZxkNJCKZPDSLHm9wQ4SbbFe7HD6IEqBFHCQVj02z4t4bRhF/FyfZ1z6jvVBFWneWuQ42x3ESds1LbdeNDsG9UGwODtJYVCejDyAeo9zBSJ0RtSzWnduIz3ONYhrmKdxzn5G6IHcAolpdgS1N4lCrkDwpNXUhpl2rx5GPwHzw7BvguCUhHk7nJp8PN6fOrALjNrw/WwDCg83QFC4opGwb+gATYG2R0lTDC/HcJnWk/rAzqZG00FOetrLDGBPTVd6GLGINuN2fbif9npaCbxNXJz25HPDVcemDug7tZve5Y9M2dVRaw5ZdCBp09WSwez7bd+jRNlGZMfq81UlzcM6zsnzEdWT7vyjlrhR2gzFSHoRi4ZB7UEDk+hBNfqli85ZczPaGKVr0AtZSq9s2V2gOG1MkkHSu+idFrFPJWjZHzZvxchlOhRnH/QXkZJWD3zjWXM3yn10oMtXfMMOR99J8B0kx0JJZqqs8Q2pT42pTXnywsFo41C3pKvpdGUSOtpqMVbFQPsPuC3s7xuNbYZ/2EpYpirbIMBRbCViTG81f/wNIMY5rVewPh/i5H04BoKof2JA/R4qyPyMJ3aTkvtAEPVX8RoB0yPAUPBKvDdtyJ2gR1L3tzzykcBl7nt5/XNHsw3HQXIbYMci8kCi4tj2oWWv8Q8ckL8fD1N3VF7Iyxe9BaK9xhSG3U8uNuknX2WR+fH+JrecCGY9mPa8dhBl3vL9wxwdIujBfOcR0Zq72Br+0zzN81r4T67ibX+Tw8gBaWoYWu+YMJAkXnuRkLW3ixl+V3g8/Jr3Rf4bde3jbQt3a1uwg98ADK/+iLh1W/hYr5cf5niwf+FUY9r259ty6VWICuZp6+Xy/c2e6WY1t0jyP2ObH0WLwPq1AAAAAElFTkSuQmCC">
+      <img class="vo_top_mark vo_mark_dark" id="id_top_mark_dark" alt="" src="data:image/png;base64,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">
       <span>VentOS</span>
     </span>
 
@@ -1657,7 +1657,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
     <!-- The one-tap theme cycle: auto, light, dark. Its icon says which is
          active, so it is a readout as much as a control. Sits after the
          pill, on the right, on every width. -->
-    <button class="circle transparent c_top_theme" id="id_top_theme"
+    <button class="circle transparent vo_top_theme" id="id_top_theme"
             title="Theme" data-str-title="ui_theme">
       <svg class="i" id="id_top_theme_icon"><use href="#i-theme"/></svg>
     </button>
@@ -3027,10 +3027,10 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 <!-- The release the running firmware came from, under the content on every
      page. It is a link, because the first thing anyone wants after reading
      a version is the notes that go with it. -->
-<footer class="c_version responsive max">
+<footer class="vo_version responsive max">
   <a class="small-text" id="id_version_badge"
      href="https://github.com/jeremykenedy/VentOS/releases" target="_blank" rel="noopener">
-    <span class="c_version_name">VentOS</span> <span id="id_version_num"></span>
+    <span class="vo_version_name">VentOS</span> <span id="id_version_num"></span>
   </a>
 </footer>
 
@@ -3046,7 +3046,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
      lands. Every light control is inert until then -- see the ws_push
      guard -- and a page full of controls that quietly do nothing is worse
      than a page that says why. -->
-<div class="banner c_waiting_note" id="id_waiting_note">
+<div class="banner vo_waiting_note" id="id_waiting_note">
   <progress class="circle small"></progress>
   <span class="max" data-str="waiting_for_device">Waiting for the vent to say what it is doing.</span>
 </div>
@@ -7352,9 +7352,9 @@ window.g_anim = g_anim;
 
    Attestation, written 2026-09-02 and deliberately not backdated.
 
-   This module was authored BEFORE the "ui-legacy.html closed" mandate was
-   stated for modules 2-10, and ui-legacy.html was still in the working tree
-   at the time. So unlike its siblings it cannot carry their line, "no vendor
+   [provenance-note] This module was authored BEFORE the "ui-legacy.html
+   [provenance-note] closed" mandate was stated for modules 2-10, and
+   [provenance-note] ui-legacy.html was still in the working tree at the time. So unlike its siblings it cannot carry their line, "no vendor
    source opened": the discipline was not yet in place to attest to, and this
    file says so rather than implying otherwise.
 
@@ -7598,7 +7598,7 @@ var g_current_card = null;
 
 function chrome_nodes() {
   return [byId('id_top_bar'), byId('id_nav'),
-  document.querySelector('nav.bottom'), document.querySelector('footer.c_version')];
+  document.querySelector('nav.bottom'), document.querySelector('footer.vo_version')];
 }
 
 /* Show the app chrome and hide every setup page. */
@@ -7988,14 +7988,14 @@ function render_chrome() {
   var dot = byId('id_top_dot');
   var st = vp.device_state;
   if (!g_have_first_state) {
-    if (dot) dot.setAttribute('class', 'c_top_dot');
+    if (dot) dot.setAttribute('class', 'vo_top_dot');
     setText('id_top_state', tr('waiting_for_device', "Waiting for the vent. These controls are showing placeholders until it answers, so they are inactive for a moment."));
     setHidden('id_top_pct', true);
     setHidden('id_top_prog', true);
     setHidden('id_top_prog_fill', true);
   } else {
     var cls = (isNum(st) && st >= 0 && st <= 5) ? TOP_DOT_CLASS[st] : 'is-idle';
-    if (dot) dot.setAttribute('class', 'c_top_dot ' + cls);
+    if (dot) dot.setAttribute('class', 'vo_top_dot ' + cls);
     setText('id_top_state', device_state_name(st) || tr('waiting_for_device', "Waiting for the vent. These controls are showing placeholders until it answers, so they are inactive for a moment."));
 
     var pct = vp.print_percent;
@@ -8020,7 +8020,7 @@ function render_chrome() {
   /* Version badge */
   if (s.os_version) setText('id_version_num', 'v' + s.os_version);
   else if (s.fw_version) setText('id_version_num', s.fw_version);
-  var vname = document.querySelector('#id_version_badge .c_version_name');
+  var vname = document.querySelector('#id_version_badge .vo_version_name');
   if (vname) vname.textContent = s.os_name || 'VentOS';
   var badge = byId('id_version_badge');
   if (badge && (s.os_name || s.os_version)) {
