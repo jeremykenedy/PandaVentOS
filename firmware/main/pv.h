@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>   // size_t, used in the declarations below
 #include "esp_err.h"
 
 // ---------------------------------------------------------------------------
