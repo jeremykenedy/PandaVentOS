@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# VentOS installer.
+# PandaVentOS installer.
 #
 # Takes a full 4 MB backup of your device FIRST, verifies it, and only then
 # writes anything. The backup is not optional and there is no flag to skip it:
@@ -52,7 +52,7 @@ done
 # ---------------------------------------------------------------------------
 if [[ -n "$HOST" ]]; then
     command -v curl >/dev/null || die "curl not found"
-    [[ -n "$IMAGE" ]] || IMAGE="$ROOT/firmware/build/ventos.bin"
+    [[ -n "$IMAGE" ]] || IMAGE="$ROOT/firmware/build/pandaventos.bin"
     [[ -f "$IMAGE" ]] || die "no image at $IMAGE. Build first, or pass --image"
 
     say "Reaching the device"
@@ -61,7 +61,7 @@ if [[ -n "$HOST" ]]; then
 
     mkdir -p "$BACKUP_DIR"
     STAMP="$(date +%Y%m%d-%H%M%S)"
-    OUT="$BACKUP_DIR/ventos-$HOST-$STAMP-full-4MB.bin"
+    OUT="$BACKUP_DIR/pandaventos-$HOST-$STAMP-full-4MB.bin"
 
     say "Backing up the whole 4 MB over the network"
     info "this takes about twenty seconds"
@@ -131,7 +131,7 @@ fi
 # ---------------------------------------------------------------------------
 mkdir -p "$BACKUP_DIR"
 STAMP="$(date +%Y%m%d-%H%M%S)"
-OUT="$BACKUP_DIR/ventos-$STAMP-full-4MB.bin"
+OUT="$BACKUP_DIR/pandaventos-$STAMP-full-4MB.bin"
 
 say "Backing up the whole 4 MB first"
 info "offset 0 to 0x400000: bootloader, partition table, otadata, both app"
@@ -160,7 +160,7 @@ printf '  \033[1;33mkeep it somewhere private. Never commit it, never post it.\0
 # Build, if we are not given an image.
 # ---------------------------------------------------------------------------
 if [[ -z "$IMAGE" ]]; then
-    IMAGE="$ROOT/firmware/build/ventos.bin"
+    IMAGE="$ROOT/firmware/build/pandaventos.bin"
     say "Building"
     command -v idf.py >/dev/null || die "idf.py not found. Source ESP-IDF v5.3.1's export.sh, or pass --image"
     ( cd "$ROOT/firmware" && idf.py build ) || die "build failed. Your device is untouched and your backup is at $OUT"

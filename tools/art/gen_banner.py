@@ -86,13 +86,13 @@ def leds(p, x, y, gap, rr):
 def build(p):
     W, H = 880, 215
     return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}"
-     viewBox="0 0 {W} {H}" role="img" aria-label="VentOS">
+     viewBox="0 0 {W} {H}" role="img" aria-label="PandaVentOS">
   <rect width="{W}" height="{H}" rx="28" fill="{p['surface']}"/>
   <rect x="1" y="1" width="{W - 2}" height="{H - 2}" rx="27" fill="none"
         stroke="{p['outline']}" stroke-width="1" opacity=".35"/>
 {panda(p, 56, 50, 1.16)}
   <text x="206" y="98" font-family="{FONT}" font-size="52" font-weight="700"
-        letter-spacing="-1" fill="{p['on_surface']}">VentOS<tspan
+        letter-spacing="-1" fill="{p['on_surface']}">PandaVent<tspan
         fill="{p['primary']}" font-weight="600"> OS</tspan></text>
   <text x="208" y="132" font-family="{FONT}" font-size="17" font-weight="400"
         letter-spacing=".2" fill="{p['on_surface_variant']}">Open firmware for the BIQU Panda Vent</text>

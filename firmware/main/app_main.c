@@ -1,4 +1,4 @@
-// VentOS bring-up.
+// PandaVentOS bring-up.
 //
 // TWO RULES THIS FILE EXISTS TO ENFORCE, both learned the hard way:
 //
@@ -27,7 +27,7 @@
 #include "nvs.h"
 #include "nvs_flash.h"
 
-static const char *TAG = "ventos";
+static const char *TAG = "pandaventos";
 
 // How long a fresh image gets to prove itself before we let the bootloader
 // roll it back. Generous: a cold Wi-Fi join with a slow AP can take ~30 s.

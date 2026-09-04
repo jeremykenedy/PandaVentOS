@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# VentOS restorer. Puts the device back the way it was.
+# PandaVentOS restorer. Puts the device back the way it was.
 #
 # Three different things people mean by "restore", and they need different
 # tools, so pick the one that matches what went wrong.

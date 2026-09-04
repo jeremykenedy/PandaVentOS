@@ -324,9 +324,17 @@ static bool error_now(void)
    PRINTING. That is recorded as a decision, not left as a gap.
    =========================================================================== */
 
-/* stg_cur values that mean the printer is preparing rather than printing. */
+/* stg_cur values that mean the printer is preparing rather than printing.
+ *
+ * 75 was added 2026-09-04 from the state logger. It appeared once, for 22
+ * seconds, in the middle of a preparation sequence -- between 11 and 4, at
+ * layer 0 and 0 percent, with every stage on both sides of it preparing --
+ * and fell through to the PRINTING default, so the strip ran the printing
+ * effect while the printer was still getting ready. The default is still the
+ * right default for a code nobody has seen; 75 is no longer one of those.
+ * See private/observations/MEASUREMENT.md. */
 static const uint8_t PREPARE_STAGES[] = {
-    1, 2, 3, 7, 8, 11, 13, 14, 19, 24, 29, 39, 51, 54,
+    1, 2, 3, 7, 8, 11, 13, 14, 19, 24, 29, 39, 51, 54, 75,
 };
 
 /* These two mean preparing only while no layer has been laid down yet. */
@@ -350,11 +358,21 @@ static bool in_list(const uint8_t *set, size_t n, int v)
    Specified by private/SPEC/printer-states.md: `stg_cur` is the printer's own
    stage code and `layer_num` its current layer, and the two together say
    whether a job that is RUNNING is still getting ready or actually laying
-   plastic down. -1 means the printer has not reported a stage yet, which is
-   the earliest part of getting ready. */
+   plastic down.
+
+   -1 means the printer reported no stage on this frame. It was read here as
+   "has not started yet", which is only half of when it happens: the logger
+   caught -1 at layer 231 and 99 percent, still RUNNING, as a job wound down,
+   and the vent went back to showing Preparation with one layer left to go.
+   It is the same situation as 255 three lines below and gets the same answer,
+   which is to ask the layer. Nothing has been laid down at layer 0; something
+   has by layer 231. Both observed -1 samples that reach this function come out
+   right that way, and the stale-layer case cannot reach it at all -- a job
+   starting is gcode_state PREPARE, which returns above without asking. */
 static int stage_split(int stg, int layer)
 {
-    if (stg < 0) return PV_ST_PREPARE;
+    if (stg < 0)                          /* no stage reported on this frame */
+        return layer ? PV_ST_PRINTING : PV_ST_PREPARE;
     if (in_list(PREPARE_STAGES, sizeof PREPARE_STAGES, stg))
         return PV_ST_PREPARE;
     if (in_list(PREPARE_STAGES_IF_NO_LAYER, sizeof PREPARE_STAGES_IF_NO_LAYER, stg))

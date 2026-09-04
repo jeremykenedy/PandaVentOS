@@ -2,7 +2,7 @@
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="screenshots/banner-dark.svg">
         <source media="(prefers-color-scheme: light)" srcset="screenshots/banner-light.svg">
-        <img src="screenshots/banner-light.svg" alt="VentOS" width="820">
+        <img src="screenshots/banner-light.svg" alt="PandaVentOS" width="820">
     </picture>
 </p>
 
@@ -12,13 +12,13 @@ plus many more to truly customize your vent system. 24 languages supported.
 </p>
 
 <p align="center">
-<sub>VentOS is not affiliated with, endorsed by, or supported by BIQU or BIGTREETECH.<br>
+<sub>PandaVentOS is not affiliated with, endorsed by, or supported by BIQU or BIGTREETECH.<br>
 It is a reimplementation, not a modification of their firmware. "Panda Vent" is used only to name the hardware it runs on.</sub>
 </p>
 
 <p align="center">
-    <a href="https://github.com/jeremykenedy/VentOS/actions/workflows/ci.yml"><img src="https://github.com/jeremykenedy/VentOS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-    <a href="https://github.com/jeremykenedy/VentOS/releases"><img src="https://img.shields.io/github/v/release/jeremykenedy/VentOS?display_name=tag&amp;sort=semver&amp;color=2e7d32" alt="Latest Release"></a>
+    <a href="https://github.com/jeremykenedy/PandaVentOS/actions/workflows/ci.yml"><img src="https://github.com/jeremykenedy/PandaVentOS/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+    <a href="https://github.com/jeremykenedy/PandaVentOS/releases"><img src="https://img.shields.io/github/v/release/jeremykenedy/PandaVentOS?display_name=tag&amp;sort=semver&amp;color=2e7d32" alt="Latest Release"></a>
     <a href="LICENSE.md"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
     <a href="#requirements"><img src="https://img.shields.io/badge/ESP--IDF-v5.3.1-informational" alt="ESP-IDF v5.3.1"></a>
     <a href="#requirements"><img src="https://img.shields.io/badge/target-ESP32-blue" alt="Target ESP32"></a>
@@ -51,12 +51,12 @@ It is a reimplementation, not a modification of their firmware. "Panda Vent" is 
 
 ## What Makes It Different
 
-VentOS reimplements what the factory application does, from its observed
+PandaVentOS reimplements what the factory application does, from its observed
 behaviour, and then goes past it. It is not a modified copy of BIQU's firmware
 and shares no code with it. The stock partition layout is untouched, so one
 upload puts the factory firmware back whenever you want it.
 
-| | Factory v1.0.0 | VentOS |
+| | Factory v1.0.0 | PandaVentOS |
 | --- | :---: | :---: |
 | **Lighting effects** | 7 | **22** |
 | **Colours per effect** | 1 | **4** |
@@ -255,8 +255,8 @@ Pick a language on first boot, or change it any time from the Settings page.
 There is a script, and it takes a backup before it writes anything.
 
 ```bash
-git clone https://github.com/jeremykenedy/VentOS.git
-cd VentOS
+git clone https://github.com/jeremykenedy/PandaVentOS.git
+cd PandaVentOS
 tools/install.sh
 ```
 
@@ -308,7 +308,7 @@ the device to come back. By hand it is:
 
 ```bash
 curl -X POST -H 'OTA-Type: ota_fw' \
-  --data-binary @firmware/build/panda_vent.bin \
+  --data-binary @firmware/build/pandaventos.bin \
   http://<device>/ota
 ```
 
