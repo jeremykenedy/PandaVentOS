@@ -123,6 +123,12 @@
 // compares the parsed INTEGER, so 50.9 is 50 and reads safe.
 #define PV_WARN_HOT_C     50
 
+/* The hotspot's own address, as a string for the redirect and as a network
+   number for the DNS answer and the "did this come from the hotspot" test.
+   Kept beside each other so the two can never drift apart. */
+#define PV_AP_PORTAL_IP   "192.168.254.1"
+#define PV_AP_PORTAL_NET  0xC0A8FE00u          /* 192.168.254.0 */
+
 #define PV_MODE_SIMPLE    0
 #define PV_MODE_H2D       1
 #define PV_MODE_WARNING   2

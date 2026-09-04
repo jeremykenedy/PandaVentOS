@@ -12,6 +12,7 @@
 #include "esp_flash.h"
 #include "esp_http_server.h"
 #include "esp_log.h"
+#include "lwip/sockets.h"
 #include "esp_ota_ops.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -518,6 +519,86 @@ static esp_err_t ota_post(httpd_req_t *req)
 
 // ---------- server ----------
 
+/* ── The captive portal ──────────────────────────────────────────────────
+ *
+ * Joining the vent's hotspot on a phone should open its page by itself, the
+ * way the factory firmware does. Two pieces are needed and neither existed.
+ *
+ * A phone decides it is "behind a portal" by fetching a known URL and seeing
+ * something other than the expected answer: iOS asks captive.apple.com for
+ * hotspot-detect.html and wants a body saying Success, Android asks for
+ * generate_204 and wants an empty 204, Windows wants "Microsoft NCSI". Each
+ * of those is a different host, so the vent has to be the DNS server for the
+ * hotspot and answer every name with its own address -- then all three probes
+ * arrive here, hit no registered path, and fall through to the wildcard
+ * handler below, which redirects. That redirect is what opens the sheet.
+ *
+ * The DNS half only ever answers queries that arrived from the hotspot's own
+ * subnet. A vent that is also on the house network must not start answering
+ * DNS for anything else on it. */
+
+static esp_err_t portal_get(httpd_req_t *req)
+{
+    // Anything that is not a path this firmware serves is a probe. Send it to
+    // the page; every OS treats the redirect as "there is a portal here".
+    httpd_resp_set_status(req, "302 Found");
+    httpd_resp_set_hdr(req, "Location", "http://" PV_AP_PORTAL_IP "/");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    httpd_resp_send(req, NULL, 0);
+    return ESP_OK;
+}
+
+#define DNS_PORT 53
+
+static void dns_task(void *arg)
+{
+    (void)arg;
+    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
+    if (sock < 0) { ESP_LOGE(TAG, "captive dns: socket failed"); vTaskDelete(NULL); return; }
+    struct sockaddr_in me = { .sin_family = AF_INET, .sin_port = htons(DNS_PORT),
+                              .sin_addr.s_addr = htonl(INADDR_ANY) };
+    if (bind(sock, (struct sockaddr *)&me, sizeof me) < 0) {
+        ESP_LOGE(TAG, "captive dns: bind failed");
+        close(sock); vTaskDelete(NULL); return;
+    }
+    ESP_LOGI(TAG, "captive dns up on :%d", DNS_PORT);
+
+    uint8_t buf[256];
+    for (;;) {
+        struct sockaddr_in from; socklen_t flen = sizeof from;
+        int n = recvfrom(sock, buf, sizeof buf, 0, (struct sockaddr *)&from, &flen);
+        if (n < 12) continue;
+
+        // Only for clients on the hotspot. Never answer for the house network.
+        uint32_t a = ntohl(from.sin_addr.s_addr);
+        if ((a & 0xFFFFFF00u) != (PV_AP_PORTAL_NET & 0xFFFFFF00u)) continue;
+
+        uint16_t qd = (uint16_t)((buf[4] << 8) | buf[5]);
+        if ((buf[2] & 0x80) || qd != 1) continue;      // a reply, or not one question
+
+        // Walk the single question to find where it ends.
+        int p = 12;
+        while (p < n && buf[p]) { p += buf[p] + 1; if (p > 200) break; }
+        p += 5;                                        // the root label + qtype + qclass
+        if (p > n || p + 16 > (int)sizeof buf) continue;
+
+        buf[2] = 0x81; buf[3] = 0x80;                  // response, recursion available
+        buf[6] = 0; buf[7] = 1;                        // one answer
+        buf[8] = 0; buf[9] = 0; buf[10] = 0; buf[11] = 0;
+
+        uint8_t *w = buf + p;
+        *w++ = 0xC0; *w++ = 0x0C;                      // name: pointer back to the question
+        *w++ = 0x00; *w++ = 0x01;                      // type A
+        *w++ = 0x00; *w++ = 0x01;                      // class IN
+        *w++ = 0; *w++ = 0; *w++ = 0; *w++ = 60;       // ttl 60s
+        *w++ = 0x00; *w++ = 0x04;                      // 4 bytes of address
+        uint32_t ip = htonl(PV_AP_PORTAL_NET | 1u);    // the hotspot's own address
+        memcpy(w, &ip, 4); w += 4;
+
+        sendto(sock, buf, (int)(w - buf), 0, (struct sockaddr *)&from, flen);
+    }
+}
+
 esp_err_t pv_http_start(void)
 {
     httpd_config_t cfg = HTTPD_DEFAULT_CONFIG();
@@ -530,6 +611,10 @@ esp_err_t pv_http_start(void)
     // weak signal to take, and hitting it truncated the page. Per CHUNK now,
     // so this is "no progress at all for twenty seconds", not a deadline for
     // the whole transfer.
+    // Without this, "/*" is matched as a literal path and the probes 404
+    // instead of redirecting. The specific handlers are registered first and
+    // the first match wins, so the wildcard only ever sees what they did not.
+    cfg.uri_match_fn = httpd_uri_match_wildcard;
     cfg.send_wait_timeout = 20;
     cfg.recv_wait_timeout = 20;
     esp_err_t err = httpd_start(&s_server, &cfg);
@@ -550,6 +635,17 @@ esp_err_t pv_http_start(void)
     httpd_register_uri_handler(s_server, &ws);
     httpd_register_uri_handler(s_server, &ota);
     httpd_register_uri_handler(s_server, &backup);
+
+    // Last, so it only ever catches what the handlers above did not: the
+    // connectivity probes, which is what opens the portal on a phone.
+    static const httpd_uri_t portal = {
+        .uri = "/*", .method = HTTP_GET, .handler = portal_get,
+    };
+    httpd_register_uri_handler(s_server, &portal);
+
+    static bool dns_started;
+    if (!dns_started) { dns_started = true; xTaskCreate(dns_task, "pv_dns", 3072, NULL, 5, NULL); }
+
     s_up = true;
     ESP_LOGI(TAG, "http up");
     return ESP_OK;
