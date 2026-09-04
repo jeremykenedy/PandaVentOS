@@ -9175,7 +9175,26 @@ function rebuild_printer_list(list) {
     setInputValue('id_printer_sn', g_cur_printer.sn);
     setInputValue('id_printer_access_code', g_cur_printer.access_code);
     setInputValue('id_printer_ip', g_cur_printer.ip);
+    return;
   }
+
+  /* Nothing bound yet, which is every first setup.
+     The picker shows its first option whether or not anything selected it,
+     so after a scan the name read "P2S Right" while the serial and address
+     sat empty: the fields are only filled on a `change` event, and building
+     options in script fires none. The card then asked for a serial the vent
+     already knew. Fill from the same entry the picker is showing -- the
+     scan reports name, sn and ip -- and leave only the access code, which
+     is the one thing no scan can see because it lives on the printer's
+     own screen. */
+  var first = null;
+  for (var j = 0; j < list.length; j++) {
+    if (list[j] && list[j].sn) { first = list[j]; break; }
+  }
+  if (!first) return;
+  if (sel) sel.value = first.sn;
+  setInputValue('id_printer_sn', first.sn);
+  setInputValue('id_printer_ip', first.ip || '');
 }
 
 function set_use_href(id, href) {
