@@ -392,7 +392,6 @@ Every setting, what it does, and why it is there.
 
 | Path | What it is |
 | --- | --- |
-| `factory/` | BIQU's own firmware, web UI and documentation, kept verbatim as the reference this project is measured against. **Not covered by this repository's licence** -- see below. |
 | `firmware/` | the ESP-IDF application |
 | `tools/` | `install.sh`, `restore.sh`, and the host harnesses: effect renderer, config migration runner, UI comparison |
 | `docs/` | what every setting actually does |
@@ -410,52 +409,3 @@ Every setting, what it does, and why it is there.
 
 Released under the [MIT license](https://opensource.org/licenses/MIT). The full
 text is in [`LICENSE.md`](LICENSE.md).
-
-### Third-party components
-
-The page itself carries the notices for everything compiled into it, in a
-comment at the top of the served HTML, so the attribution reaches anyone
-holding a flashed device and not only anyone holding this repository.
-
-| component | what it is | licence, and where the text is |
-| --- | --- | --- |
-| iro.js 5.5.2 | the colour wheel | [MPL-2.0](https://www.mozilla.org/en-US/MPL/2.0/) -- `firmware/main/vendor/iro/LICENSE.txt` |
-| Beer CSS 5.0.3 | the stylesheet and its script | [MIT](https://opensource.org/licenses/MIT) -- `firmware/main/vendor/beercss/LICENSE.txt` |
-| Heroicons | the interface icons in the sprite | [MIT](https://opensource.org/licenses/MIT) -- `firmware/main/vendor/heroicons/LICENSE.txt` |
-| Roboto 3.015 | the embedded typeface, 5 subsets | **[SIL OFL 1.1](https://openfontlicense.org)** -- `firmware/main/vendor/roboto/OFL.txt` |
-| ESP-IDF | build dependency, not vendored | Apache 2.0 |
-
-Only iro.js is stored as a file. The other three are spliced into `ui.html` by
-the page build, because the device serves one file and a second copy on disk
-would be a second copy to keep in step. Each still has its own directory under
-`firmware/main/vendor/` holding the licence text and a note on what was taken.
-
-**The typeface is not under this repository's licence.** Roboto 3 is OFL-1.1,
-which is a different set of obligations from the MIT terms covering everything
-else here. If you reuse the font, read `vendor/roboto/OFL.txt` first.
-
-### `factory/` is BIQU's, not ours
-
-| | |
-| --- | --- |
-| what | BIQU's shipping firmware image, its web UI, and its documentation |
-| licence | **CC BY-NC-ND 4.0** -- `factory/docs/BIQU-LICENSE.md` |
-| copyright | Copyright (c) 2026 BIQU -- `factory/docs/biqu-readme.md` |
-
-It is kept **verbatim and unmodified**, as the reference this firmware's
-behaviour is measured against and as the way back to stock. CC BY-NC-ND allows
-it to be shared whole, for non-commercial purposes, with attribution; it does
-not allow adapted versions of it to be shared. Nothing in `factory/` has been
-altered.
-
-**The MIT licence at the root of this repository does not cover it.** MIT
-covers the firmware, the web UI and the tooling written for this project. If
-you want BIQU's material, take it under BIQU's terms.
-
-### Not affiliated with BIQU or BIGTREETECH
-
-Independent firmware for the BIQU Panda Vent. Not affiliated with, endorsed by,
-or supported by Shenzhen BIGTREE Technology Co., Ltd., BIQU or BIGTREETECH, and
-a reimplementation rather than a modification of their firmware. "Panda Vent"
-is their product name, used here only to identify the hardware this runs on.
-Bambu Lab, AMS and P2S are Bambu Lab's.
