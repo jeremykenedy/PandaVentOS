@@ -6,7 +6,20 @@ CONFIG_IDF_TARGET="esp32"
 # panda_vent_v1.0.0.bin and the image on the device read freq=80m. Without this
 # line the build falls through to the ESP-IDF default of 40m, which is a silent
 # divergence from stock on every image we have ever produced.
-CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+# 40 MHz, not 80.
+#
+# This is the one setting where a known-good reference exists: DragonVent's
+# OTA images convert a stock Panda Vent over the air on this exact hardware,
+# and every one of them carries 40 MHz in its image header. The bootloader
+# applies the flash settings out of the app header when it loads the image,
+# so an app that asks for 80 MHz has to be met by a flash chip that will do
+# 80 MHz DIO reliably at boot -- on a unit whose bootloader we did not write
+# and cannot inspect over the network.
+#
+# The cost is boot and execution speed on a device whose job is to open a
+# flap and drive 32 LEDs. The benefit is matching the only configuration
+# proven to survive stock's uploader.
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
 CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="4MB"
 
