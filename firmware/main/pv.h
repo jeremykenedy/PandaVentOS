@@ -576,6 +576,9 @@ void pv_apply_message(const char *json, int len);
 
 // pv_wifi.c
 void pv_wifi_start(void);
+/* Read stock's Wi-Fi straight out of the NVS partition, before an erase
+   destroys it. Safe to call before nvs_flash_init(). */
+bool pv_wifi_salvage_stock(char *ssid, size_t ssid_len, char *pass, size_t pass_len);
 void pv_wifi_scan_start(void);
 // Whether the last completed scan saw an AP named "test1". Stock's factory
 // self-test compares that name against all 20 scan records.

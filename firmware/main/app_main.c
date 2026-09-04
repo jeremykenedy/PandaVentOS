@@ -84,7 +84,14 @@ void app_main(void)
     // silently returns compiled defaults instead of failing loudly.
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        // A vent arriving from stock lands here every time: stock fills its
+        // NVS, so there is no free page and the only way on is to erase. That
+        // erase also takes stock's Wi-Fi, which is the whole reason a
+        // converted vent used to come up on its own hotspot instead of the
+        // network it was on a minute earlier. Take the credentials out of the
+        // raw partition first; they are replanted once NVS is usable again.
         ESP_LOGW(TAG, "nvs unusable (%s), erasing", esp_err_to_name(err));
+        pv_wifi_salvage_stock(NULL, 0, NULL, 0);
         nvs_flash_erase();
         err = nvs_flash_init();
     }

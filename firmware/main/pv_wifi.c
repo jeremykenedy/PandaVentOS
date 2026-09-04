@@ -12,6 +12,7 @@
 #include "esp_wifi.h"
 #include "mdns.h"
 #include "nvs.h"
+#include "esp_partition.h"
 #include "cJSON.h"
 
 static const char *TAG = "pv_wifi";
@@ -208,6 +209,84 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
     }
 }
 
+/* Salvage stock's Wi-Fi from a raw NVS partition, before anything erases it.
+ *
+ * A vent arriving from stock has a FULL NVS, so nvs_flash_init() answers
+ * ESP_ERR_NVS_NO_FREE_PAGES and the only way forward is nvs_flash_erase().
+ * That erase takes stock's whole app_nvs namespace with it -- including the
+ * Wi-Fi -- and it happens long before migrate_stock_wifi() gets to look, so
+ * the migration always found an empty store and the vent came up on its own
+ * hotspot instead of the network it had been sitting on a minute earlier.
+ *
+ * NVS cannot be opened at that point, so this reads the partition directly
+ * and walks the on-flash format: 4 KB pages, a 32-byte header, a 2-bit-per
+ * -entry state bitmap, then 126 thirty-two-byte entries. A namespace entry
+ * (type 0x01, ns 0) maps a name to an index; a blob-data entry (type 0x42)
+ * carries its length in the first two data bytes and its payload in the
+ * entries that follow. Only the two fields that matter are taken. */
+static char s_salv_ssid[33];
+static char s_salv_pass[64];
+
+bool pv_wifi_salvage_stock(char *ssid, size_t ssid_len, char *pass, size_t pass_len)
+{
+    if (ssid) ssid[0] = '\0';
+    if (pass) pass[0] = '\0';
+    const esp_partition_t *part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_NVS, NULL);
+    if (!part) return false;
+
+    uint8_t *page = malloc(4096);
+    if (!page) return false;
+
+    bool got = false;
+    uint8_t want_ns = 0xFF;
+
+    /* Two passes: the namespace entry can live on a later page than the blob. */
+    for (int pass_no = 0; pass_no < 2 && !got; ++pass_no) {
+        for (size_t off = 0; off + 4096 <= part->size; off += 4096) {
+            if (esp_partition_read(part, off, page, 4096) != ESP_OK) continue;
+            uint32_t state;
+            memcpy(&state, page, 4);
+            if (state == 0xFFFFFFFFU) continue;            /* never written */
+            const uint8_t *bm = page + 32;
+            for (int e = 0; e < 126; ) {
+                int st = (bm[e / 4] >> ((e % 4) * 2)) & 3;
+                const uint8_t *ent = page + 64 + e * 32;
+                if (st != 2) { ++e; continue; }             /* 2 = written */
+                uint8_t ns = ent[0], type = ent[1], span = ent[2];
+                const char *key = (const char *)(ent + 8);
+                if (pass_no == 0 && type == 0x01 && ns == 0 &&
+                    !strncmp(key, "app_nvs", 16)) {
+                    want_ns = ent[24];
+                } else if (pass_no == 1 && type == 0x42 && ns == want_ns &&
+                           !strncmp(key, "wifi_info", 16)) {
+                    uint16_t sz;
+                    memcpy(&sz, ent + 24, 2);
+                    const uint8_t *blob = ent + 32;         /* payload follows */
+                    size_t avail = (size_t)(page + 4096 - blob);
+                    if (sz > avail) sz = avail;
+                    /* ssid[33] at 0, password[64] at 33 -- the offsets the AP
+                       fields at 97 and 130 confirm on a real stock image. */
+                    if (sz >= 97 && blob[0]) {
+                        snprintf(s_salv_ssid, sizeof s_salv_ssid, "%.32s", (const char *)blob);
+                        snprintf(s_salv_pass, sizeof s_salv_pass, "%.63s", (const char *)blob + 33);
+                        if (ssid) snprintf(ssid, ssid_len, "%s", s_salv_ssid);
+                        if (pass) snprintf(pass, pass_len, "%s", s_salv_pass);
+                        got = true;
+                    }
+                }
+                e += span > 0 ? span : 1;
+                if (got) break;
+            }
+            if (got) break;
+        }
+        if (pass_no == 0 && want_ns == 0xFF) break;         /* no app_nvs at all */
+    }
+    free(page);
+    if (got) ESP_LOGW(TAG, "salvaged stock Wi-Fi from raw NVS (ssid '%s')", s_salv_ssid);
+    return got;
+}
+
 // Stock keeps its Wi-Fi in NVS namespace "app_nvs", blob "wifi_info":
 // ssid[33]@0, password[64]@33, ap_ssid[33]@97 (layout recovered from stock
 // and proven on this hardware). When this firmware is installed OVER stock,
@@ -217,6 +296,20 @@ static void migrate_stock_wifi(void)
     wifi_config_t cur = {0};
     if (esp_wifi_get_config(WIFI_IF_STA, &cur) == ESP_OK && cur.sta.ssid[0])
         return;   // already provisioned in our own store
+
+    /* app_nvs is gone on any vent whose NVS had to be erased to boot -- which
+       is every vent arriving from stock. The pair salvaged out of the raw
+       partition before that erase is the only copy left. */
+    if (s_salv_ssid[0]) {
+        wifi_config_t sv = {0};
+        snprintf((char *)sv.sta.ssid, sizeof(sv.sta.ssid), "%.31s", s_salv_ssid);
+        snprintf((char *)sv.sta.password, sizeof(sv.sta.password), "%.63s", s_salv_pass);
+        sv.sta.scan_method = WIFI_ALL_CHANNEL_SCAN;
+        sv.sta.sort_method = WIFI_CONNECT_AP_BY_SIGNAL;
+        esp_wifi_set_config(WIFI_IF_STA, &sv);
+        ESP_LOGW(TAG, "restored the salvaged stock Wi-Fi (ssid '%s')", s_salv_ssid);
+        return;
+    }
 
     nvs_handle_t h;
     if (nvs_open("app_nvs", NVS_READONLY, &h) != ESP_OK) return;
