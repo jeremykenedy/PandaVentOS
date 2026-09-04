@@ -636,16 +636,50 @@ nav.bottom > a {
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.45);
 }
 
+/* Each preset says its own name.
+   A bare row of coloured squares is unreadable to anyone who cannot tell the
+   colours apart, and a title attribute is a hover tooltip -- no help at all on
+   a phone. The name is drawn under the chip, so the swatch is legible without
+   seeing the colour. */
 .swatch-row {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(2.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(4.25rem, 1fr));
   gap: 0.5rem;
 }
 
 .swatch-row > button {
-  block-size: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+  padding: 0;
+  background: none;
+  block-size: auto;
+  box-shadow: none;
+  border-radius: 0.5rem;
+}
+
+.swatch-row > button > .chip {
+  block-size: 2.25rem;
   border-radius: 0.5rem;
   box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.55), 0 0 0 1px rgb(0 0 0 / 0.45);
+}
+
+.swatch-row > button > .nm {
+  font-size: 0.6875rem;
+  line-height: 1.15;
+  text-align: center;
+  color: var(--on-surface-variant);
+  overflow-wrap: anywhere;
+}
+
+/* The chosen one is named as well as ringed, for the same reason. */
+.swatch-row > button[aria-pressed="true"] > .chip {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.55), 0 0 0 2px var(--primary);
+}
+.swatch-row > button[aria-pressed="true"] > .nm {
+  color: var(--primary);
+  font-weight: 600;
 }
 
 
@@ -5672,7 +5706,47 @@ function cpk_paint_state_button(target, hex) {
 /* One message, one top-level key (P§1.1): the colour members under the
    context's body, which always names the effect (and the device state
    for Advance). The error flash is its own body (P§7.7.6). */
+/* Keep the local model in step with what was just sent.
+ *
+ * The device does not echo a colour write back -- the h2d body only appears
+ * in a fresh state document -- so the page is the only thing that knows the
+ * new value until the next reconnect. Nothing was writing it down. Pick an
+ * effect, pick a colour, click another device state and back, and
+ * repaint_h2d rendered from a g_state that had never heard about the colour:
+ * the swatch went to the effect's default, which is white.
+ *
+ * `target.params` is the live object inside g_state that module 1 paints
+ * from, so writing the field there is what makes the change survive a
+ * repaint. When the effect has no entry yet -- a state that has never used
+ * it -- one is added, otherwise the write lands on a temporary and is lost
+ * the same way. */
+function cpk_remember(target, members) {
+  if (!target) return;
+  var params = target.params;
+  if ((!params || !cpk_is_int(params.effect_id === undefined ? 0 : params.effect_id)) &&
+      target.ctx === 'h2d') { /* fall through: params may be the {} placeholder */ }
+
+  if (target.ctx === 'h2d' && (!params || params.effect_id === undefined)) {
+    var rm = (typeof g_state !== 'undefined' && g_state && g_state.rgb_mode) ? g_state.rgb_mode : null;
+    var ds = rm && cpk_find((rm.h2d_mode && rm.h2d_mode.device_states) || null,
+                            'device_state_id', target.mode);
+    if (ds) {
+      if (!Array.isArray(ds.effects)) ds.effects = [];
+      params = cpk_find(ds.effects, 'effect_id', target.effect);
+      if (!params) { params = { effect_id: target.effect }; ds.effects.push(params); }
+      target.params = params;
+    }
+  }
+  if (!params) return;
+  for (var w in members) {
+    if (!Object.prototype.hasOwnProperty.call(members, w)) continue;
+    var slot = cpk_slot_of(target.ctx, w);
+    if (slot) params[slot.field] = members[w];
+  }
+}
+
 function cpk_send_colours(target, members) {
+  cpk_remember(target, members);
   if (typeof ws_push !== 'function') return;
   var body = {}, k;
   if (target.ctx !== 'err') {
@@ -5817,7 +5891,14 @@ function cpk_presets_build() {
       b.type = 'button';
       b.setAttribute('data-pv-hex', CPK_PRESETS[i].hex);
       b.setAttribute('aria-pressed', 'false');
-      b.style.background = '#' + CPK_PRESETS[i].hex;
+      /* the colour, and under it the word for it */
+      var chip = document.createElement('span');
+      chip.className = 'chip';
+      chip.style.background = '#' + CPK_PRESETS[i].hex;
+      var nm = document.createElement('span');
+      nm.className = 'nm';
+      b.appendChild(chip);
+      b.appendChild(nm);
       host.appendChild(b);
     }
   }
@@ -5825,6 +5906,8 @@ function cpk_presets_build() {
   var btns = host.querySelectorAll('[data-pv-hex]');
   for (var j = 0; j < btns.length && j < CPK_PRESETS.length; j++) {
     var name = cpk_tr(CPK_PRESETS[j].key, CPK_PRESETS[j].en);
+    var nmEl = btns[j].querySelector('.nm');
+    if (nmEl) nmEl.textContent = name;
     btns[j].setAttribute('aria-label', name);
     btns[j].setAttribute('title', name);
   }
