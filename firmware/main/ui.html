@@ -470,7 +470,11 @@ svg.sprite { display: none; }
   line-height: 1.25;
   letter-spacing: 0.01em;
   text-align: center;
-  white-space: normal;
+  /* pre-line, not normal: the two-line state labels break where their own
+     translation says to. It used to be a hard <br> in the markup, which put
+     the break where ENGLISH wanted it and left every other language to wrap
+     wherever it landed. Every rgb_btn2 translation carries its own newline. */
+  white-space: pre-line;
 }
 
 
@@ -1906,7 +1910,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
           <div id="sw_id_light_on_off" data-str="ui_lights_on">Lights on</div>
           <div class="small-text" data-str="ui_the_master_switch_for_both_strips">The master switch for both strips</div>
         </div>
-        <button class="note-btn" id="id_note_light_effect" aria-label="What is this?">i</button>
+        <button class="note-btn" id="id_note_light_effect" aria-labelledby="sw_id_light_on_off" aria-haspopup="dialog">i</button>
         <label class="switch"><input type="checkbox" id="id_light_on_off" aria-labelledby="sw_id_light_on_off" checked><span></span></label>
       </li>
     </ul>
@@ -1919,7 +1923,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
             <div id="sw_id_btn_rgb_warning_overide" data-str="ui_override_on_a_hot_chamber">Override on a hot chamber</div>
             <div class="small-text" data-str="ui_show_the_warning_colours_above_the">Show the warning colours above the hot threshold</div>
           </div>
-          <button class="note-btn" id="id_note_warning_light" aria-label="What is this?">i</button>
+          <button class="note-btn" id="id_note_warning_light" aria-labelledby="sw_id_btn_rgb_warning_overide" aria-haspopup="dialog">i</button>
           <label class="switch"><input type="checkbox" id="id_btn_rgb_warning_overide" aria-labelledby="sw_id_btn_rgb_warning_overide" checked><span></span></label>
         </li>
         <li>
@@ -1928,7 +1932,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
             <div id="sw_id_btn_rgb_follow" data-str="ui_follow_the_printer">Follow the printer</div>
             <div class="small-text" data-str="ui_show_a_different_effect_for_each_p">Show a different effect for each printer state</div>
           </div>
-          <button class="note-btn" id="id_note_follow_printer" aria-label="What is this?">i</button>
+          <button class="note-btn" id="id_note_follow_printer" aria-labelledby="sw_id_btn_rgb_follow" aria-haspopup="dialog">i</button>
           <label class="switch"><input type="checkbox" id="id_btn_rgb_follow" aria-labelledby="sw_id_btn_rgb_follow" checked><span></span></label>
         </li>
         <li>
@@ -1937,7 +1941,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
             <div id="sw_id_btn_follow_vent" data-str="ui_follow_the_vent">Follow the vent</div>
             <div class="small-text" data-str="ui_use_the_open_or_closed_colour_depe">Use the open or closed colour depending on the flap</div>
           </div>
-          <button class="note-btn" id="id_note_follow_vent" aria-label="What is this?">i</button>
+          <button class="note-btn" id="id_note_follow_vent" aria-labelledby="sw_id_btn_follow_vent" aria-haspopup="dialog">i</button>
           <label class="switch"><input type="checkbox" id="id_btn_follow_vent" aria-labelledby="sw_id_btn_follow_vent"><span></span></label>
         </li>
         <li id="rgb_reverse_switch">
@@ -1946,7 +1950,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
             <div id="sw_id_btn_rgb_reverse_overide" data-str="ui_run_backwards">Run backwards</div>
             <div class="small-text" data-str="ui_reverse_every_effect_on_both_strip">Reverse every effect on both strips</div>
           </div>
-          <button class="note-btn" id="id_note_reverse_light" aria-label="What is this?">i</button>
+          <button class="note-btn" id="id_note_reverse_light" aria-labelledby="sw_id_btn_rgb_reverse_overide" aria-haspopup="dialog">i</button>
           <label class="switch"><input type="checkbox" id="id_btn_rgb_reverse_overide" aria-labelledby="sw_id_btn_rgb_reverse_overide"><span></span></label>
         </li>
       </ul>
@@ -2150,13 +2154,25 @@ body.is-waiting .waiting-hide { visibility: hidden; }
          its own plate rather than being painted in something that has to
          stay legible over whatever the user picked. -->
     <div id="rgb_mode2_panel" hidden>
-      <div class="state-grid">
-        <button id="id_btn1" class="is-unset"><span>Idle</span></button>
-        <button id="id_btn2" class="is-unset"><span>File download<br>Print prepare</span></button>
-        <button id="id_btn3" class="is-unset"><span>Printing</span></button>
-        <button id="id_btn4" class="is-unset"><span data-str="rgb_btn4">Paused</span></button>
-        <button id="id_btn5" class="is-unset"><span data-str="ui_print_finished">Print finished</span></button>
-        <button id="id_btn6" class="is-unset"><span data-str="rgb_btn6">Print error</span></button>
+      <!-- Every label carries its own data-str rather than waiting for
+           i18n_attach to infer one. Three of these used to ship English in
+           all 24 languages: "Idle" and "Printing" are in that script's
+           LITERAL skip list, which is right for the dashboard's live
+           readout and wrong for a static button, and the <br> that used to
+           split the second label stopped its text matching any key at all.
+           The break now comes from the string's own newline (project.css
+           sets white-space: pre-line), so each language breaks where its
+           own translation says to instead of where English wanted to.
+           role=radio + aria-checked: the group already looked like a
+           chooser and told assistive tech nothing. -->
+      <div class="state-grid" role="radiogroup">
+        <button id="id_btn1" class="is-unset" role="radio" aria-checked="false"><span data-str="rgb_btn1">Idle</span></button>
+        <button id="id_btn2" class="is-unset" role="radio" aria-checked="false"><span data-str="rgb_btn2">File Download
+Print Prepare</span></button>
+        <button id="id_btn3" class="is-unset" role="radio" aria-checked="false"><span data-str="rgb_btn3">Printing</span></button>
+        <button id="id_btn4" class="is-unset" role="radio" aria-checked="false"><span data-str="rgb_btn4">Paused</span></button>
+        <button id="id_btn5" class="is-unset" role="radio" aria-checked="false"><span data-str="ui_print_finished">Print finished</span></button>
+        <button id="id_btn6" class="is-unset" role="radio" aria-checked="false"><span data-str="rgb_btn6">Print error</span></button>
       </div>
 
       <!-- ── The effect ───────────────────────────────────────────── -->
@@ -2547,7 +2563,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
           <div id="sw_id_ring_blink" data-str="ui_blink">Blink</div>
           <div class="small-text" data-str="ui_pulse_rather_than_sit_steady">Pulse rather than sit steady</div>
         </div>
-        <button class="note-btn" id="id_note_ring_blink" aria-label="What is this?">i</button>
+        <button class="note-btn" id="id_note_ring_blink" aria-labelledby="sw_id_ring_blink" aria-haspopup="dialog">i</button>
         <label class="switch"><input type="checkbox" id="id_ring_blink" aria-labelledby="sw_id_ring_blink" checked><span></span></label>
       </li>
     </ul>
@@ -2566,7 +2582,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
           <div id="sw_id_policy_enable" data-str="ui_material_aware">Material aware</div>
           <div class="small-text" data-str="ui_seal_or_vent_depending_on_what_is_">Seal or vent depending on what is loaded</div>
         </div>
-        <button class="note-btn" id="id_note_policy" aria-label="What is this?">i</button>
+        <button class="note-btn" id="id_note_policy" aria-labelledby="sw_id_policy_enable" aria-haspopup="dialog">i</button>
         <label class="switch"><input type="checkbox" id="id_policy_enable" aria-labelledby="sw_id_policy_enable" checked><span></span></label>
       </li>
     </ul>
@@ -2581,8 +2597,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
       </ul>
 
       <div class="padding">
-        <div class="small-text" data-str="policy_materials">Filament rules</div>
-        <button class="note-btn" id="id_note_policy_materials" aria-label="What is this?">i</button>
+        <div class="small-text" id="lbl_policy_materials" data-str="policy_materials">Filament rules</div>
+        <button class="note-btn" id="id_note_policy_materials" aria-labelledby="lbl_policy_materials" aria-haspopup="dialog">i</button>
         <div class="space"></div>
         <ul class="policy-materials" id="id_policy_material_list"></ul>
       </div>
@@ -2594,7 +2610,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
             <div id="sw_id_policy_heat_hold" data-str="ui_hold_open_while_hot">Hold open while hot</div>
             <div class="small-text" data-str="ui_do_not_close_a_chamber_that_is_sti">Do not close a chamber that is still hot from the last print</div>
           </div>
-          <button class="note-btn" id="id_note_policy_heat" aria-label="What is this?">i</button>
+          <button class="note-btn" id="id_note_policy_heat" aria-labelledby="sw_id_policy_heat_hold" aria-haspopup="dialog">i</button>
           <label class="switch"><input type="checkbox" id="id_policy_heat_hold" aria-labelledby="sw_id_policy_heat_hold" checked><span></span></label>
         </li>
       </ul>
@@ -2654,9 +2670,9 @@ body.is-waiting .waiting-hide { visibility: hidden; }
     <nav>
       <div class="field label border max">
         <input type="text" id="id_settings_device_name" maxlength="31" value="" placeholder=" ">
-        <label for="id_settings_device_name" data-str="device_name">Device name</label>
+        <label for="id_settings_device_name" id="lbl_device_name" data-str="device_name">Device name</label>
       </div>
-      <button class="note-btn" id="id_note_device_name" aria-label="What is this?">i</button>
+      <button class="note-btn" id="id_note_device_name" aria-labelledby="lbl_device_name" aria-haspopup="dialog">i</button>
     </nav>
     <nav class="wrap btn-row">
       <button class="fill" id="id_btn_device_name_set" data-str="ui_save_name">Save name</button>
@@ -2722,8 +2738,8 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
   <article class="card-divided">
     <nav>
-      <h6 class="card-title max" data-str="ui_bind_to_a_printer">Bind to a printer</h6>
-      <button class="note-btn" id="id_note_printer" aria-label="What is this?">i</button>
+      <h6 class="card-title max" id="lbl_bind_printer" data-str="ui_bind_to_a_printer">Bind to a printer</h6>
+      <button class="note-btn" id="id_note_printer" aria-labelledby="lbl_bind_printer" aria-haspopup="dialog">i</button>
       <button class="circle transparent" id="id_btn_printer_scan" title="Scan the network" data-str-title="ui_scan_the_network">
         <svg class="i" id="id_img_scan_printer"><use href="#i-search"/></svg>
       </button>
@@ -2826,7 +2842,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
     <div class="small-text" data-str="ui_type_this_address_into_a_browser_o">Type this address into a browser on any device on
       the same network to open this page again.</div>
     <ul class="list border">
-      <li><svg class="i"><use href="#i-network"/></svg><div class="max" data-str="ui_address">Address</div><button class="note-btn" id="id_note_sta_ip" aria-label="What is this?">i</button><span id="id_sta_ip"></span></li>
+      <li><svg class="i"><use href="#i-network"/></svg><div class="max" id="lbl_sta_ip" data-str="ui_address">Address</div><button class="note-btn" id="id_note_sta_ip" aria-labelledby="id_label_sta_state lbl_sta_ip" aria-haspopup="dialog">i</button><span id="id_sta_ip"></span></li>
       <li><svg class="i"><use href="#i-status"/></svg><div class="max" data-str="ui_signal">Signal</div><span></span></li>
     </ul>
     <div class="padding">
@@ -2852,9 +2868,9 @@ body.is-waiting .waiting-hide { visibility: hidden; }
     <nav>
       <div class="field label border max">
         <input type="text" id="id_sta_hostname" maxlength="32" value="" placeholder=" ">
-        <label for="id_sta_hostname" data-str="hostname">Host name</label>
+        <label for="id_sta_hostname" id="lbl_hostname" data-str="hostname">Host name</label>
       </div>
-      <button class="note-btn" id="id_note_hostname" aria-label="What is this?">i</button>
+      <button class="note-btn" id="id_note_hostname" aria-labelledby="lbl_hostname" aria-haspopup="dialog">i</button>
     </nav>
     <div class="small-text" data-str="ui_adding_local_to_this_name_reaches_">Adding .local to this name reaches the vent from any device on the network.</div>
     <button class="fill responsive" id="id_btn_set_hostname" data-str="ui_save_host_name">Save host name</button>
@@ -2871,7 +2887,7 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 <section id="id_card_ap" data-card>
 
   <article class="no-padding span-all">
-    <h6 class="card-title" data-str="ui_the_vent_s_own_network">The vent's own network</h6>
+    <h6 class="card-title" id="lbl_ap_card" data-str="ui_the_vent_s_own_network">The vent's own network</h6>
     <div class="small-text" data-str="ui_connect_to_this_from_a_phone_or_la">Connect to this from a phone or laptop when the vent
       is not on your Wi-Fi, then open the address below.</div>
     <ul class="list border">
@@ -2899,11 +2915,11 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
       <div class="field label border">
         <input type="text" id="id_ap_ip" maxlength="15" value="" placeholder=" ">
-        <label for="id_ap_ip" data-str="ui_address">Address</label>
+        <label for="id_ap_ip" id="lbl_ap_ip" data-str="ui_address">Address</label>
       </div>
       <nav>
         <span class="max small-text" data-str="ui_leave_this_alone_unless_it_clashes">Leave this alone unless it clashes with something on your network.</span>
-        <button class="note-btn" id="id_note_ap_ip" aria-label="What is this?">i</button>
+        <button class="note-btn" id="id_note_ap_ip" aria-labelledby="lbl_ap_card lbl_ap_ip" aria-haspopup="dialog">i</button>
       </nav>
 
       <button class="fill responsive" id="id_btn_ap_confirm" data-str="ui_save">Save</button>
@@ -4692,6 +4708,21 @@ function lx_text(id, s) {
   if (el) el.textContent = (s === null || s === undefined) ? '' : String(s);
 }
 
+/* A slider's spoken value.
+ *
+ * Every one of these sliders already renders a human string beside itself --
+ * "40%", "12 px" -- and a screen reader was reading none of them: it announced
+ * the raw number off the input and nothing else, so "brightness 40" and
+ * "band 40" sounded the same and neither carried its unit. aria-valuetext
+ * replaces the spoken number with the string already on screen, so what is
+ * heard and what is seen are the same thing by construction.
+ *
+ * Called from both paint paths, because a slider moved by the device is as
+ * worth announcing as one moved by hand. */
+function lx_slider_say(el, text) {
+  if (el && text !== null && text !== undefined) el.setAttribute('aria-valuetext', String(text));
+}
+
 function lx_hide(id, hide) {
   var el = lx_el(id);
   if (el) el.hidden = !!hide;
@@ -4856,6 +4887,7 @@ function lx_wire_slider(id, labelId, fmt, onValue, clearId) {
     var v = parseInt(el.value, 10);
     if (!lx_num(v)) return null;
     if (labelId) lx_text(labelId, fmt(v));
+    lx_slider_say(el, fmt(v));
     el.classList.remove('is-unset');
     if (clearId) lx_hide(clearId, false);
     return v;
@@ -5197,8 +5229,8 @@ function lx_wh_paint(level, idx, bgId, bgValId, spId, spValId) {
   if (!p && lv.params[idx]) p = lv.params[idx];
   if (!p) return;
   var bg = lx_el(bgId), sp = lx_el(spId);
-  if (bg && lx_num(p.bg) && document.activeElement !== bg) { bg.value = p.bg; lx_text(bgValId, lx_pct(p.bg)); }
-  if (sp && lx_num(p.speed) && document.activeElement !== sp) { sp.value = p.speed; lx_text(spValId, lx_plain(p.speed)); }
+  if (bg && lx_num(p.bg) && document.activeElement !== bg) { bg.value = p.bg; lx_text(bgValId, lx_pct(p.bg)); lx_slider_say(bg, lx_pct(p.bg)); }
+  if (sp && lx_num(p.speed) && document.activeElement !== sp) { sp.value = p.speed; lx_text(spValId, lx_plain(p.speed)); lx_slider_say(sp, lx_plain(p.speed)); }
 }
 
 function lx_wire_wh_level(level, selId, bgId, bgValId, spId, spValId) {
@@ -8892,7 +8924,12 @@ function repaint_h2d(rm) {
   for (var b = 1; b <= 6; b++) {
     var btn = byId('id_btn' + b);
     if (!btn) continue;
-    btn.classList.toggle('active', (b - 1) === stateId);
+    /* The class is the look; aria-checked is the same fact said out loud.
+       They are set together so a screen reader can never be told a different
+       state from the one on screen. */
+    var on = (b - 1) === stateId;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-checked', on ? 'true' : 'false');
     var bds = null;
     for (var k = 0; k < dstates.length; k++) {
       if (dstates[k] && dstates[k].device_state_id === (b - 1)) { bds = dstates[k]; break; }
@@ -9442,7 +9479,10 @@ function init_ui() {
   /* Every choice group shows one selection even before the device answers
      (coldstart.js): the device-state buttons default to Idle until the
      first device-state part lands and repaint_h2d takes over. */
-  for (var sb = 1; sb <= 6; sb++) { var sbtn = byId('id_btn' + sb); if (sbtn) sbtn.classList.toggle('active', sb === 1); }
+  for (var sb = 1; sb <= 6; sb++) {
+    var sbtn = byId('id_btn' + sb);
+    if (sbtn) { sbtn.classList.toggle('active', sb === 1); sbtn.setAttribute('aria-checked', sb === 1 ? 'true' : 'false'); }
+  }
 
   /* A device that has said nothing after two seconds is probably not on
      the network yet: move to the Wi-Fi card while waiting. It is a guess,
