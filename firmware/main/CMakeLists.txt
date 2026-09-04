@@ -13,7 +13,7 @@ idf_component_register(
         "pv_log.c"
         "pv_anim.c"
     INCLUDE_DIRS "."
-    EMBED_FILES "ui.html.gz"
+    EMBED_FILES "ui.html.gz" "portal.html"
     PRIV_REQUIRES
         nvs_flash
         esp_wifi

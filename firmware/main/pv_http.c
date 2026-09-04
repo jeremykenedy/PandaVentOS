@@ -20,6 +20,8 @@
 
 static const char *TAG = "pv_http";
 
+extern const uint8_t portal_start[] asm("_binary_portal_html_start");
+extern const uint8_t portal_end[]   asm("_binary_portal_html_end");
 extern const uint8_t index_gz_start[] asm("_binary_ui_html_gz_start");
 extern const uint8_t index_gz_end[]   asm("_binary_ui_html_gz_end");
 
@@ -54,8 +56,21 @@ static int s_ws_count;
 // TCP window and small enough that a chunk is one or two writes.
 #define ROOT_CHUNK 8192
 
+static bool req_from_ap(httpd_req_t *req);
+static esp_err_t portal_page(httpd_req_t *req);
+
 static esp_err_t root_get(httpd_req_t *req)
 {
+    // A client on the hotspot gets the small setup page, not the application:
+    // it is almost always a captive sheet, and a captive sheet cannot render
+    // the application. "?full=1" is the way past it for anything that can.
+    if (req_from_ap(req)) {
+        char q[32];
+        bool want_full = (httpd_req_get_url_query_str(req, q, sizeof q) == ESP_OK) &&
+                         (strstr(q, "full=1") != NULL);
+        if (!want_full) return portal_page(req);
+    }
+
     const char *p = (const char *)index_gz_start;
     size_t left = (size_t)(index_gz_end - index_gz_start);
     httpd_resp_set_type(req, "text/html");
@@ -537,6 +552,44 @@ static esp_err_t ota_post(httpd_req_t *req)
  * subnet. A vent that is also on the house network must not start answering
  * DNS for anything else on it. */
 
+/* Is this client on the hotspot rather than the house network? */
+static bool req_from_ap(httpd_req_t *req)
+{
+    int fd = httpd_req_to_sockfd(req);
+    if (fd < 0) return false;
+    struct sockaddr_in6 peer;
+    socklen_t len = sizeof peer;
+    if (getpeername(fd, (struct sockaddr *)&peer, &len) != 0) return false;
+    uint32_t a = 0;
+    if (peer.sin6_family == AF_INET) {
+        a = ntohl(((struct sockaddr_in *)&peer)->sin_addr.s_addr);
+    } else {
+        // lwIP hands back v4-mapped addresses when it is built dual-stack.
+        const uint8_t *b = (const uint8_t *)&peer.sin6_addr;
+        a = ((uint32_t)b[12] << 24) | ((uint32_t)b[13] << 16) |
+            ((uint32_t)b[14] << 8)  |  (uint32_t)b[15];
+    }
+    return (a & 0xFFFFFF00u) == (PV_AP_PORTAL_NET & 0xFFFFFF00u);
+}
+
+/* The page a captive sheet actually gets.
+ *
+ * iOS opens the hotspot in a stripped-down WebView that is small, impatient
+ * and not a browser. Handing it the whole application -- 1.2 MB of page, an
+ * embedded typeface and a string table in 24 languages -- gave a blank sheet:
+ * BIQU's own page is 66 KB, and nothing serves a megabyte into a captive
+ * window. This is three kilobytes of plain HTML that does the one job the
+ * portal exists for, over the same WebSocket the application uses: scan, pick
+ * a network, type the password, join. The full interface is one link away,
+ * and is what you get once the vent is on the network. */
+static esp_err_t portal_page(httpd_req_t *req)
+{
+    httpd_resp_set_type(req, "text/html");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-store");
+    return httpd_resp_send(req, (const char *)portal_start,
+                           portal_end - portal_start - 1);
+}
+
 static esp_err_t portal_get(httpd_req_t *req)
 {
     // Anything that is not a path this firmware serves is a probe. Send it to
@@ -638,6 +691,11 @@ esp_err_t pv_http_start(void)
 
     // Last, so it only ever catches what the handlers above did not: the
     // connectivity probes, which is what opens the portal on a phone.
+    static const httpd_uri_t portalpg = {
+        .uri = "/portal", .method = HTTP_GET, .handler = portal_page,
+    };
+    httpd_register_uri_handler(s_server, &portalpg);
+
     static const httpd_uri_t portal = {
         .uri = "/*", .method = HTTP_GET, .handler = portal_get,
     };

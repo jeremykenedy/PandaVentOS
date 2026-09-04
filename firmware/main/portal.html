@@ -1,0 +1,79 @@
+<!doctype html><html lang=en><meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>Panda Vent setup</title>
+<style>
+:root{color-scheme:light}
+*{box-sizing:border-box}
+body{margin:0;padding:20px;font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:#f2f5f2;color:#1a1c1a}
+h1{font-size:20px;margin:0 0 4px}
+p.sub{margin:0 0 18px;color:#55605a;font-size:14px}
+.card{background:#fff;border-radius:14px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+label{display:block;font-size:13px;color:#55605a;margin:12px 0 4px}
+select,input{width:100%;padding:11px;font-size:16px;border:1px solid #c3ccc6;border-radius:9px;background:#fff}
+button{width:100%;margin-top:16px;padding:13px;font-size:16px;font-weight:600;border:0;border-radius:24px;background:#316a4d;color:#fff}
+button:disabled{background:#9db3a6}
+#msg{margin-top:14px;font-size:14px;min-height:20px}
+.ok{color:#256b45}.err{color:#a4322b}
+a{color:#316a4d;font-size:13px;display:inline-block;margin-top:16px}
+</style>
+<h1>Panda Vent</h1>
+<p class=sub>Choose the network the vent should join. It needs a 2.4 GHz network.</p>
+<div class=card>
+  <label for=n>Network</label>
+  <select id=n><option value="">Scanning…</option></select>
+  <label for=p>Password</label>
+  <input id=p type=password autocomplete=off autocapitalize=off autocorrect=off>
+  <button id=b disabled>Save and join</button>
+  <div id=msg></div>
+</div>
+<a href="/?full=1">Open the full interface</a>
+<script>
+var ws,self_ap='',msg=document.getElementById('msg'),sel=document.getElementById('n'),
+    pw=document.getElementById('p'),btn=document.getElementById('b');
+function say(t,c){msg.textContent=t;msg.className=c||''}
+function open_ws(){
+  ws=new WebSocket('ws://'+location.host+'/ws');
+  ws.onopen=function(){ws.send('{"wifi":{"scan":1}}');say('Looking for networks…')};
+  ws.onclose=function(){setTimeout(open_ws,1500)};
+  ws.onmessage=function(e){
+    var d;try{d=JSON.parse(e.data)}catch(x){return}
+    /* The vent's own hotspot is the strongest thing it can see, so sorting by
+       signal always put it at the top of the list -- offering to join itself.
+       Its name comes from the same state document. */
+    if(d.ap&&d.ap.ssid)self_ap=d.ap.ssid;
+    if(d.wifi&&d.wifi.list){
+      var l=d.wifi.list.slice().sort(function(a,b){return b.rssi-a.rssi});
+      sel.innerHTML='';
+      /* Nothing preselected. The strongest signal is often another vent's
+         hotspot, and a list that arrives with one already chosen is one
+         mis-tap away from joining it. */
+      var ph=document.createElement('option');
+      ph.value='';ph.textContent='Choose a network';ph.disabled=true;ph.selected=true;
+      sel.appendChild(ph);
+      var seen={};
+      for(var i=0;i<l.length;i++){
+        var s=l[i].ssid;if(!s||seen[s]||s===self_ap)continue;seen[s]=1;
+        var o=document.createElement('option');o.value=s;o.textContent=s;sel.appendChild(o);
+      }
+      btn.disabled=true;
+      sel.onchange=function(){btn.disabled=!sel.value};
+      say(sel.options.length>1?'':'No networks found. The vent only sees 2.4 GHz.',
+          sel.options.length>1?'':'err');
+    }
+    if(d.sta&&d.sta.state!==undefined){
+      var st=d.sta.state;
+      if(st===2)say('Joining…');
+      else if(st===3)say('Connected. The vent is on your network'+(d.sta.ip?' at '+d.sta.ip:'')+'.','ok');
+      else if(st===5)say('That password was not accepted.','err');
+      else if(st===4)say('Reconnecting…');
+    }
+  };
+}
+btn.onclick=function(){
+  if(!sel.value)return;
+  btn.disabled=true;say('Joining…');
+  ws.send(JSON.stringify({wifi:{ssid:sel.value,password:pw.value}}));
+  setTimeout(function(){btn.disabled=false},6000);
+};
+open_ws();
+</script>
