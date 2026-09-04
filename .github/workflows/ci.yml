@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # Builds firmware/ exactly as a developer does: CMake regenerates
-      # factory_index.html.gz from the committed firmware/main/ui.html, then
+      # ui.html.gz from the committed firmware/main/ui.html, then
       # the app is compiled and its size checked against the app partition.
       - name: Build
         uses: espressif/esp-idf-ci-action@v1

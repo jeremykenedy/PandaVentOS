@@ -122,9 +122,12 @@ Stock behaviour, unchanged.
 
 | Press | |
 | --- | --- |
-| Short press | toggles Auto and Manual |
-| Short press, in Manual | toggles the flap |
-| Long press, 3 seconds | factory reset |
+| Short press | switches to Manual and toggles the flap |
+| Long press, 3 seconds | back to AUTO |
+
+There is no factory reset on the button. Factory reset lives on the Settings
+page. The firmware does bind one to GPIO 0, the BOOT pin, but this hardware
+does not bring that pin out to anything you can press.
 
 ## No travel timeout
 

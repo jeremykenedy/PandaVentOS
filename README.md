@@ -317,15 +317,19 @@ Settings are migrated forward automatically.
 ### Going Back
 
 ```bash
-tools/restore.sh --factory <device-ip>       # BIQU's firmware, over the network
-tools/restore.sh --factory --port /dev/...   # BIQU's firmware, over a cable
-tools/restore.sh --image <your-backup.bin>   # your own 4 MB image, cable only
-tools/restore.sh --list                      # what backups you have
+tools/restore.sh --factory-bin <stock.bin> --factory <device-ip>      # over the network
+tools/restore.sh --factory-bin <stock.bin> --factory --port /dev/...  # over a cable
+tools/restore.sh --image <your-backup.bin>                            # your own 4 MB image, cable only
+tools/restore.sh --list                                               # what backups you have
 ```
 
-`--factory` puts BIQU's application image back. It does not restore your
-settings: the stock firmware does not understand this one's configuration and
-replaces it with its own defaults.
+`--factory` puts BIQU's application image back. **That image is theirs and is
+not redistributed here, so you supply your own copy** with `--factory-bin` or
+`PV_FACTORY_BIN`; the script checks its size and prints its SHA-256 against
+the one this was tested with before it writes anything.
+
+It does not restore your settings: the stock firmware does not understand this
+one's configuration and replaces it with its own defaults.
 
 `--image` writes a full 4 MB image taken off your own device, which is the only
 thing that recovers a device that will not boot.
@@ -334,8 +338,8 @@ thing that recovers a device that will not boot.
 
 | Step | What to do |
 | :---: | --- |
-| 1 | Power the vent. It raises a hotspot named `Panda_Vent_<MAC>`. |
-| 2 | Join it and open `http://192.168.4.1`. |
+| 1 | Power the vent. It raises a WPA2 hotspot named `Panda_Vent_<MAC>`. |
+| 2 | Join it with the password `987654321` and open `http://192.168.254.1`. |
 | 3 | Pick a language, choose your Wi-Fi, enter its password. |
 | 4 | Bind the printer: scan, pick it, enter its LAN mode access code. |
 | 5 | Reach it afterwards at `http://<hostname>.local` or its IP. |
@@ -383,7 +387,6 @@ Every setting, what it does, and why it is there.
 | --- | --- |
 | `tools/fxdump` | compiles the real `pv_rgb.c` and prints frames as ASCII |
 | `tools/cfgmig` | runs a real stored NVS blob through the real migration |
-| `tools/uicmp` | compares the served page against the factory page |
 
 ## License
 

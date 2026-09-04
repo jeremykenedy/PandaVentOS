@@ -26,8 +26,10 @@ Settings page, Language.
 
 **The dial spins and never stops.**
 The flap is being driven and is not reaching its end band. Something is
-physically in the way, or the endstop needs recalibrating. There is no travel
-timeout, by design, so it will keep driving. Set the mode to the position it
+physically in the way, or the endstop needs recalibrating. There is no
+time-based timeout, but it is not driven forever either: after four checks,
+about eight hundred milliseconds, the group is given up on and latches a
+fault, which is what turns the strip red. Set the mode to the position it
 is already in to stop it.
 
 **Auto does nothing.**
@@ -72,9 +74,18 @@ factory firmware.
 ## The printer
 
 **Commands are refused: "mqtt message verify failed".**
-The printer is not in LAN Only Mode. Reading works without it; commanding does
-not. Printer, Settings, Network, LAN Only Mode. The access code changes when
-you toggle it, so re-enter the code afterwards.
+The printer is not in **Developer Mode**. LAN Only Mode on its own does not
+help: measured on real hardware, everything under the printer's `print`
+namespace comes back refused in LAN Only Mode exactly as it does from the
+cloud, and only `system.ledctrl` -- the lights -- gets through. Developer Mode
+is a separate switch that only appears underneath LAN Only Mode once LAN Only
+Mode is on and the printer has restarted. See
+[Developer Mode is not LAN Only Mode](printer.md#developer-mode-is-not-lan-only-mode).
+
+Reading is never affected: every value the vent shows arrives whatever mode
+the printer is in.
+
+If you do toggle LAN Only Mode, the access code changes, so re-enter it.
 
 **Scan finds nothing.**
 The vent and the printer have to be on the same subnet. A guest network, a

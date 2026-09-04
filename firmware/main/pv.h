@@ -654,6 +654,7 @@ void pv_rgb_notify(void);                           // config/state changed
 // strip driven all-off, then the task returns. Used before an OTA so the
 // strip goes dark and RMT is released.
 void pv_rgb_stop(void);
+void pv_rgb_resume(void);
 
 // NOT STOCK. LIVE PREVIEW: render a set of effect parameters right now, without
 // storing them anywhere, and go back to the real configuration on its own.

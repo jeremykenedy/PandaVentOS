@@ -37,11 +37,17 @@ ask() {
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --image)   IMAGE="${2:-}"; shift 2 ;;
-        --port)    PORT="${2:-}";  shift 2 ;;
-        --network) HOST="${2:-}";  shift 2 ;;
-        --baud)    BAUD="${2:-}";  shift 2 ;;
-        -h|--help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        --image)   [[ $# -ge 2 ]] || die "--image needs a file"; IMAGE="$2"; shift 2 ;;
+        --port)    [[ $# -ge 2 ]] || die "--port needs a device"; PORT="$2"; shift 2 ;;
+        --network) [[ $# -ge 2 ]] || die "--network needs an address"; HOST="$2"; shift 2 ;;
+        --baud)    [[ $# -ge 2 ]] || die "--baud needs a rate"; BAUD="$2"; shift 2 ;;
+        # Stops at the end of the comment block on its own, so the range
+        # cannot drift out of date again: it used to print five lines of
+        # shell after the usage text.
+        -h|--help) sed -n '2,/^set -/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
+        # 32: an option given without its value used to `shift 2` past the end
+        # of the argument list, which under `set -u` exits 1 saying nothing at
+        # all. Say which flag, and what it wanted.
         *)         die "unknown option: $1" ;;
     esac
 done
@@ -74,7 +80,7 @@ if [[ -n "$HOST" ]]; then
 
     say "Uploading $(basename "$IMAGE")"
     info "$(wc -c < "$IMAGE" | tr -d ' ') bytes"
-    curl -fsS -m 300 -X POST -H 'X-OTA-Type: ota_fw' \
+    curl -fsS -m 300 -X POST -H 'OTA-Type: ota_fw' \
          --data-binary "@$IMAGE" "http://$HOST/ota" || die "upload failed. The device is still running the old image"
 
     say "Waiting for it to come back"
@@ -120,8 +126,14 @@ if [[ -z "$PORT" ]]; then
         info "more than one candidate:"
         for i in "${!PORTS[@]}"; do printf '    %d) %s\n' "$((i+1))" "${PORTS[$i]}"; done
         printf '\n  which one? '
-        read -r n </dev/tty
-        PORT="${PORTS[$((n-1))]}" || die "no such choice"
+        n=""
+        read -r n </dev/tty || true
+        # An empty answer used to index [-1], which in bash is the LAST entry:
+        # pressing Enter to think about it picked a port, and it was not the
+        # one on screen at the top. A number outside the list did the same.
+        [[ "$n" =~ ^[0-9]+$ ]] && (( n >= 1 && n <= ${#PORTS[@]} )) \
+            || die "no such choice: pick 1 to ${#PORTS[@]}, or pass --port"
+        PORT="${PORTS[$((n-1))]}"
     fi
 fi
 [[ -e "$PORT" ]] || die "$PORT does not exist"
@@ -159,6 +171,7 @@ printf '  \033[1;33mkeep it somewhere private. Never commit it, never post it.\0
 # ---------------------------------------------------------------------------
 # Build, if we are not given an image.
 # ---------------------------------------------------------------------------
+GIVEN_IMAGE="$IMAGE"
 if [[ -z "$IMAGE" ]]; then
     IMAGE="$ROOT/firmware/build/pandaventos.bin"
     say "Building"
@@ -174,11 +187,30 @@ info "port   $PORT"
 info "backup $OUT"
 ask "write it?" || die "nothing was written. Your backup is at $OUT"
 
-( cd "$ROOT/firmware" && idf.py -p "$PORT" flash ) \
-    || die "flash failed. Recover with:
+# The image the user NAMED, not whatever happens to be in firmware/build.
+#
+# This used to be `idf.py flash` on both paths. On the --image path that
+# flashed the local build directory while the confirmation above had just
+# printed the release file's name and size, so a stale build went onto the
+# device under another file's name -- and a user without ESP-IDF sourced,
+# which is exactly who --image exists for, got "idf.py: command not found"
+# after already spending three and a half minutes on the mandatory backup.
+if [[ -n "$GIVEN_IMAGE" ]]; then
+    python3 -c 'import esptool' 2>/dev/null \
+        || python3 -m pip install --user esptool \
+        || die "esptool is required to flash a named image"
+    python3 -m esptool --chip esp32 --port "$PORT" -b "$BAUD" \
+        write-flash 0x10000 "$IMAGE" \
+        || die "flash failed. Recover with:
   python3 -m esptool --chip esp32 --port $PORT -b $BAUD write-flash 0 $OUT"
+else
+    ( cd "$ROOT/firmware" && idf.py -p "$PORT" flash ) \
+        || die "flash failed. Recover with:
+  python3 -m esptool --chip esp32 --port $PORT -b $BAUD write-flash 0 $OUT"
+fi
 
 say "Done"
-info "power cycle it, then join the Panda_Vent_<MAC> hotspot at http://192.168.4.1"
+info "power cycle it, then join the Panda_Vent_<MAC> hotspot (password 987654321)"
+info "and open http://192.168.254.1"
 info "or reach it on your network if it was already configured"
 info "your backup is at $OUT"

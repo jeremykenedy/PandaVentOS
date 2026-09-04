@@ -447,10 +447,19 @@ static esp_err_t ota_post(httpd_req_t *req)
     // and the RMT channels are released for the duration.
     pv_rgb_stop();
 
-    esp_ota_handle_t h;
+    esp_ota_handle_t h = 0;
     esp_err_t err = esp_ota_begin(dst, req->content_len, &h);
-    char *buf = err == ESP_OK ? malloc(4096) : NULL;
-    if (err == ESP_OK && !buf) { esp_ota_abort(h); err = ESP_ERR_NO_MEM; }
+    if (err != ESP_OK) {
+        // esp_ota_begin leaves the handle untouched when it fails, so there is
+        // nothing to abort and h holds whatever was on the stack.
+        ESP_LOGE(TAG, "ota begin failed: %s", esp_err_to_name(err));
+        pv_rgb_resume();
+        httpd_resp_send(req, "", 0);
+        pv_ws_broadcast(pv_json_response("ota_fw", 0));
+        return ESP_OK;
+    }
+    char *buf = malloc(4096);
+    if (!buf) { esp_ota_abort(h); h = 0; err = ESP_ERR_NO_MEM; }
     size_t remaining = req->content_len;
     // DEPARTURE FROM STOCK, 2026-08-31. A read TIMEOUT is not a failed upload.
     //
@@ -499,6 +508,10 @@ static esp_err_t ota_post(httpd_req_t *req)
         xTaskCreate(ota_reboot_task, "pv_ota_rst", 2048, NULL, 5, NULL);
     } else {
         ESP_LOGE(TAG, "ota failed: %d", err);
+        // No reboot on this path, so nothing else would ever restart the
+        // renderer that was stopped before the write began. The strip stayed
+        // dark until the vent was unplugged.
+        pv_rgb_resume();
     }
     return ESP_OK;
 }

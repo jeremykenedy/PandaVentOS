@@ -32,7 +32,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(dirname "$HERE")"
 BACKUP_DIR="${PV_BACKUP_DIR:-$ROOT/private/backups}"
 # BIQU's image is not shipped with this project. Point at your own copy.
-FACTORY_BIN="${PV_FACTORY_BIN:-$ROOT/factory/firmware/panda_vent_v1.0.0.bin}"
+FACTORY_BIN="${PV_FACTORY_BIN:-$ROOT/panda_vent_v1.0.0.bin}"
 FACTORY_SHA256="0f52294e00b41524e11f11236c92aebd55d3ebb0658d2affad498929dbc0c178"
 MODE=""
 IMAGE=""

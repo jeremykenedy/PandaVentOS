@@ -48,8 +48,21 @@ def grab(img, key='cfg'):
         seen.add(k); res.append(r)
     return res
 if __name__ == '__main__':
+    if len(sys.argv) < 2:
+        raise SystemExit('usage: nvsgrab.py <full-4MB-image.bin>')
     img = open(sys.argv[1],'rb').read()
     for seq,total,mg,blob,used in grab(img):
         print('seq %-5d size %-5d magic %s  chunks %s' % (seq,total,mg,used))
-        p = '/tmp/%s.%s.cfg' % (os.path.basename(sys.argv[1]).split('-full')[0], mg)
-        open(p,'wb').write(blob); print('   ->', p)
+        # Beside the image it came from, not in a world-readable /tmp. This
+        # blob is pv_cfg_t: it carries the printer's LAN access code and the
+        # hotspot password in plain text, and it was landing at mode 0644
+        # inside a 1777 directory every local account can read, and staying.
+        d = os.path.dirname(os.path.abspath(sys.argv[1]))
+        p = os.path.join(d, '%s.%s.cfg' % (
+            os.path.basename(sys.argv[1]).split('-full')[0], mg))
+        fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, 'wb') as f:
+            f.write(blob)
+        print('   ->', p)
+        print('      holds the printer access code and the hotspot password')
+        print('      in plain text. Do not commit it or share it.')

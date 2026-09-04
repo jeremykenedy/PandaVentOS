@@ -2062,25 +2062,25 @@ body.is-waiting .waiting-hide { visibility: hidden; }
            black is a colour someone might have chosen on purpose. -->
       <div class="grid">
         <div class="s12 m6">
-          <div class="small-text" data-str="color_vent_open">Vent Open Active Color</div>
-          <button class="swatch responsive small-round is-unset" id="id_picker_btn_simple"></button>
+          <div class="small-text" id="lbl_picker_btn_simple" data-str="color_vent_open">Vent Open Active Color</div>
+          <button aria-labelledby="lbl_picker_btn_simple" class="swatch responsive small-round is-unset" id="id_picker_btn_simple"></button>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-str="color_vent_closed">Vent Closed Active Color</div>
-          <button class="swatch responsive small-round is-unset" id="id_picker_btn_simple_closed"></button>
+          <div class="small-text" id="lbl_picker_btn_simple_closed" data-str="color_vent_closed">Vent Closed Active Color</div>
+          <button aria-labelledby="lbl_picker_btn_simple_closed" class="swatch responsive small-round is-unset" id="id_picker_btn_simple_closed"></button>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-str="color_vent_open_bg">Vent Open Inactive Color</div>
+          <div class="small-text" id="lbl_picker_btn_simple_bg" data-str="color_vent_open_bg">Vent Open Inactive Color</div>
           <div class="swatch-slot">
-            <button class="swatch responsive small-round is-unset" id="id_picker_btn_simple_bg"></button>
+            <button aria-labelledby="lbl_picker_btn_simple_bg" class="swatch responsive small-round is-unset" id="id_picker_btn_simple_bg"></button>
             <button class="clear circle transparent small" id="id_clear_simple_bg" hidden
                     title="Clear" data-str-title="ui_clear">&times;</button>
           </div>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-str="color_vent_closed_bg">Vent Closed Inactive Color</div>
+          <div class="small-text" id="lbl_picker_btn_simple_bg_closed" data-str="color_vent_closed_bg">Vent Closed Inactive Color</div>
           <div class="swatch-slot">
-            <button class="swatch responsive small-round is-unset" id="id_picker_btn_simple_bg_closed"></button>
+            <button aria-labelledby="lbl_picker_btn_simple_bg_closed" class="swatch responsive small-round is-unset" id="id_picker_btn_simple_bg_closed"></button>
             <button class="clear circle transparent small" id="id_clear_simple_bg_closed" hidden
                     title="Clear" data-str-title="ui_clear">&times;</button>
           </div>
@@ -2122,35 +2122,35 @@ body.is-waiting .waiting-hide { visibility: hidden; }
 
       <div id="id_band_row_simple" hidden>
         <nav>
-          <span class="max small-text" data-str="ui_band_width">Band width</span>
+          <span class="max small-text" id="lbl_band_simple" data-str="ui_band_width">Band width</span>
           <span class="small-text" id="id_band_simple_value"></span>
           <button class="circle transparent small clear" id="id_band_clear_simple" hidden
                   title="Clear" data-str-title="ui_clear">&times;</button>
         </nav>
         <label class="slider">
-          <input type="range" class="is-unset" id="id_band_simple" min="0" max="32" value="0"><span></span>
+          <input type="range" aria-labelledby="lbl_band_simple" class="is-unset" id="id_band_simple" min="0" max="32" value="0"><span></span>
         </label>
       </div>
 
-      <nav><span class="max small-text" data-str="bright_start">Start of cycle</span>
+      <nav><span class="max small-text" id="lbl_mode1_bg_percent" data-str="bright_start">Start of cycle</span>
            <span class="small-text" id="id_mode1_bg_percent_value"></span></nav>
       <label class="slider">
-        <input type="range" id="id_mode1_bg_percent" min="0" max="100" step="5" value="50"><span></span>
+        <input type="range" aria-labelledby="lbl_mode1_bg_percent" id="id_mode1_bg_percent" min="0" max="100" step="5" value="50"><span></span>
       </label>
 
-      <nav><span class="max small-text" data-str="bright_end">End of cycle</span>
+      <nav><span class="max small-text" id="lbl_mode1_be_percent" data-str="bright_end">End of cycle</span>
            <span class="small-text" id="id_mode1_be_percent_value"></span>
            <button class="circle transparent small clear" id="id_clear_simple_be" hidden
                    title="Clear" data-str-title="ui_clear">&times;</button></nav>
       <label class="slider">
-        <input type="range" class="is-unset" id="id_mode1_be_percent" min="0" max="100" step="5" value="0"><span></span>
+        <input type="range" aria-labelledby="lbl_mode1_be_percent" class="is-unset" id="id_mode1_be_percent" min="0" max="100" step="5" value="0"><span></span>
       </label>
 
       <div id="mode1_speed_container">
-        <nav><span class="max small-text" data-str="status_speed">Speed</span>
+        <nav><span class="max small-text" id="lbl_mode1_speed_percent" data-str="status_speed">Speed</span>
              <span class="small-text" id="id_mode1_speed_percent_value"></span></nav>
         <label class="slider">
-          <input type="range" id="id_mode1_speed_percent" min="0" max="100" step="5" value="50"><span></span>
+          <input type="range" aria-labelledby="lbl_mode1_speed_percent" id="id_mode1_speed_percent" min="0" max="100" step="5" value="50"><span></span>
         </label>
       </div>
 
@@ -2171,12 +2171,12 @@ body.is-waiting .waiting-hide { visibility: hidden; }
         <svg class="i"><use href="#i-caret"/></svg>
       </div>
 
-      <nav><span class="max small-text" data-str="preview_progress">Pin the progress to</span>
+      <nav><span class="max small-text" id="lbl_preview_pct_simple" data-str="preview_progress">Pin the progress to</span>
            <span class="small-text" id="id_preview_pct_simple_value"></span>
            <button class="circle transparent small clear" id="id_preview_pct_clear_simple" hidden
                    title="Clear" data-str-title="ui_clear">&times;</button></nav>
       <label class="slider">
-        <input type="range" class="is-unset" id="id_preview_pct_simple" min="0" max="100" step="5" value="0"><span></span>
+        <input type="range" aria-labelledby="lbl_preview_pct_simple" class="is-unset" id="id_preview_pct_simple" min="0" max="100" step="5" value="0"><span></span>
       </label>
 
       <nav>
@@ -2261,25 +2261,25 @@ Print Prepare</span></button>
            black is a colour someone might have chosen on purpose. -->
       <div class="grid">
         <div class="s12 m6">
-          <div class="small-text" data-str="color_vent_open">Vent Open Active Color</div>
-          <button class="swatch responsive small-round is-unset" id="id_picker_btn_h2d"></button>
+          <div class="small-text" id="lbl_picker_btn_h2d" data-str="color_vent_open">Vent Open Active Color</div>
+          <button aria-labelledby="lbl_picker_btn_h2d" class="swatch responsive small-round is-unset" id="id_picker_btn_h2d"></button>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-str="color_vent_closed">Vent Closed Active Color</div>
-          <button class="swatch responsive small-round is-unset" id="id_picker_btn_h2d_closed"></button>
+          <div class="small-text" id="lbl_picker_btn_h2d_closed" data-str="color_vent_closed">Vent Closed Active Color</div>
+          <button aria-labelledby="lbl_picker_btn_h2d_closed" class="swatch responsive small-round is-unset" id="id_picker_btn_h2d_closed"></button>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-str="color_vent_open_bg">Vent Open Inactive Color</div>
+          <div class="small-text" id="lbl_picker_btn_h2d_bg" data-str="color_vent_open_bg">Vent Open Inactive Color</div>
           <div class="swatch-slot">
-            <button class="swatch responsive small-round is-unset" id="id_picker_btn_h2d_bg"></button>
+            <button aria-labelledby="lbl_picker_btn_h2d_bg" class="swatch responsive small-round is-unset" id="id_picker_btn_h2d_bg"></button>
             <button class="clear circle transparent small" id="id_clear_h2d_bg" hidden
                     title="Clear" data-str-title="ui_clear">&times;</button>
           </div>
         </div>
         <div class="s12 m6">
-          <div class="small-text" data-str="color_vent_closed_bg">Vent Closed Inactive Color</div>
+          <div class="small-text" id="lbl_picker_btn_h2d_bg_closed" data-str="color_vent_closed_bg">Vent Closed Inactive Color</div>
           <div class="swatch-slot">
-            <button class="swatch responsive small-round is-unset" id="id_picker_btn_h2d_bg_closed"></button>
+            <button aria-labelledby="lbl_picker_btn_h2d_bg_closed" class="swatch responsive small-round is-unset" id="id_picker_btn_h2d_bg_closed"></button>
             <button class="clear circle transparent small" id="id_clear_h2d_bg_closed" hidden
                     title="Clear" data-str-title="ui_clear">&times;</button>
           </div>
@@ -2321,35 +2321,35 @@ Print Prepare</span></button>
 
       <div id="id_band_row_h2d" hidden>
         <nav>
-          <span class="max small-text" data-str="ui_band_width">Band width</span>
+          <span class="max small-text" id="lbl_band_h2d" data-str="ui_band_width">Band width</span>
           <span class="small-text" id="id_band_h2d_value"></span>
           <button class="circle transparent small clear" id="id_band_clear_h2d" hidden
                   title="Clear" data-str-title="ui_clear">&times;</button>
         </nav>
         <label class="slider">
-          <input type="range" class="is-unset" id="id_band_h2d" min="0" max="32" value="0"><span></span>
+          <input type="range" aria-labelledby="lbl_band_h2d" class="is-unset" id="id_band_h2d" min="0" max="32" value="0"><span></span>
         </label>
       </div>
 
-      <nav><span class="max small-text" data-str="bright_start">Start of cycle</span>
+      <nav><span class="max small-text" id="lbl_mode2_bg_percent" data-str="bright_start">Start of cycle</span>
            <span class="small-text" id="id_mode2_bg_percent_value"></span></nav>
       <label class="slider">
-        <input type="range" id="id_mode2_bg_percent" min="0" max="100" step="5" value="50"><span></span>
+        <input type="range" aria-labelledby="lbl_mode2_bg_percent" id="id_mode2_bg_percent" min="0" max="100" step="5" value="50"><span></span>
       </label>
 
-      <nav><span class="max small-text" data-str="bright_end">End of cycle</span>
+      <nav><span class="max small-text" id="lbl_mode2_be_percent" data-str="bright_end">End of cycle</span>
            <span class="small-text" id="id_mode2_be_percent_value"></span>
            <button class="circle transparent small clear" id="id_clear_h2d_be" hidden
                    title="Clear" data-str-title="ui_clear">&times;</button></nav>
       <label class="slider">
-        <input type="range" class="is-unset" id="id_mode2_be_percent" min="0" max="100" step="5" value="0"><span></span>
+        <input type="range" aria-labelledby="lbl_mode2_be_percent" class="is-unset" id="id_mode2_be_percent" min="0" max="100" step="5" value="0"><span></span>
       </label>
 
       <div id="mode2_speed_container">
-        <nav><span class="max small-text" data-str="status_speed">Speed</span>
+        <nav><span class="max small-text" id="lbl_mode2_speed_percent" data-str="status_speed">Speed</span>
              <span class="small-text" id="id_mode2_speed_percent_value"></span></nav>
         <label class="slider">
-          <input type="range" id="id_mode2_speed_percent" min="0" max="100" step="5" value="50"><span></span>
+          <input type="range" aria-labelledby="lbl_mode2_speed_percent" id="id_mode2_speed_percent" min="0" max="100" step="5" value="50"><span></span>
         </label>
       </div>
 
@@ -2370,12 +2370,12 @@ Print Prepare</span></button>
         <svg class="i"><use href="#i-caret"/></svg>
       </div>
 
-      <nav><span class="max small-text" data-str="preview_progress">Pin the progress to</span>
+      <nav><span class="max small-text" id="lbl_preview_pct_h2d" data-str="preview_progress">Pin the progress to</span>
            <span class="small-text" id="id_preview_pct_h2d_value"></span>
            <button class="circle transparent small clear" id="id_preview_pct_clear_h2d" hidden
                    title="Clear" data-str-title="ui_clear">&times;</button></nav>
       <label class="slider">
-        <input type="range" class="is-unset" id="id_preview_pct_h2d" min="0" max="100" step="5" value="0"><span></span>
+        <input type="range" aria-labelledby="lbl_preview_pct_h2d" class="is-unset" id="id_preview_pct_h2d" min="0" max="100" step="5" value="0"><span></span>
       </label>
 
       <nav>
@@ -2416,18 +2416,18 @@ Print Prepare</span></button>
           <label for="id_safe_effect" data-str="status_effect">Effect</label>
           <svg class="i"><use href="#i-caret"/></svg>
         </div>
-        <nav><span class="max small-text" data-str="status_brightness">Brightness</span>
+        <nav><span class="max small-text" id="lbl_mode3_safe_bg_percent" data-str="status_brightness">Brightness</span>
              <span class="small-text" id="id_mode3_safe_bg_percent_value"></span></nav>
         <div id="safe_bg_container">
           <label class="slider">
-            <input type="range" id="id_mode3_safe_bg_percent" min="0" max="100" step="5" value="50"><span></span>
+            <input type="range" aria-labelledby="lbl_mode3_safe_bg_percent" id="id_mode3_safe_bg_percent" min="0" max="100" step="5" value="50"><span></span>
           </label>
         </div>
-        <nav><span class="max small-text" data-str="status_speed">Speed</span>
+        <nav><span class="max small-text" id="lbl_mode3_safe_speed_percent" data-str="status_speed">Speed</span>
              <span class="small-text" id="id_mode3_safe_speed_percent_value"></span></nav>
         <div id="safe_speed_container">
           <label class="slider">
-            <input type="range" id="id_mode3_safe_speed_percent" min="0" max="100" step="5" value="50"><span></span>
+            <input type="range" aria-labelledby="lbl_mode3_safe_speed_percent" id="id_mode3_safe_speed_percent" min="0" max="100" step="5" value="50"><span></span>
           </label>
         </div>
       </article>
@@ -2442,16 +2442,16 @@ Print Prepare</span></button>
           <label for="id_danger_effect" data-str="status_effect">Effect</label>
           <svg class="i"><use href="#i-caret"/></svg>
         </div>
-        <nav><span class="max small-text" data-str="status_brightness">Brightness</span>
+        <nav><span class="max small-text" id="lbl_mode3_warn_bg_percent" data-str="status_brightness">Brightness</span>
              <span class="small-text" id="id_mode3_warn_bg_percent_value"></span></nav>
         <label class="slider">
-          <input type="range" id="id_mode3_warn_bg_percent" min="0" max="100" step="5" value="50"><span></span>
+          <input type="range" aria-labelledby="lbl_mode3_warn_bg_percent" id="id_mode3_warn_bg_percent" min="0" max="100" step="5" value="50"><span></span>
         </label>
-        <nav><span class="max small-text" data-str="status_speed">Speed</span>
+        <nav><span class="max small-text" id="lbl_mode3_warn_speed_percent" data-str="status_speed">Speed</span>
              <span class="small-text" id="id_mode3_warn_speed_percent_value"></span></nav>
         <div id="warning_speed_container">
           <label class="slider">
-            <input type="range" id="id_mode3_warn_speed_percent" min="0" max="100" step="5" value="50"><span></span>
+            <input type="range" aria-labelledby="lbl_mode3_warn_speed_percent" id="id_mode3_warn_speed_percent" min="0" max="100" step="5" value="50"><span></span>
           </label>
         </div>
       </article>
@@ -2525,12 +2525,12 @@ Print Prepare</span></button>
     </ul>
 
     <div class="padding" id="id_err_fields" hidden>
-      <div class="small-text" data-str="ui_error_colour">Error colour</div>
-      <button class="swatch responsive small-round is-unset" id="id_picker_btn_err"></button>
-      <nav><span class="max small-text" data-str="status_brightness">Brightness</span>
+      <div class="small-text" id="lbl_picker_btn_err" data-str="ui_error_colour">Error colour</div>
+      <button aria-labelledby="lbl_picker_btn_err" class="swatch responsive small-round is-unset" id="id_picker_btn_err"></button>
+      <nav><span class="max small-text" id="lbl_err_bright" data-str="status_brightness">Brightness</span>
            <span class="small-text" id="id_err_bright_value"></span></nav>
       <label class="slider">
-        <input type="range" id="id_err_bright" min="0" max="100" step="5" value="100"><span></span>
+        <input type="range" aria-labelledby="lbl_err_bright" id="id_err_bright" min="0" max="100" step="5" value="100"><span></span>
       </label>
       <nav>
         <span class="max small-text" id="lbl_err_strobe" data-str="errflash_strobe">Strobe</span>
@@ -3048,7 +3048,7 @@ Print Prepare</span></button>
     <nav>
       <div class="field label suffix border max">
         <select id="id_wifi_ssid"><option selected>example-iot</option></select>
-        <label data-str="ui_network">Network</label>
+        <label for="id_wifi_ssid" data-str="ui_network">Network</label>
         <svg class="i"><use href="#i-caret"/></svg>
       </div>
       <button class="circle transparent" id="id_btn_wifi_scan" title="Scan again" data-str-title="ui_scan_again">
@@ -3058,7 +3058,7 @@ Print Prepare</span></button>
 
     <div class="field label suffix border">
       <input type="password" id="id_password_wifi" maxlength="63" value="0000000000000000" placeholder=" ">
-      <label data-str="ui_password">Password</label>
+      <label for="id_password_wifi" data-str="ui_password">Password</label>
       <a id="id_btn_password_wifi" title="Show the password" data-str-title="ui_show_the_password" tabindex="0" role="button"><svg class="i" id="id_img_password_wifi"><use href="#i-eye"/></svg></a>
     </div>
 
@@ -3089,8 +3089,8 @@ Print Prepare</span></button>
     </div>
 
     <div class="space"></div>
-    <div class="small-text" data-str="ui_brightness">Brightness</div>
-    <label class="slider"><input type="range" min="0" max="100" step="5" value="50"><span></span></label>
+    <div class="small-text" id="lbl_setup_bright" data-str="ui_brightness">Brightness</div>
+    <label class="slider"><input type="range" aria-labelledby="lbl_setup_bright" min="0" max="100" step="5" value="50"><span></span></label>
 
     <div class="space"></div>
     <nav class="wrap">
@@ -3147,7 +3147,7 @@ Print Prepare</span></button>
 </div>
 
 <!-- Something happened and you do not need to do anything about it. -->
-<div class="snackbar" id="id_toast"></div>
+<div class="snackbar" id="id_toast" role="status" aria-live="polite" aria-atomic="true"></div>
 
 <!-- One dialog, reused. The title, the text and the buttons are all filled
      in by whatever asked for it. -->
@@ -3174,11 +3174,11 @@ Print Prepare</span></button>
   <div class="space"></div>
   <div class="field label border">
     <input type="text" id="id_hsl_hex" maxlength="7" placeholder=" ">
-    <label data-str="hex_label">Hex</label>
+    <label for="id_hsl_hex" data-str="hex_label">Hex</label>
   </div>
   <div class="field label border">
     <input type="text" id="id_hsl_hsl" maxlength="20" placeholder=" ">
-    <label data-str="ui_hue_saturation_lightness">Hue, saturation, lightness</label>
+    <label for="id_hsl_hsl" data-str="ui_hue_saturation_lightness">Hue, saturation, lightness</label>
   </div>
   <nav class="right-align wrap">
     <button class="transparent" id="id_hsl_reset" data-str="reset_default">Reset to default</button>
@@ -4921,6 +4921,18 @@ function lx_send_error_flash(members) {
    onValue  called with the integer value to send
    clearId  the slot's clear button (optional): a value being dragged
             means the slot is set, so the clear becomes available */
+/* Whether a preview percent is pinned is carried by the slider's `is-unset`
+   class and nothing else: lx_preview_send reads it to decide whether to send
+   `percent` at all. render_preview used to rewrite the readout and hide the
+   clear button when a preview ended without touching the class, so the page
+   said "whatever the printer is doing" while the next Try still pinned the
+   stale number, with the clear button hidden so there was no way back.
+   render_preview owns the class now; see lx_preview_pin_paint. */
+function lx_preview_pin_paint(pctId, pinned) {
+  var el = lx_el(pctId);
+  if (el) el.classList.toggle('is-unset', !pinned);
+}
+
 function lx_wire_slider(id, labelId, fmt, onValue, clearId) {
   var el = lx_el(id);
   if (!el) return;
@@ -5341,7 +5353,16 @@ function lx_wire_extras() {
     var v = lx_int(el, 0);
     var lo = el.min !== '' ? Number(el.min) : 0, hi = el.max !== '' ? Number(el.max) : 120;
     if (v < lo || v > hi) {
-      if (typeof toast_show === 'function') toast_show('ui_warn_hot_range', 3000, tr('ui_warn_hot_range', "The warning temperature must be between %s and %s °C.").replace('%s', String(lo)).replace('%s', String(hi)));
+      /* Substitute AFTER the lookup, then pass the finished string as both
+         key and fallback. toast_show does tr(key, fallback) and tr returns
+         the table entry whenever the key resolves, so filling in the numbers
+         on the fallback -- which is what this used to do -- meant the user
+         read the raw template, "%s" and all. */
+      if (typeof toast_show === 'function') {
+        var _msg = tr('ui_warn_hot_range', "The warning temperature must be between %s and %s °C.")
+                     .replace('%s', String(lo)).replace('%s', String(hi));
+        toast_show(_msg, 3000, _msg);
+      }
       var cur = lx_rm().warn_hot_c;
       el.value = (lx_num(cur) && cur !== 0) ? cur : '';
       return;
@@ -7671,9 +7692,17 @@ function fill_effect_picker(id) {
    script, and without it an Arabic reader gets a page laid out backwards. */
 var RTL_LANGS = ['ar'];
 
+/* The document's language, not only its direction.
+   <html lang> was written once at build time and never updated, so 23 of the
+   24 languages shipped a page telling every screen reader and every
+   translation tool that its content was English -- which picks the wrong
+   voice, the wrong pronunciation rules and the wrong hyphenation. */
 function apply_direction() {
   var el = document.documentElement;
-  if (el) el.setAttribute('dir', RTL_LANGS.indexOf(g_language) >= 0 ? 'rtl' : 'ltr');
+  if (!el) return;
+  el.setAttribute('dir', RTL_LANGS.indexOf(g_language) >= 0 ? 'rtl' : 'ltr');
+  /* zh is Simplified here, and yue is its own tag rather than a zh variant. */
+  el.setAttribute('lang', g_language === 'zh' ? 'zh-Hans' : g_language);
 }
 
 function set_language(lang) {
@@ -7891,9 +7920,15 @@ var ASK_MAX = 5;
 /* Deep merge src into dst, key by key. Plain objects merge; arrays and
    scalars replace — except device_states, which merge by device_state_id
    and re-sort so all six survive being pushed one per frame (§0.2). */
+/* JSON.parse makes __proto__ a real own property, so hasOwnProperty lets it
+   through and the recursion below would walk straight into Object.prototype
+   and write attacker-chosen keys onto every object on the page. The peer is
+   the vent over ws:// on the LAN, so it takes a compromised device or someone
+   on the wire, but the guard is one line. */
 function deep_merge(dst, src) {
   for (var k in src) {
     if (!Object.prototype.hasOwnProperty.call(src, k)) continue;
+    if (k === '__proto__' || k === 'constructor' || k === 'prototype') continue;
     var sv = src[k];
     if (k === 'device_states' && Array.isArray(sv)) {
       var arr = Array.isArray(dst[k]) ? dst[k] : [];
@@ -7983,6 +8018,21 @@ function ws_open() {
   };
   sock.onclose = function () {
     stop_state_ask();
+    /* Put the page back into waiting. is-waiting is the single gate every
+       control checks and the only thing that shows the "waiting for the vent"
+       banner, and nothing was ever re-adding it: after the vent rebooted or
+       the Wi-Fi dropped the page still looked fully live, so every tap went
+       into g_out_queue instead. */
+    if (document.body) document.body.classList.add('is-waiting');
+    g_have_first_state = false;
+    /* And the backlog goes with it. Replaying a queue of vent commands minutes
+       after they were given drives the flap from intent the user has long
+       since abandoned; whatever they want when the link is back, they can ask
+       for again against a page that is showing them the truth. */
+    if (g_out_queue && g_out_queue.length) {
+      console.log('[pv] link closed, dropping ' + g_out_queue.length + ' queued message(s)');
+      g_out_queue.length = 0;
+    }
     setTimeout(ws_open, 2000);   /* keep the page alive if the link drops */
   };
   sock.onerror = function () { try { sock.close(); } catch (e) {} };
@@ -9030,11 +9080,20 @@ function render_preview(rm) {
     var pctEl = byId('id_preview_pct_' + which);
     var pctVal = byId('id_preview_pct_' + which + '_value');
     var clr = byId('id_preview_pct_clear_' + which);
+    /* The `is-unset` class is the ONLY record of whether a percent is pinned
+       -- lx_preview_send reads it to decide whether to send `percent` at all
+       -- and this used to rewrite the readout and hide the clear button
+       without touching it. After a preview expired the page said "whatever
+       the printer is doing" while the next Try still pinned the stale value,
+       with the clear button hidden so there was no way back to live. The
+       class, the readout and the button are set together now. */
     if (isNum(rm.preview_percent)) {
       if (pctEl && document.activeElement !== pctEl) pctEl.value = rm.preview_percent;
+      if (pctEl) pctEl.classList.remove('is-unset');
       if (pctVal) pctVal.textContent = fmtPct(rm.preview_percent);
       if (clr) clr.hidden = false;
     } else {
+      if (pctEl) pctEl.classList.add('is-unset');
       if (pctVal) pctVal.textContent = tr('preview_as_live', 'Whatever the printer is doing');
       if (clr) clr.hidden = true;
     }
@@ -9164,16 +9223,24 @@ function paint_printer_bind(state) {
     if (el) el.disabled = lock;
   });
 
-  /* state -> dialog */
+  /* state -> dialog
+     Only on a CHANGE. The firmware sends every part on every push and these
+     failure states are sticky or repeating -- 4 and 6 are re-set on each mqtt
+     reconnect attempt, 5 is latched -- and dialog_open re-showModal()s an
+     already-open dialog. An unreachable printer therefore reopened the same
+     dialog under the reader's cursor every couple of seconds, with no way to
+     dismiss it for longer than the gap between frames. The success branch was
+     already edge-guarded by g_was_binding; the failures were not. */
+  var bind_changed = (state !== g_prev_printer_state);
   if (state === 3 && g_was_binding) {
     dialog_open('dlg_bind_ok_title', 'dlg_bind_ok_text', [{ key: 'ui_ok', fallback: 'OK' }]);
-  } else if (state === 4) {
+  } else if (state === 4 && bind_changed) {
     dialog_open('dlg_bind_ip_title', 'dlg_bind_ip_text', [{ key: 'ui_ok', fallback: 'OK' }]);
-  } else if (state === 5) {
+  } else if (state === 5 && bind_changed) {
     dialog_open('dlg_bind_sn_title', 'dlg_bind_sn_text', [{ key: 'ui_ok', fallback: 'OK' }]);
-  } else if (state === 6) {
+  } else if (state === 6 && bind_changed) {
     dialog_open('dlg_bind_code_title', 'dlg_bind_code_text', [{ key: 'ui_ok', fallback: 'OK' }]);
-  } else if (state === 7) {
+  } else if (state === 7 && bind_changed) {
     dialog_open('dlg_bind_unknown_title', 'dlg_bind_unknown_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   }
 
@@ -9192,14 +9259,14 @@ function paint_printer_scan(scan) {
   }
   if (scan === 2) {
     if (g_prev_printer_scan === 1 || g_prev_printer_scan === 3) dialog_open('dlg_scan_ok_title', 'dlg_scan_ok_text', [{ key: 'ui_ok', fallback: 'OK' }]);
-  } else if (scan === 4) {
+  } else if (scan === 4 && scan !== g_prev_printer_scan) {
     dialog_open('dlg_scan_sn_title', 'dlg_scan_sn_text', [{ key: 'ui_ok', fallback: 'OK' }]);
-  } else if (scan === 5) {
+  } else if (scan === 5 && scan !== g_prev_printer_scan) {
     dialog_open('dlg_scan_ip_title', 'dlg_scan_ip_text', [
       { key: 'ui_hotspot', fallback: 'Hotspot', handler: function () { show_card('ap'); } },
       { key: 'cancel', fallback: 'Cancel' }
     ]);
-  } else if (scan === 6) {
+  } else if (scan === 6 && scan !== g_prev_printer_scan) {
     dialog_open('dlg_scan_newip_title', 'dlg_scan_newip_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   }
   g_prev_printer_scan = scan;
@@ -9294,9 +9361,9 @@ function handle_sta(sta) {
       { key: 'card_printer', fallback: 'Printer', handler: function () { show_card('printer'); } },
       { key: 'cancel', fallback: 'Cancel' }
     ]);
-  } else if (state === 4) {
+  } else if (state === 4 && state !== g_prev_sta_state) {
     dialog_open('dlg_conn_reconnect_title', 'dlg_conn_reconnect_text', [{ key: 'ui_ok', fallback: 'OK' }]);
-  } else if (state === 5) {
+  } else if (state === 5 && state !== g_prev_sta_state) {
     dialog_open('dlg_conn_pw_title', 'dlg_conn_pw_text', [{ key: 'ui_ok', fallback: 'OK' }]);
   }
   g_prev_sta_state = state;
@@ -9533,7 +9600,16 @@ function init_ui() {
      so it does not count as landed, and the device's own first frame still
      lands the page wherever §0.4 says. */
   setTimeout(function () {
-    if (!g_landed && !g_firstuse && !g_have_first_state) show_card('sta');
+    if (g_landed || g_firstuse || g_have_first_state) return;
+    /* Not if the reader has already gone somewhere. None of the three flags
+       above move when a nav item is tapped, and the nav is not inert while
+       the page is waiting, so opening Lighting at 1.5 s used to be yanked to
+       Wi-Fi at 2.0 s. Module 8 has a second, later fallback that already
+       guards this way; this is the one that was doing the damage first. */
+    var onSetup = document.querySelector('[data-page].active:not(#id_page_app)');
+    var card = document.querySelector('[data-card].active');
+    if (onSetup || (card && card.id !== 'id_card_status')) return;
+    show_card('sta');
   }, 2000);
 
   flush_inbound_queue();

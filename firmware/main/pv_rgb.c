@@ -1400,6 +1400,8 @@ void pv_rgb_stop(void)
     if (t) xTaskNotify(t, 255, eSetValueWithOverwrite);
 }
 
+
+
 // NOT STOCK. One frame, lifted out of the task so it can be driven from a
 // host test.
 //
@@ -1621,6 +1623,28 @@ static void render_task(void *arg)
 void pv_rgb_notify(void)
 {
     // Rendering reads config each frame; nothing to do beyond existing.
+}
+
+/* Put the renderer back after a pv_rgb_stop() that is not going to be
+   followed by a reboot.
+ *
+ * pv_rgb_stop() deletes the render task, and only a reboot ever brought it
+ * back. That is fine for the OTA path that succeeds, because it reboots -- and
+ * it was silently fatal for every OTA path that FAILS, which returns 200 and
+ * carries on with the strip dark and no way to light it again. That takes out
+ * the motor-fault red strobe, the printer-link marquee and every configured
+ * effect: exactly the indicators that exist so a fault can be seen without a
+ * browser.
+ *
+ * Only the task is re-created. NOT the RMT channels: pv_rgb_stop() never
+ * released them despite what the comment above it says about the duration,
+ * so re-running pv_rgb_start() would leak a channel per call and eventually
+ * fail to allocate one. */
+void pv_rgb_resume(void)
+{
+    if (s_render || !s_strips) return;
+    xTaskCreate(render_task, "pv_rgb", 4096, NULL, 15, &s_render);
+    ESP_LOGI(TAG, "render task back up");
 }
 
 void pv_rgb_start(void)

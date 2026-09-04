@@ -40,9 +40,17 @@ CONFIG_ESP_TLS_SKIP_SERVER_CERT_VERIFY=y
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
 
 # A hung task must reboot the device rather than sit there dark.
+#
+# PANIC is the line that makes that true. Without it a timeout prints one
+# line on a UART nobody is watching and the device keeps running hung, which
+# is precisely the outcome the sentence above says must not happen -- on a
+# headless vent behind a printer there is nothing else to notice it.
+# With APP_ROLLBACK_ENABLE above, a hang during probation also ends in a
+# rollback to the previous image, which is the self-healing that was wanted.
 CONFIG_ESP_TASK_WDT_EN=y
 CONFIG_ESP_TASK_WDT_INIT=y
 CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+CONFIG_ESP_TASK_WDT_PANIC=y
 
 # The Wi-Fi SCAN_DONE handler runs on the esp_event task ("sys_evt"), whose IDF
 # default stack is 2304 B. That is tight once the handler also builds JSON and

@@ -198,6 +198,7 @@ def restore(v, saved):
 
 START = time.time()
 LOG = []
+BACKUP = "reference-BEFORE.json"
 
 def main():
     if len(sys.argv) < 2:
@@ -206,15 +207,34 @@ def main():
     mode = sys.argv[2] if len(sys.argv) > 2 else "run"
 
     v = Vent(host)
-    saved = json.loads(json.dumps(v.state))
-    with open("reference-BEFORE.json", "w") as f:
-        json.dump(saved, f, indent=1)
-    print("settings backed up to reference-BEFORE.json")
 
+    # `restore` is the command this tool tells you to run when a capture went
+    # wrong. It used to read the device's CURRENT state, write that over
+    # reference-BEFORE.json, and then "restore" it -- so the one command a
+    # user runs after an aborted run destroyed the only record of their
+    # original lighting and put the half-finished sequence back instead.
+    # Restore reads the snapshot off disk and writes nothing.
     if mode == "restore":
+        if not os.path.exists(BACKUP):
+            raise SystemExit(
+                "no %s here, so there is nothing to restore from.\n"
+                "It is written at the start of a run; run this from the same\n"
+                "directory as that run." % BACKUP)
+        with open(BACKUP) as f:
+            saved = json.load(f)
         n = restore(v, saved)
-        print("replayed %d messages" % n)
+        print("replayed %d messages from %s" % (n, BACKUP))
         v.close(); return
+
+    saved = json.loads(json.dumps(v.state))
+    # And a second run does not overwrite the first run's snapshot.
+    if os.path.exists(BACKUP):
+        keep = BACKUP + time.strftime(".%Y%m%d-%H%M%S")
+        os.rename(BACKUP, keep)
+        print("kept the previous snapshot as %s" % keep)
+    with open(BACKUP, "w") as f:
+        json.dump(saved, f, indent=1)
+    print("settings backed up to %s" % BACKUP)
 
     def put_back(*_):
         print("\nrestoring settings...")

@@ -6,9 +6,14 @@ With no Wi-Fi configured, the vent raises its own access point.
 
 | | |
 | --- | --- |
-| Network name | `Panda_Vent_<last 4 of the MAC>` |
-| Password | none |
-| Address | `http://192.168.4.1` |
+| Network name | `Panda_Vent_` + the twelve hex digits of the MAC |
+| Password | `987654321` |
+| Address | `http://192.168.254.1` |
+
+It is a WPA2 network, not an open one: the default password is nine
+characters, and anything eight or longer makes the access point secured. All
+three values are the compiled defaults and all three can be changed on the
+Hotspot card once you are in.
 
 Join it, open that address, and the setup page comes up. Pick a language,
 choose your network, enter its password.
