@@ -91,7 +91,16 @@ void app_main(void)
         // network it was on a minute earlier. Take the credentials out of the
         // raw partition first; they are replanted once NVS is usable again.
         ESP_LOGW(TAG, "nvs unusable (%s), erasing", esp_err_to_name(err));
-        pv_wifi_salvage_stock(NULL, 0, NULL, 0);
+        // Say so out loud, both ways. There is no stock unit left here to
+        // prove this path on, so the next vent that converts has to leave
+        // evidence rather than a silent guess: the log names the network it
+        // rescued, or says plainly that it found nothing to rescue.
+        char sv_ssid[33] = {0};
+        if (pv_wifi_salvage_stock(sv_ssid, sizeof sv_ssid, NULL, 0))
+            ESP_LOGW(TAG, "CONVERSION: rescued stock Wi-Fi '%s' before erasing NVS", sv_ssid);
+        else
+            ESP_LOGW(TAG, "CONVERSION: no stock Wi-Fi found to rescue; "
+                          "this vent will come up on its setup hotspot");
         nvs_flash_erase();
         err = nvs_flash_init();
     }
