@@ -135,6 +135,21 @@ firmware's data:
 Erasing NVS also clears the saved Wi-Fi, so the owner has to redo setup
 through the hotspot. Say so before doing it.
 
+## An OTA cannot convert a stock vent
+
+`/ota` writes an application into a partition slot. It does not write the
+bootloader and it does not write the partition table, so an application only
+runs if the slot it landed in is at the address that application was linked
+for. On a vent that has already had a cable install those agree by
+construction. On a vent still running BIQU's firmware they are an assumption,
+and nothing stock serves lets you check it: there is no endpoint that reports
+a partition table.
+
+Uploading this firmware to a stock vent over the network can therefore leave
+it running neither one -- with no backup, because stock has no `/backup`
+either. Convert with a cable once, per unit. Update over the network forever
+after.
+
 ## Wireless restore (works whenever the device still serves HTTP)
     curl -X POST -H 'OTA-Type: ota_fw' \
       --data-binary @<BIQU-STOCK-IMAGE.bin> \

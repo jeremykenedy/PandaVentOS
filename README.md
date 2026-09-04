@@ -289,11 +289,28 @@ working vent.
 
 ### First Install, By Hand
 
+**The first install onto a vent still running BIQU's firmware needs a cable,
+once.** It is not a preference. An OTA can only drop an application into a
+partition slot that already exists; it cannot write the bootloader or the
+partition table, so the image has to land at exactly the address it was linked
+for, and nothing the stock firmware serves will tell you where its slots are.
+A cable install writes the bootloader, the partition table and the app
+together, which is what makes every later update wireless.
+
+It is also the only way to take a full 4 MB backup of a stock unit: stock has
+no `/backup` endpoint, so until this has been done once there is no image of
+that device anywhere.
+
 ```bash
 cd firmware
 idf.py build
 idf.py -p <YOUR-PORT> flash
 ```
+
+or `tools/install.sh --port <YOUR-PORT>`, which takes the 4 MB backup first
+and refuses to continue without it.
+
+After this, never again: see Updating, Over The Network.
 
 ### Updating, Over The Network
 
