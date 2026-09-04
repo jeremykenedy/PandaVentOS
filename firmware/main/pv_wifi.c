@@ -38,8 +38,46 @@ static const char *hostname_effective(void)
     return g_cfg.hostname[0] ? g_cfg.hostname : "PandaVent";
 }
 
+/* An mDNS hostname is ONE DNS label, and the ".local" is the domain the
+ * responder appends -- it is not part of the name.
+ *
+ * The Host Name field says "adding .local to this name reaches the vent", so
+ * typing "vent2.local" into it is the obvious reading and that is exactly
+ * what happened: the name was stored verbatim, mDNS was told the host was
+ * "vent2.local", and the resolvable name became vent2.local.local. The vent
+ * was on the network the whole time and simply could not be reached by the
+ * name it had been given.
+ *
+ * Take whatever was typed and reduce it to a label: drop a trailing dot and
+ * any number of trailing ".local", turn everything that is not a letter,
+ * digit or hyphen into a hyphen, and trim the hyphens off both ends. */
+void pv_hostname_sanitise(char *hn, size_t len)
+{
+    if (!hn || !len) return;
+    size_t n = strlen(hn);
+    while (n && (hn[n - 1] == ' ' || hn[n - 1] == '.')) hn[--n] = '\0';
+    for (;;) {
+        if (n > 6 && !strcasecmp(hn + n - 6, ".local")) { n -= 6; hn[n] = '\0'; }
+        else break;
+        while (n && (hn[n - 1] == ' ' || hn[n - 1] == '.')) hn[--n] = '\0';
+    }
+    for (size_t i = 0; i < n; ++i) {
+        unsigned char c = (unsigned char)hn[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+              (c >= '0' && c <= '9') || c == '-')) hn[i] = '-';
+    }
+    size_t a = 0;
+    while (a < n && hn[a] == '-') ++a;
+    if (a) memmove(hn, hn + a, n - a + 1), n -= a;
+    while (n && hn[n - 1] == '-') hn[--n] = '\0';
+    if (n > 63) hn[63] = '\0';           /* a label's limit */
+}
+
 void pv_hostname_apply(void)
 {
+    /* Also on the way out, so a name stored before this existed is corrected
+       on the next boot rather than staying unreachable. */
+    pv_hostname_sanitise(g_cfg.hostname, sizeof(g_cfg.hostname));
     const char *hn = hostname_effective();
     if (s_sta_netif) esp_netif_set_hostname(s_sta_netif, hn);
     static bool mdns_up;

@@ -2887,7 +2887,7 @@ Print Prepare</span></button>
       the same network to open this page again.</div>
     <ul class="list border">
       <li><svg class="i"><use href="#i-network"/></svg><div class="max" id="lbl_sta_ip" data-str="ui_address">Address</div><button class="note-btn" id="id_note_sta_ip" aria-labelledby="id_label_sta_state lbl_sta_ip" aria-haspopup="dialog">i</button><span id="id_sta_ip"></span></li>
-      <li><svg class="i"><use href="#i-status"/></svg><div class="max" data-str="ui_signal">Signal</div><span></span></li>
+      <li><svg class="i"><use href="#i-status"/></svg><div class="max" data-str="ui_signal">Signal</div><span id="id_sta_rssi"></span></li>
     </ul>
     <div class="padding">
       <button class="border responsive" id="id_btn_wifi_config">
@@ -9369,7 +9369,14 @@ function paint_wifi_scan(scan) {
 }
 
 function handle_sta(sta) {
-  setInputValue('id_sta_ip', sta.ip);
+  /* These two are <span>s on the Connected card, not inputs. setInputValue
+     assigns .value, which a span simply does not render, so the Address row
+     had been blank since the card was built -- and nothing wrote the signal
+     at all. The strength is only present while associated, so the row empties
+     itself when it should rather than keeping a stale reading. */
+  setText('id_sta_ip', sta.ip);
+  var _vst = (g_state.vent_policy && g_state.vent_policy.status) || {};
+  setText('id_sta_rssi', isNum(_vst.wifi_rssi) ? _vst.wifi_rssi + ' dBm' : '');
   setInputValue('id_sta_hostname', sta.hostname);
 
   var state = sta.state;

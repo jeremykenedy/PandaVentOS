@@ -92,6 +92,9 @@ static void apply_sta(cJSON *o)
     cJSON *hn = cJSON_GetObjectItemCaseSensitive(o, "hostname");
     if (cJSON_IsString(hn)) {
         snprintf(g_cfg.hostname, sizeof(g_cfg.hostname), "%s", hn->valuestring);
+        // Reduce it to a label before it is stored, so the page shows the
+        // name that will actually resolve rather than the one that was typed.
+        pv_hostname_sanitise(g_cfg.hostname, sizeof(g_cfg.hostname));
         pv_cfg_save();
         pv_hostname_apply();
         pv_ws_broadcast(pv_json_response("set_hostname", 1));

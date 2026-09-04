@@ -594,7 +594,8 @@ bool pv_wifi_saw_test_ap(void);
 int  pv_wifi_test_scan_state(void);
 void pv_wifi_join(const char *ssid, const char *password);
 void pv_ap_apply(void);                             // reconfigure softAP now
-void pv_hostname_apply(void);                       // mDNS + netif hostname
+void pv_hostname_apply(void);
+void pv_hostname_sanitise(char *hn, size_t len);                       // mDNS + netif hostname
 
 // pv_bambu.c
 void pv_bambu_start(void);
