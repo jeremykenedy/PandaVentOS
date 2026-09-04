@@ -392,6 +392,7 @@ Every setting, what it does, and why it is there.
 
 | Path | What it is |
 | --- | --- |
+| `factory/` | BIQU's own firmware, web UI and documentation, kept verbatim as the reference this project is measured against. **Not covered by this repository's licence** -- see below. |
 | `firmware/` | the ESP-IDF application |
 | `tools/` | `install.sh`, `restore.sh`, and the host harnesses: effect renderer, config migration runner, UI comparison |
 | `docs/` | what every setting actually does |
@@ -432,6 +433,24 @@ would be a second copy to keep in step. Each still has its own directory under
 **The typeface is not under this repository's licence.** Roboto 3 is OFL-1.1,
 which is a different set of obligations from the MIT terms covering everything
 else here. If you reuse the font, read `vendor/roboto/OFL.txt` first.
+
+### `factory/` is BIQU's, not ours
+
+| | |
+| --- | --- |
+| what | BIQU's shipping firmware image, its web UI, and its documentation |
+| licence | **CC BY-NC-ND 4.0** -- `factory/docs/BIQU-LICENSE.md` |
+| copyright | Copyright (c) 2026 BIQU -- `factory/docs/biqu-readme.md` |
+
+It is kept **verbatim and unmodified**, as the reference this firmware's
+behaviour is measured against and as the way back to stock. CC BY-NC-ND allows
+it to be shared whole, for non-commercial purposes, with attribution; it does
+not allow adapted versions of it to be shared. Nothing in `factory/` has been
+altered.
+
+**The MIT licence at the root of this repository does not cover it.** MIT
+covers the firmware, the web UI and the tooling written for this project. If
+you want BIQU's material, take it under BIQU's terms.
 
 ### Not affiliated with BIQU or BIGTREETECH
 
