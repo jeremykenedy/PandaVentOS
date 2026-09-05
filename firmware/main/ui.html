@@ -1030,7 +1030,7 @@ footer.ux_version {
 
 /* The name and the number are two elements so the JS can write each one
    without taking the other out, and the space between them has to survive
-   being laid out: `PandaVentOSv0.1.0` was one collapsed whitespace node. */
+   being laid out: `PandaVentOSv1.1.0` was one collapsed whitespace node. */
 footer.ux_version > a {
   display: inline-flex;
   gap: 0.3rem;
@@ -5706,47 +5706,7 @@ function cpk_paint_state_button(target, hex) {
 /* One message, one top-level key (P§1.1): the colour members under the
    context's body, which always names the effect (and the device state
    for Advance). The error flash is its own body (P§7.7.6). */
-/* Keep the local model in step with what was just sent.
- *
- * The device does not echo a colour write back -- the h2d body only appears
- * in a fresh state document -- so the page is the only thing that knows the
- * new value until the next reconnect. Nothing was writing it down. Pick an
- * effect, pick a colour, click another device state and back, and
- * repaint_h2d rendered from a g_state that had never heard about the colour:
- * the swatch went to the effect's default, which is white.
- *
- * `target.params` is the live object inside g_state that module 1 paints
- * from, so writing the field there is what makes the change survive a
- * repaint. When the effect has no entry yet -- a state that has never used
- * it -- one is added, otherwise the write lands on a temporary and is lost
- * the same way. */
-function cpk_remember(target, members) {
-  if (!target) return;
-  var params = target.params;
-  if ((!params || !cpk_is_int(params.effect_id === undefined ? 0 : params.effect_id)) &&
-      target.ctx === 'h2d') { /* fall through: params may be the {} placeholder */ }
-
-  if (target.ctx === 'h2d' && (!params || params.effect_id === undefined)) {
-    var rm = (typeof g_state !== 'undefined' && g_state && g_state.rgb_mode) ? g_state.rgb_mode : null;
-    var ds = rm && cpk_find((rm.h2d_mode && rm.h2d_mode.device_states) || null,
-                            'device_state_id', target.mode);
-    if (ds) {
-      if (!Array.isArray(ds.effects)) ds.effects = [];
-      params = cpk_find(ds.effects, 'effect_id', target.effect);
-      if (!params) { params = { effect_id: target.effect }; ds.effects.push(params); }
-      target.params = params;
-    }
-  }
-  if (!params) return;
-  for (var w in members) {
-    if (!Object.prototype.hasOwnProperty.call(members, w)) continue;
-    var slot = cpk_slot_of(target.ctx, w);
-    if (slot) params[slot.field] = members[w];
-  }
-}
-
 function cpk_send_colours(target, members) {
-  cpk_remember(target, members);
   if (typeof ws_push !== 'function') return;
   var body = {}, k;
   if (target.ctx !== 'err') {
@@ -8057,11 +8017,86 @@ function ws_raw_send(obj) {
    top-level key (§1.1). Controls stay inert until the first state document
    lands — the ws_push guard the markup refers to. Our own "please
    send everything" request bypasses it via ws_raw_send. */
+/* Write down what we just told the device.
+ *
+ * The device does NOT echo a light setting back. It sends the per-state and
+ * per-effect bodies once, in the document a client gets on connect, and never
+ * again -- measured on 2026-09-04: six h2d_mode frames in the connect burst,
+ * none at all in the fifteen seconds after a write. So between sending a
+ * change and the next reconnect, the page is the only thing that knows it.
+ *
+ * Nothing was recording it. Choose an effect, choose a colour, click another
+ * device state and back, and the swatch was the effect's default -- white --
+ * because repaint_h2d rendered from a g_state that had never heard about the
+ * colour. The same hole was under every other light setting sent this way:
+ * a band width, a reverse flag, a brightness ramp.
+ *
+ * So the model is updated here, at the one place every such change goes out,
+ * rather than at each call site. */
 function ws_push(root, members) {
   if (document.body && document.body.classList.contains('is-waiting')) return;
   var msg = {};
   msg[root] = members || {};
+  if (root === 'rgb_mode') remember_light(members || {});
   ws_raw_send(msg);
+}
+
+/* Merge an outbound rgb_mode body into g_state, addressing the same slot the
+   device will. Only the shapes the page actually sends are handled; anything
+   else is left alone rather than guessed at. */
+function remember_light(m) {
+  var rm = g_state.rgb_mode;
+  if (!rm) return;
+  var b, i;
+
+  if (m.simple_mode && isNum(m.simple_mode.effect)) {
+    b = m.simple_mode;
+    if (!Array.isArray(rm.effects)) rm.effects = [];
+    var fx = null;
+    for (i = 0; i < rm.effects.length; i++)
+      if (rm.effects[i] && rm.effects[i].id === b.effect) { fx = rm.effects[i]; break; }
+    if (!fx) { fx = { id: b.effect }; rm.effects.push(fx); }
+    copy_light_fields(fx, b);
+    rm.current_simple_effect = b.effect;
+  }
+
+  if (m.h2d_mode && isNum(m.h2d_mode.mode) && isNum(m.h2d_mode.effect)) {
+    b = m.h2d_mode;
+    if (!rm.h2d_mode) rm.h2d_mode = {};
+    if (!Array.isArray(rm.h2d_mode.device_states)) rm.h2d_mode.device_states = [];
+    var ds = null, list = rm.h2d_mode.device_states;
+    for (i = 0; i < list.length; i++)
+      if (list[i] && list[i].device_state_id === b.mode) { ds = list[i]; break; }
+    if (!ds) { ds = { device_state_id: b.mode, effects: [] }; list.push(ds); }
+    if (!Array.isArray(ds.effects)) ds.effects = [];
+    var e = null;
+    for (i = 0; i < ds.effects.length; i++)
+      if (ds.effects[i] && ds.effects[i].effect_id === b.effect) { e = ds.effects[i]; break; }
+    if (!e) { e = { effect_id: b.effect }; ds.effects.push(e); }
+    copy_light_fields(e, b);
+    ds.active_effect_id = b.effect;
+  }
+
+  if (m.error_flash) {
+    if (!rm.error_flash) rm.error_flash = {};
+    copy_light_fields(rm.error_flash, m.error_flash);
+  }
+}
+
+/* The wire names on the way out, and the state-document names they land on.
+   `null` is a real value here: it is how an optional colour is cleared. */
+var LIGHT_FIELDS = {
+  rgb: 'color', rgb_closed: 'color_closed',
+  inactive: 'inactive', inactive_closed: 'inactive_closed',
+  bg: 'bg', speed: 'speed', bright_end: 'bright_end',
+  aux: 'aux', reverse: 'reverse'
+};
+
+function copy_light_fields(dst, src) {
+  for (var w in LIGHT_FIELDS) {
+    if (!Object.prototype.hasOwnProperty.call(LIGHT_FIELDS, w)) continue;
+    if (Object.prototype.hasOwnProperty.call(src, w)) dst[LIGHT_FIELDS[w]] = src[w];
+  }
 }
 
 function flush_out_queue() {

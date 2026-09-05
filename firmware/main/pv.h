@@ -24,7 +24,7 @@
 // reads in the corner of the page and matches against a GitHub release.
 #define PV_FW_VERSION  "V1.0.0"
 #define PV_OS_NAME     "PandaVentOS"
-#define PV_OS_VERSION  "0.1.0"
+#define PV_OS_VERSION  "1.1.0"
 
 // ---------------------------------------------------------------------------
 // Hardware map (recovered from the stock binary and BTT docs; proven on this
