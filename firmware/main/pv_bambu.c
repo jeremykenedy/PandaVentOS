@@ -297,31 +297,32 @@ static bool error_now(void)
 // to the H2D state the renderer indexes with.
 
 /* ===========================================================================
-   PLACEHOLDER VALUES, PENDING MEASUREMENT.  See private/POST-PRINT-SESSION.md.
+   THE THREE NUMBERS THIS FILE CANNOT MEASURE FOR ITSELF.  Settled 2026-09-04.
 
-   Three numbers below came from the stock image and are being replaced with
-   measured ones, not re-derived on paper. They are gathered here, named, and
-   shaped so that the measurement is a CONSTANT CHANGE and not another rewrite:
+   PREPARE_STAGES / PREPARE_STAGES_IF_NO_LAYER   MEASURED. The state logger
+   ran against a live print and caught the end of one job and the whole
+   preparation of the next; stage 75 was added and the -1 case corrected from
+   what the printer actually emitted. See private/observations/MEASUREMENT.md.
+   An unobserved stage code means PRINTING -- a decision, not a gap.
 
-     PREPARE_STAGES / PREPARE_STAGES_IF_NO_LAYER   which stg_cur codes mean the
-                                                   printer is still preparing
-     FINISH_HOLD_MS                                how long a finished job is
-                                                   held before it stops being
-                                                   the current state
-     COMPLETE_HOLD_US                              how long the page is shown
-                                                   Completed afterwards
+   FINISH_HOLD_MS and COMPLETE_HOLD_US are OURS, and are staying ours.
 
-   `stg_cur` and `layer_num` are printer report fields that this firmware
-   already republishes, and `device_state` is published beside them, so every
-   input AND the output of the split are on the wire. A state logger is running
-   against a real print (private/observations/statepoll.py); when it has been
-   through the end of one job and the start of the next, the lists below are
-   replaced with what the printer actually emitted.
+   They were carried over as "pending measurement", and that measurement
+   cannot be taken: it would need a vent running BIQU's firmware with a
+   stopwatch on it, and both units here run this one. Worse, the obvious
+   substitute is circular -- watching our own device_state go 4 -> 0 thirty
+   seconds after the printer reports FINISH measures the number written below,
+   not the number stock uses. The logger did exactly that on 2026-09-04 and it
+   proved nothing except that the code does what it says.
 
-   A printer only emits the stages it passes through, so the measurement will
-   cover the codes that matter on this hardware and leave the rest unseen.
-   DELIBERATE CHOICE, Jeremy 2026-09-03: an unobserved stage code means
-   PRINTING. That is recorded as a decision, not left as a gap.
+   So they are recorded as a CHOICE. Thirty seconds is long enough that a
+   finished job is still the current job while someone walks over to the
+   printer, and short enough that the vent is not still claiming to be
+   printing when the next job starts. Nothing downstream depends on them
+   matching stock: they change how long a colour stays on a strip, and the
+   owner can already pick that colour. If stock turns out to differ, this is a
+   one-line change with no rewrite behind it, which is why they are still
+   named constants gathered in one place.
    =========================================================================== */
 
 /* stg_cur values that mean the printer is preparing rather than printing.

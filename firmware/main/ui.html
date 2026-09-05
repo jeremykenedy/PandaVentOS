@@ -5831,7 +5831,7 @@ function cpk_picker_show(hex, hslText) {
     } else {
       prev.style.background = '';
       prev.classList.add('is-unset');
-      prev.setAttribute('title', cpk_tr('ui_colour_not_set', 'Not set'));
+      prev.setAttribute('title', cpk_tr('policy_material_none', 'None'));
     }
   }
   cpk_write_field('id_hsl_hex', 'hex', hex ? '#' + hex : '');
@@ -6006,7 +6006,8 @@ function cpk_picker_open(slot) {
   g_cpk_pick = { slot: slot, hex: null };
   if (!cpk_picker_ensure()) { g_cpk_pick = null; return; }
   cpk_presets_build();
-  dlg.setAttribute('aria-label', cpk_tr('ui_pick_a_colour', 'Pick a colour'));
+  dlg.setAttribute('aria-label',
+    cpk_tr('ui_pick_a_colour_for_the_strip_you_ca', 'Pick a colour for the strip.'));
   cpk_release_fields();
   cpk_picker_set_hex(cpk_slot_preload(slot, target));
   cpk_dialog_show(dlg);
@@ -8929,17 +8930,31 @@ var NVS_ERRS = {
   4360: 'the value does not fit the page'
 };
 
+/* What failed to save, in words the reader's language already has.
+ *
+ * This used to build the line from five keys that exist in no language file
+ * and eight English sentences about NVS internals, so every reader outside
+ * English got a paragraph of English in the middle of their own page -- and
+ * the eight sentences were about the flash store's internal state, which is
+ * not something the owner of a vent can act on anyway.
+ *
+ * It now names the parts using the keys the page already uses for them --
+ * Settings and Lighting, plus each device state's own translated name -- and
+ * gives the failure as its numeric code, which needs no translation and is
+ * the thing worth quoting in a bug report. The English explanation of the
+ * code still goes to the console for whoever is reading logs. */
 function cfg_save_detail(s) {
   var bits = isNum(s.cfg_save_keys) ? s.cfg_save_keys : 0;
   var which = [];
-  if (bits & 1) which.push(tr('cfg_key_main', 'the main settings'));
+  if (bits & 1) which.push(tr('card_settings', 'Settings'));
   var states = [];
   for (var i = 0; i < 6; i++) if (bits & (2 << i)) states.push(device_state_name(i));
-  if (states.length) which.push(tr('cfg_key_lighting', 'the lighting for') + ' ' + states.join(', '));
+  if (states.length) which.push(tr('ui_lighting', 'Lighting') + ' (' + states.join(', ') + ')');
   var err = isNum(s.cfg_save_err) ? s.cfg_save_err : 0;
-  var why = NVS_ERRS[err] || (tr('cfg_err_code', 'error') + ' ' + err);
-  if (!which.length) return why;
-  return which.join('; ') + ' \u2014 ' + why;
+  if (err && NVS_ERRS[err]) console.log('[pv] save failed: ' + NVS_ERRS[err] + ' (' + err + ')');
+  var code = err ? '0x' + err.toString(16).toUpperCase() : '';
+  if (!which.length) return code;
+  return which.join('; ') + (code ? ' \u2014 ' + code : '');
 }
 
 /* Slider + its label, guarding focus. */

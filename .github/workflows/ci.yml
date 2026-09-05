@@ -34,6 +34,15 @@ jobs:
           cc -I stub -I ../../firmware/main -o framecheck \
              framecheck.c ../../firmware/main/pv_anim.c -lm
           ./framecheck
+      # Drives pv_wifi.c's own stock-Wi-Fi salvage over NVS partitions built in
+      # the real on-flash format. The path runs once per vent, on the first
+      # boot after conversion, so it cannot be reached on hardware here.
+      - name: Stock Wi-Fi salvage check
+        working-directory: tools/nvscheck
+        run: |
+          python3 mkimages.py images
+          cc -I stub -I ../../firmware/main -o nvscheck nvscheck.c
+          ./nvscheck images/nvs-stock.bin images/nvs-stock-populated.bin images/nvs-ours.bin
       # Runs a real stored NVS blob through the real pv_cfg.c migration chain.
       - name: Config migration check
         working-directory: tools/cfgmig
